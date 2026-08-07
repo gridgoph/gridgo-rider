@@ -7,6 +7,7 @@ import {
   GridgoTabBar,
   TAB_CONTENT_HEIGHT,
   TAB_DESIGN_PADDING,
+  TAB_SURFACE_TOP_OFFSET,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 
@@ -97,6 +98,15 @@ describe("GridgoTabBar", () => {
     expect(TAB_DESIGN_PADDING).toBe(8);
     // Content height is Material Design 3 icon+label standard.
     expect(TAB_CONTENT_HEIGHT).toBe(80);
+  });
+
+  it("offsets the painted surface 16dp so the visible bar matches client (64 + inset + 8)", () => {
+    // top-4 overlay: transparent strip above the hairline; disc overhangs into it.
+    expect(TAB_SURFACE_TOP_OFFSET).toBe(16);
+    // Visible painted height above the design pad (before system inset).
+    expect(TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET).toBe(64);
+    // Label sits on pb-2 (8dp) above the bar's bottom edge of the content column.
+    expect(TAB_DESIGN_PADDING).toBe(8);
   });
 
   it("honours a tabPress handler that prevents the default", async () => {
