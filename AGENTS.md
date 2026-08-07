@@ -303,6 +303,7 @@ Be concise. Explain what changed and how to test it.
 - **Root stack pushes above tabs:** apply `multiOriginPushedScreenOptions` from `lib/navigationHeaders.ts` (`headerBackButtonDisplayMode: "minimal"`) so iOS never labels the back control with the `(tabs)` route group.
 
 - **Tabs:** Offers · Active (raised disc) · Alerts · Account. No Home — it duplicated Active/Offers. Launch lands on Active (`app/index.tsx`, `initialRouteName`). Rationale: `constants/tabs.ts`.
+- **Auth gate:** session → route is continuous in `hooks/useAuthGate` + `lib/authGate.ts` (not only cold-start `index`). Sign-out, expired token, and any non-login 401 clear the session and `replace` to login so back cannot re-enter `(tabs)`.
 - **Tab bar geometry:** `paddingBottom = insets.bottom + TAB_DESIGN_PADDING` (stack, never `Math.max`). Content row is MD3 80dp — see `components/GridgoTabBar.tsx`.
 - **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window, stop labels). Screens must not re-derive these rules inline.
 - **Map stack (Expo Go, no Google key):** Leaflet in `react-native-webview` over OSM tiles; OSRM public demo for route/distance/ETA (`lib/osrm.ts`); coordinates from order `pickup`/`dropoff` only — never geocode. Routing failure → straight line + plain status; never block trip actions. Attribution required. Dark theme uses Carto dark tiles.
