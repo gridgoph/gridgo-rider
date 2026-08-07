@@ -1,15 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { Redirect } from "expo-router";
 
 import { GridgoLogo } from "@/components/GridgoLogo";
-import { getApiBase } from "@/lib/api";
+import { StatusChip } from "@/components/StatusChip";
+import { getApiBase, health } from "@/lib/api";
 import { useSession } from "@/store/session";
+
+type HealthState = "checking" | "reachable" | "unreachable";
 
 export default function LoginScreen() {
   const { user, login, loading, error } = useSession();
   const [email, setEmail] = useState("rider@gridgo.local");
   const [password, setPassword] = useState("demo");
+  const [apiBase] = useState(() => getApiBase());
+  const [healthState, setHealthState] = useState<HealthState>("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await health();
+        if (!cancelled) {
+          setHealthState(result.ok ? "reachable" : "unreachable");
+        }
+      } catch {
+        if (!cancelled) setHealthState("unreachable");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (user) return <Redirect href="/(tabs)/home" />;
 
@@ -17,7 +39,7 @@ export default function LoginScreen() {
     <View className="flex-1 justify-center bg-canvas px-6">
       <GridgoLogo />
       <Text className="mt-6 font-satoshi-bold text-2xl text-text-primary">Rider sign in</Text>
-      <Text className="mt-1 font-satoshi text-text-secondary">Demo API · {getApiBase()}</Text>
+      <Text className="mt-1 font-satoshi text-text-secondary">Demo API · gridgo-api</Text>
       <TextInput
         className="mt-6 rounded-xl border border-outline bg-surface px-4 py-3 font-satoshi text-text-primary"
         autoCapitalize="none"
@@ -36,9 +58,24 @@ export default function LoginScreen() {
         disabled={loading}
         onPress={() => void login(email.trim(), password)}
       >
-        <Text className="font-satoshi-medium text-action-yellow-on">{loading ? "Signing in…" : "Sign in"}</Text>
+        <Text className="font-satoshi-medium text-action-yellow-on">
+          {loading ? "Signing in…" : "Sign in"}
+        </Text>
       </Pressable>
       <Text className="mt-4 font-satoshi text-sm text-text-muted">rider@gridgo.local / demo</Text>
+
+      <View className="absolute bottom-8 left-6 right-6 flex-row flex-wrap items-center gap-2">
+        <Text className="font-satoshi text-caption text-text-muted" numberOfLines={2}>
+          {apiBase}
+        </Text>
+        {healthState === "checking" ? (
+          <StatusChip tone="neutral" label="Checking…" icon="clock" />
+        ) : healthState === "reachable" ? (
+          <StatusChip tone="success" label="Reachable" icon="circle-check" />
+        ) : (
+          <StatusChip tone="error" label="Unreachable" icon="circle-x" />
+        )}
+      </View>
     </View>
   );
 }

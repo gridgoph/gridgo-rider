@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 /**
@@ -55,15 +56,112 @@ export type Notification = {
 
 let tokenMemory: string | null = null;
 
-/** Android emulator reaches the host machine via 10.0.2.2. */
-function defaultBase(): string {
-  if (Platform.OS === "android") return "http://10.0.2.2:8787";
-  return "http://127.0.0.1:8787";
+const DEFAULT_API_PORT = "8787";
+
+/** Inputs for pure base-URL resolution (unit-tested). */
+export type ResolveApiBaseInput = {
+  /** Explicit override from EXPO_PUBLIC_API_URL. */
+  envUrl?: string | null;
+  /** EXPO_PUBLIC_API_PORT, default 8787 when unset. */
+  envPort?: string | null;
+  /**
+   * Host:port (or host) of the Expo dev server, e.g. "192.168.1.12:8081".
+   * Hostname only is used; the packager port is dropped.
+   */
+  devHostUri?: string | null;
+  /** Platform.OS value. */
+  platformOS: string;
+};
+
+/**
+ * Resolve the demo API base URL.
+ *
+ * Precedence:
+ * 1. Explicit EXPO_PUBLIC_API_URL (trailing slash stripped)
+ * 2. Hostname from the Expo dev server + apiPort
+ * 3. Android emulator loopback alias when dev host is localhost
+ * 4. http://127.0.0.1:apiPort
+ */
+export function resolveApiBase({
+  envUrl,
+  envPort,
+  devHostUri,
+  platformOS,
+}: ResolveApiBaseInput): string {
+  const trimmed = envUrl?.trim().replace(/\/$/, "");
+  if (trimmed) return trimmed;
+
+  const apiPort = (envPort?.trim() || DEFAULT_API_PORT).replace(/^:/, "");
+  const hostname = hostnameFromDevHostUri(devHostUri);
+
+  if (hostname) {
+    if (
+      (hostname === "localhost" || hostname === "127.0.0.1") &&
+      platformOS === "android"
+    ) {
+      return `http://10.0.2.2:${apiPort}`;
+    }
+    return `http://${hostname}:${apiPort}`;
+  }
+
+  return `http://127.0.0.1:${apiPort}`;
+}
+
+/** Pull a hostname from `host:port`, URL-like strings, or bare host. */
+export function hostnameFromDevHostUri(hostUri: string | null | undefined): string | null {
+  if (!hostUri) return null;
+  const raw = hostUri.trim();
+  if (!raw) return null;
+
+  // Accept full URLs (linkingUri) as well as bare host:port.
+  const candidate = raw.includes("://") ? raw : `http://${raw}`;
+  try {
+    const { hostname } = new URL(candidate);
+    return hostname || null;
+  } catch {
+    // Last resort: strip path/query and port by hand.
+    const withoutPath = raw.split("/")[0]?.split("?")[0] ?? "";
+    const host = withoutPath.includes("]")
+      ? withoutPath // IPv6 [addr]:port — leave as-is if URL failed
+      : withoutPath.replace(/:\d+$/, "");
+    return host || null;
+  }
+}
+
+/**
+ * Best-effort Expo dev-server host across Expo Go, dev clients, and classic
+ * manifests. Prefer expoConfig.hostUri; fall back to other populated fields.
+ */
+export function getExpoDevHostUri(): string | null {
+  const expoConfig = Constants.expoConfig as { hostUri?: string } | null;
+  if (expoConfig?.hostUri) return expoConfig.hostUri;
+
+  const expoGo = Constants.expoGoConfig as { debuggerHost?: string } | null;
+  if (expoGo?.debuggerHost) return expoGo.debuggerHost;
+
+  const classic = Constants.manifest as { debuggerHost?: string; hostUri?: string } | null;
+  if (classic?.debuggerHost) return classic.debuggerHost;
+  if (classic?.hostUri) return classic.hostUri;
+
+  const platformHost = Constants.platform?.hostUri;
+  if (platformHost) return platformHost;
+
+  // linkingUri is often exp://192.168.x.x:8081 — usable as a last resort.
+  const linking = Constants.linkingUri;
+  if (linking && !linking.startsWith("exp://127.") && linking.includes("://")) {
+    return linking;
+  }
+
+  return null;
 }
 
 export function getApiBase(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
-  return fromEnv || defaultBase();
+  return resolveApiBase({
+    envUrl: process.env.EXPO_PUBLIC_API_URL,
+    envPort: process.env.EXPO_PUBLIC_API_PORT,
+    devHostUri: getExpoDevHostUri(),
+    platformOS: Platform.OS,
+  });
 }
 
 export function setToken(token: string | null): void {
