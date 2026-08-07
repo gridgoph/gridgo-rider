@@ -19,6 +19,13 @@ export type User = {
   supplierName?: string;
 };
 
+/** Structured stop with coordinates from the API — never geocode at runtime. */
+export type OrderStop = {
+  lat: number;
+  lng: number;
+  label: string;
+};
+
 export type Order = {
   id: string;
   clientId: string;
@@ -43,6 +50,10 @@ export type Order = {
   createdAt: string;
   updatedAt: string;
   timeline: { at: string; state: string; by: string; note: string }[];
+  /** Supplier pickup stop with lat/lng from the API. */
+  pickup?: OrderStop | null;
+  /** Client drop-off stop with lat/lng from the API. */
+  dropoff?: OrderStop | null;
 };
 
 export type Notification = {

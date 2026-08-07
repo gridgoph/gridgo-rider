@@ -9,9 +9,11 @@ import { useNotifications } from "@/store/notifications";
 /**
  * Rider tab shell.
  *
- * The bar is drawn from the tokens on every platform — see `GridgoTabBar`.
- * The raised centre disc is Active (see ACTION_TAB): the trip currently in
- * hand. Headers are off; each tab draws its own top chrome.
+ * Tabs: Offers · Active (raised disc) · Alerts · Account.
+ * Home was removed — it duplicated Active and Offers. Launch lands on Active
+ * so a mid-delivery rider reaches the job in zero taps.
+ *
+ * The bar is drawn from tokens on every platform — see `GridgoTabBar`.
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
@@ -24,6 +26,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       tabBar={(props) => <GridgoTabBar {...props} />}
+      initialRouteName="active"
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.canvas },

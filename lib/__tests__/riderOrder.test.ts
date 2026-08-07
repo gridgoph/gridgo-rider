@@ -2,15 +2,18 @@ import {
   ACTIVE_TRIP_STATES,
   buildFailureNote,
   codAmountDueMinor,
+  dropoffLabel,
   formatRelativeAt,
   isActiveTripState,
   isCodCollected,
   isCodOrder,
   orderStateLabel,
+  pickupLabel,
   primaryActionLabel,
   selectActiveTrip,
   selectOffers,
   shouldShareLocation,
+  stopLatLng,
   timelineActorLabel,
   tripPhase,
   unreadCount,
@@ -193,5 +196,31 @@ describe("isActiveTripState", () => {
     expect(isActiveTripState("rider_assigned")).toBe(true);
     expect(isActiveTripState("ready_for_dispatch")).toBe(false);
     expect(isActiveTripState("issue_window_open")).toBe(false);
+  });
+});
+
+describe("stop coordinates and labels", () => {
+  it("reads lat/lng from API stops and rejects invalids", () => {
+    expect(stopLatLng({ lat: 7.064, lng: 125.6085, label: "Shop" })).toEqual({
+      lat: 7.064,
+      lng: 125.6085,
+    });
+    expect(stopLatLng({ lat: 99, lng: 0, label: "Bad" })).toBeNull();
+    expect(stopLatLng(null)).toBeNull();
+  });
+
+  it("prefers API labels over generic copy", () => {
+    const withStops = order({
+      id: "1",
+      state: "ready_for_dispatch",
+      address: "Client street",
+      pickup: { lat: 7, lng: 125, label: "PrintRight Davao" },
+      dropoff: { lat: 7.1, lng: 125.1, label: "Matina Crossing" },
+    });
+    expect(pickupLabel(withStops)).toBe("PrintRight Davao");
+    expect(dropoffLabel(withStops)).toBe("Matina Crossing");
+    expect(pickupLabel(order({ id: "2", state: "ready_for_dispatch" }))).toBe(
+      "Supplier print shop",
+    );
   });
 });

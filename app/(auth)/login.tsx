@@ -33,7 +33,7 @@ export default function LoginScreen() {
     };
   }, []);
 
-  if (user) return <Redirect href="/(tabs)/home" />;
+  if (user) return <Redirect href="/(tabs)/active" />;
 
   return (
     <View className="flex-1 justify-center bg-canvas px-6">

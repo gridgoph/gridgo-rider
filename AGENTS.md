@@ -21,7 +21,7 @@ The app includes:
 - Dispatch offer accept / decline
 - Navigate to supplier for pickup and client for delivery
 - Pickup and delivery proof (OTP / photo / signature / receipt)
-- Active-trip location pings (demo; full Navigation SDK later)
+- Active-trip location pings (live GPS while package is with the rider)
 - COD collection when the job requires it
 
 **Cross-cutting**
@@ -302,10 +302,13 @@ Be concise. Explain what changed and how to test it.
 
 - **Root stack pushes above tabs:** apply `multiOriginPushedScreenOptions` from `lib/navigationHeaders.ts` (`headerBackButtonDisplayMode: "minimal"`) so iOS never labels the back control with the `(tabs)` route group.
 
-- **Tab bar:** raised centre disc is `ACTION_TAB = "active"` — Active is the working surface, not a "create" action. Decision and rationale live in `constants/tabs.ts`.
-- **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window). Screens must not re-derive these rules inline.
-- **Location pings:** demo coordinates via `useLocationSharing` while `picked_up` / `out_for_delivery`; never persisted. Real GPS would need `expo-location` (not installed).
-- **No maps dependency** for MVP — pickup/drop-off are structured address cards (`AddressStop`).
+- **Tabs:** Offers · Active (raised disc) · Alerts · Account. No Home — it duplicated Active/Offers. Launch lands on Active (`app/index.tsx`, `initialRouteName`). Rationale: `constants/tabs.ts`.
+- **Tab bar geometry:** `paddingBottom = insets.bottom + TAB_DESIGN_PADDING` (stack, never `Math.max`). Content row is MD3 80dp — see `components/GridgoTabBar.tsx`.
+- **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window, stop labels). Screens must not re-derive these rules inline.
+- **Map stack (Expo Go, no Google key):** Leaflet in `react-native-webview` over OSM tiles; OSRM public demo for route/distance/ETA (`lib/osrm.ts`); coordinates from order `pickup`/`dropoff` only — never geocode. Routing failure → straight line + plain status; never block trip actions. Attribution required. Dark theme uses Carto dark tiles.
+- **Location pings:** live GPS via `expo-location` + `useRiderLocation` / `useLocationSharing` while `picked_up` / `out_for_delivery`; never persisted.
+- **Proof photos:** real capture via `expo-image-picker` (`lib/proofPhoto.ts`); required before pickup/delivery confirm.
+- **Package versions:** install only versions from `node_modules/expo/bundledNativeModules.json` (`npx expo install …`); confirm with `npx expo install --check` before shipping.
 
 ## Final Reminder
 

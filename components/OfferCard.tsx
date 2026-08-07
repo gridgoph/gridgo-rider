@@ -1,13 +1,22 @@
-import { Banknote } from "lucide-react-native";
+import { Banknote, Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { AddressStop } from "@/components/AddressStop";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { StatusChip } from "@/components/StatusChip";
+import { TripMap } from "@/components/TripMap";
+import { useRoute } from "@/hooks/useRoute";
+import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
-import { isCodOrder, zoneLabel } from "@/lib/riderOrder";
-import { useThemeColors } from "@/hooks/useTheme";
+import {
+  dropoffLabel,
+  isCodOrder,
+  pickupLabel,
+  stopLatLng,
+  zoneLabel,
+} from "@/lib/riderOrder";
+import { routeSummaryLabel } from "@/lib/osrm";
 
 type Props = {
   offer: Order;
@@ -16,15 +25,21 @@ type Props = {
 };
 
 /**
- * One dispatch offer.
+ * One dispatch offer with map context to decide.
  *
- * Pickup and drop-off are shape-differentiated address cards. COD is called
- * out because it changes what the rider must do on arrival. One yellow Accept
- * is the only yellow on the card.
+ * Pickup and drop-off are shape-differentiated. Road distance and duration
+ * come from OSRM (straight-line estimate when routing fails). One yellow
+ * Accept is the only yellow on the card.
  */
 export function OfferCard({ offer, busy, onAccept }: Props) {
   const colors = useThemeColors();
   const cod = isCodOrder(offer);
+  const pickup = stopLatLng(offer.pickup);
+  const dropoff = stopLatLng(offer.dropoff);
+  const { route, loading: routeLoading } = useRoute({
+    from: pickup,
+    to: dropoff,
+  });
 
   return (
     <View className="gg-card gap-4">
@@ -45,16 +60,39 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
         )}
       </View>
 
+      <TripMap
+        pickup={pickup}
+        dropoff={dropoff}
+        pickupLabel={pickupLabel(offer)}
+        dropoffLabel={dropoffLabel(offer)}
+        routeCoordinates={route?.coordinates ?? []}
+        routeUnavailable={Boolean(route && !route.routed)}
+        height={160}
+        compact
+      />
+
+      <View className="flex-row items-center gap-2">
+        <Route size={16} color={colors.textMuted} strokeWidth={2} />
+        <Text className="flex-1 text-body text-text-secondary">
+          {routeLoading && !route
+            ? "Measuring route…"
+            : routeSummaryLabel(route)}
+        </Text>
+      </View>
+      {route?.statusLabel ? (
+        <Text className="text-caption text-text-muted">{route.statusLabel}</Text>
+      ) : null}
+
       <View className="gap-2">
         <AddressStop
           kind="pickup"
-          address="Supplier print shop"
+          address={pickupLabel(offer)}
           detail="Collect the finished job here"
           zone={zoneLabel(offer.zone)}
         />
         <AddressStop
           kind="dropoff"
-          address={offer.address}
+          address={dropoffLabel(offer)}
           zone={zoneLabel(offer.zone)}
         />
       </View>
