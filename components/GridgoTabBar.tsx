@@ -18,24 +18,26 @@ const ICONS: Record<TabName, LucideIcon> = {
 };
 
 /**
- * Tab bar geometry (Material Design 3 icon+label bar = 80dp content).
+ * Tab bar geometry (Material Design 3 icon+label bar = 80dp content column).
  *
  * System inset (gesture bar / three-button nav) and design padding STACK:
  *   paddingBottom = insets.bottom + TAB_DESIGN_PADDING
  * Math.max was wrong — it discarded the design pad whenever the inset
  * exceeded 8px (every modern Android phone).
  *
- * Resulting total height below the top hairline:
- *   - gesture nav (insets.bottom ≈ 24–48): 80 + inset + 8
- *   - three-button nav (insets.bottom ≈ 48): 80 + inset + 8
- *   - zero inset (emulator / older): 80 + 0 + 8 = 88
- *
- * The surface and top border span the full inset region so the bar reads as
- * one solid slab to the physical edge of the device.
+ * The painted surface is an absolute overlay starting 16dp (top-4) below the
+ * container top so the visible bar is 64 + inset + 8. The top 16dp stays
+ * transparent; the raised Active disc paints over that strip and breaks the
+ * hairline — same structure as gridgo-client.
  */
 export const TAB_CONTENT_HEIGHT = 80;
 /** Design padding under the icon+label row — always stacked with the system inset. */
 export const TAB_DESIGN_PADDING = 8;
+/**
+ * How far the painted surface (bg + top hairline) sits below the container top.
+ * Matches NativeWind `top-4` (16dp). Visible bar height = content − this + inset + pad.
+ */
+export const TAB_SURFACE_TOP_OFFSET = 16;
 
 /**
  * The GRIDGO rider tab bar.
@@ -47,23 +49,14 @@ export const TAB_DESIGN_PADDING = 8;
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const colors = useThemeColors();
   // Stack system keep-out with design padding — never Math.max.
   const bottomPad = insets.bottom + TAB_DESIGN_PADDING;
 
   return (
-    <View
-      style={{
-        paddingBottom: bottomPad,
-        backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: colors.outline,
-      }}
-    >
-      <View
-        className="flex-row items-end"
-        style={{ height: TAB_CONTENT_HEIGHT }}
-      >
+    <View className="relative" style={{ paddingBottom: bottomPad }}>
+      {/* Painted surface under the row: starts 16dp down so the disc can overhang. */}
+      <View className="absolute inset-x-0 bottom-0 top-4 border-t border-outline bg-surface" />
+      <View className="flex-row items-end">
         {state.routes.map((route, index) => {
           const tab = TABS.find((entry) => entry.name === route.name);
           if (!tab) return null;
@@ -115,7 +108,8 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
         : String(unread)
       : null;
 
-  // Raised disc for Active — 56px circle, lifted in the 80dp content row.
+  // Raised disc for Active — 56px circle; surface is drawn first so the disc
+  // paints over the hairline and stands proud of the painted bar.
   if (name === ACTION_TAB) {
     return (
       <Pressable
@@ -123,8 +117,7 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
         accessibilityRole="tab"
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
-        className="flex-1 items-center justify-center"
-        style={{ height: TAB_CONTENT_HEIGHT }}
+        className="h-20 flex-1 items-center"
       >
         {({ pressed }) => (
           <View className="h-14 w-14 items-center justify-center rounded-pill bg-action-yellow">
@@ -142,8 +135,7 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={alertBadge ? `${label}, ${alertBadge} unread` : label}
       accessibilityState={{ selected: focused }}
-      className="flex-1 items-center justify-end gap-1"
-      style={{ height: TAB_CONTENT_HEIGHT, paddingBottom: 12 }}
+      className="min-h-20 flex-1 items-center justify-end gap-1 pb-2 pt-2"
     >
       {({ pressed }) => (
         <>
