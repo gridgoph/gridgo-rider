@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
+
 /**
  * GRIDGO demo API client.
  *
@@ -66,6 +68,20 @@ export type Notification = {
 };
 
 let tokenMemory: string | null = null;
+
+/** Fired when a request proves the bearer is invalid (401, not login). */
+let unauthorizedHandler: (() => void) | null = null;
+
+/**
+ * Register a single handler for expired/invalid-token responses.
+ * Returns an unsubscribe function. Session store wires this to clearSession.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null): () => void {
+  unauthorizedHandler = handler;
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null;
+  };
+}
 
 const DEFAULT_API_PORT = "8787";
 
@@ -215,7 +231,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       data = text;
     }
   }
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) {
+    // Expired/invalid bearer — wipe local auth so the routing gate leaves (tabs).
+    // Login 401 is wrong password, not session death; skip that path.
+    if (shouldInvalidateSessionOnStatus(res.status, path)) {
+      tokenMemory = null;
+      unauthorizedHandler?.();
+    }
+    throw new ApiError(res.status, data);
+  }
   return data as T;
 }
 
