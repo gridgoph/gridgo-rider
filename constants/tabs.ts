@@ -1,8 +1,16 @@
-/** Bottom-tab labels and routes for the GRIDGO Rider app. */
-export const tabs = [
-  { name: "home", title: "Home", icon: "home" as const },
-  { name: "offers", title: "Offers", icon: "inbox" as const },
-  { name: "active", title: "Active", icon: "navigation" as const },
-  { name: "notifications", title: "Alerts", icon: "bell" as const },
-  { name: "account", title: "Account", icon: "user" as const },
-] as const;
+export type TabName = "home" | "offers" | "active" | "notifications" | "account";
+
+export type TabDefinition = {
+  name: TabName;
+  label: string;
+};
+
+export const TABS: readonly TabDefinition[] = [
+  { name: "home", label: "Home" },
+  { name: "offers", label: "Offers" },
+  { name: "active", label: "Active" },
+  { name: "notifications", label: "Alerts" },
+  { name: "account", label: "Account" },
+];
+
+export const ACTION_TAB = "active" as TabName;
