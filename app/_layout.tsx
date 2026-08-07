@@ -15,7 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
-import { useThemeColors, useThemeName } from "@/hooks/useTheme";
+import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,6 +43,7 @@ export default function RootLayout() {
   const scheme = useThemeName();
   const token = useThemeColors();
   const fontsReady = useAppFonts();
+  useHydrateTheme();
 
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.

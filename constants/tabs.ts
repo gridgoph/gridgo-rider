@@ -13,4 +13,15 @@ export const TABS: readonly TabDefinition[] = [
   { name: "account", label: "Account" },
 ];
 
-export const ACTION_TAB = "active" as TabName;
+/**
+ * Raised centre disc destination.
+ *
+ * Decision (keep): Active is the rider's primary working surface — the one
+ * place they open one-handed while moving. The raised yellow disc spends the
+ * bar's single yellow budget on that destination, not on "start something new".
+ * Offers is a list of jobs to accept; Active is the job in hand.
+ *
+ * Set to a TabName to raise that tab as a disc. There is no client-style
+ * "create" action in this binary, so the disc always points at a real tab.
+ */
+export const ACTION_TAB: TabName = "active";

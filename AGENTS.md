@@ -298,6 +298,13 @@ Be concise. Explain what changed and how to test it.
 
 ---
 
+## Rider product notes
+
+- **Tab bar:** raised centre disc is `ACTION_TAB = "active"` — Active is the working surface, not a "create" action. Decision and rationale live in `constants/tabs.ts`.
+- **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window). Screens must not re-derive these rules inline.
+- **Location pings:** demo coordinates via `useLocationSharing` while `picked_up` / `out_for_delivery`; never persisted. Real GPS would need `expo-location` (not installed).
+- **No maps dependency** for MVP — pickup/drop-off are structured address cards (`AddressStop`).
+
 ## Final Reminder
 
 Before every feature:

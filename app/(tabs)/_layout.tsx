@@ -1,18 +1,25 @@
 import { Tabs } from "expo-router";
+import { useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { TABS } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useNotifications } from "@/store/notifications";
 
 /**
- * The client tab shell.
+ * Rider tab shell.
  *
  * The bar is drawn from the tokens on every platform — see `GridgoTabBar`.
- * Headers are off here because the tabs do not share one: Home carries a role
- * header, New Request carries the stepper.
+ * The raised centre disc is Active (see ACTION_TAB): the trip currently in
+ * hand. Headers are off; each tab draws its own top chrome.
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
+  const refreshUnread = useNotifications((s) => s.refreshUnread);
+
+  useEffect(() => {
+    void refreshUnread();
+  }, [refreshUnread]);
 
   return (
     <Tabs
