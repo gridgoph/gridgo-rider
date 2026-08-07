@@ -304,7 +304,7 @@ Be concise. Explain what changed and how to test it.
 
 - **Tabs:** Offers · Active (raised disc) · Alerts · Account. No Home — it duplicated Active/Offers. Launch lands on Active (`app/index.tsx`, `initialRouteName`). Rationale: `constants/tabs.ts`.
 - **Auth gate:** session → route is continuous in `hooks/useAuthGate` + `lib/authGate.ts` (not only cold-start `index`). Sign-out, expired token, and any non-login 401 clear the session and `replace` to login so back cannot re-enter `(tabs)`.
-- **Tab bar geometry:** `paddingBottom = insets.bottom + TAB_DESIGN_PADDING` (stack, never `Math.max`). Content row is MD3 80dp — see `components/GridgoTabBar.tsx`.
+- **Tab bar geometry (client-canonical):** `paddingBottom = insets.bottom + 8` (never `Math.max`). Labelled column: `min-h-20 … gap-1 pb-2 pt-2` (60 natural in 80 MD3 box; label 8dp off bottom). Glyph 24/stroke 2. Action: `h-20`, disc `h-14 w-14`, icon 26. See `components/GridgoTabBar.tsx`.
 - **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window, stop labels). Screens must not re-derive these rules inline.
 - **Map stack (Expo Go, no Google key):** Leaflet in `react-native-webview` over OSM tiles; OSRM public demo for route/distance/ETA (`lib/osrm.ts`); coordinates from order `pickup`/`dropoff` only — never geocode. Routing failure → straight line + plain status; never block trip actions. Attribution required. Dark theme uses Carto dark tiles.
 - **Location pings:** live GPS via `expo-location` + `useRiderLocation` / `useLocationSharing` while `picked_up` / `out_for_delivery`; never persisted.

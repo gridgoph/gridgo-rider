@@ -5,8 +5,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
   GridgoTabBar,
-  TAB_CONTENT_HEIGHT,
-  TAB_DESIGN_PADDING,
+  TAB_BAR_DESIGN_BOTTOM_PAD,
+  tabBarPaddingBottom,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 
@@ -92,11 +92,14 @@ describe("GridgoTabBar", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("stacks design padding with the system inset rather than Math.max", () => {
-    // Design pad is always added to insets.bottom (never Math.max).
-    expect(TAB_DESIGN_PADDING).toBe(8);
-    // Content height is Material Design 3 icon+label standard.
-    expect(TAB_CONTENT_HEIGHT).toBe(80);
+  it("stacks design padding with the system inset (add, never Math.max)", () => {
+    // Client-canonical: paddingBottom = insets.bottom + 8.
+    expect(TAB_BAR_DESIGN_BOTTOM_PAD).toBe(8);
+    expect(tabBarPaddingBottom(0)).toBe(8);
+    expect(tabBarPaddingBottom(34)).toBe(42);
+    expect(tabBarPaddingBottom(48)).toBe(56);
+    // Math.max(34, 8) would be 34 — the bug that dropped the design pad.
+    expect(tabBarPaddingBottom(34)).not.toBe(Math.max(34, 8));
   });
 
   it("honours a tabPress handler that prevents the default", async () => {

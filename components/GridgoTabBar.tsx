@@ -8,7 +8,25 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { useNotifications } from "@/store/notifications";
 
 /**
- * One Lucide glyph per tab, all outline, all the same optical weight.
+ * Design breathing room beneath the tab content, inside the bar surface.
+ * Stacked on top of `insets.bottom` — never maxed with it. The inset is a
+ * system keep-out zone; this is deliberate padding below the labels.
+ *
+ * Canonical (client): paddingBottom = insets.bottom + 8.
+ */
+export const TAB_BAR_DESIGN_BOTTOM_PAD = 8;
+
+/**
+ * Compose the bar's bottom padding: system inset + design pad.
+ * Pure so tests can lock the add (not max) composition without a full render tree.
+ */
+export function tabBarPaddingBottom(insetBottom: number): number {
+  return insetBottom + TAB_BAR_DESIGN_BOTTOM_PAD;
+}
+
+/**
+ * One Lucide glyph per tab, all outline, all the same optical weight, so the
+ * row reads as one set.
  */
 const ICONS: Record<TabName, LucideIcon> = {
   offers: Inbox,
@@ -18,52 +36,39 @@ const ICONS: Record<TabName, LucideIcon> = {
 };
 
 /**
- * Tab bar geometry (Material Design 3 icon+label bar = 80dp content).
+ * The GRIDGO rider tab bar — geometry locked to the client canonical numbers.
  *
- * System inset (gesture bar / three-button nav) and design padding STACK:
- *   paddingBottom = insets.bottom + TAB_DESIGN_PADDING
- * Math.max was wrong — it discarded the design pad whenever the inset
- * exceeded 8px (every modern Android phone).
+ * Material Design 3 sizes an icon-plus-label bottom navigation at 80dp. Each
+ * labelled column is `min-h-20` (80) with:
+ *   pt-2 (8) + icon (24) + gap-1 (4) + label box (16) + pb-2 (8) = 60 natural
+ * The min height lifts that to 80; with `justify-end` the extra 20 sits above
+ * the glyph. Label sits 8dp off the bottom edge of the content box (pb-2).
  *
- * Resulting total height below the top hairline:
- *   - gesture nav (insets.bottom ≈ 24–48): 80 + inset + 8
- *   - three-button nav (insets.bottom ≈ 48): 80 + inset + 8
- *   - zero inset (emulator / older): 80 + 0 + 8 = 88
+ * Raised action column: h-20, disc h-14 w-14, icon size 26.
  *
- * The surface and top border span the full inset region so the bar reads as
- * one solid slab to the physical edge of the device.
- */
-export const TAB_CONTENT_HEIGHT = 80;
-/** Design padding under the icon+label row — always stacked with the system inset. */
-export const TAB_DESIGN_PADDING = 8;
-
-/**
- * The GRIDGO rider tab bar.
+ * Bottom padding: insets.bottom + 8 (never Math.max). Surface and top border
+ * are absolute to the outer edges so they fill the inset region to the
+ * physical edge.
  *
- * Three labelled destinations and one raised centre disc for Active — the
- * trip currently in hand. The disc is a deliberate product choice (see
- * ACTION_TAB): Active is the primary working surface, so it earns the bar's
- * single yellow.
+ * Yellow is spent only on the Active disc (ACTION_TAB).
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const colors = useThemeColors();
-  // Stack system keep-out with design padding — never Math.max.
-  const bottomPad = insets.bottom + TAB_DESIGN_PADDING;
 
   return (
     <View
-      style={{
-        paddingBottom: bottomPad,
-        backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: colors.outline,
-      }}
+      testID="gridgo-tab-bar"
+      className="relative"
+      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom) }}
     >
-      <View
-        className="flex-row items-end"
-        style={{ height: TAB_CONTENT_HEIGHT }}
-      >
+      {/*
+        Drawn before the row, so the action disc paints over the top border and
+        the hairline breaks around it with no cut-out to maintain. Spans the
+        full outer height including the bottom inset region.
+      */}
+      <View className="absolute inset-x-0 bottom-0 top-4 border-t border-outline bg-surface" />
+
+      <View className="flex-row items-end">
         {state.routes.map((route, index) => {
           const tab = TABS.find((entry) => entry.name === route.name);
           if (!tab) return null;
@@ -115,7 +120,7 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
         : String(unread)
       : null;
 
-  // Raised disc for Active — 56px circle, lifted in the 80dp content row.
+  // Raised action: h-20 column, h-14 w-14 disc, icon 26 (client canonical).
   if (name === ACTION_TAB) {
     return (
       <Pressable
@@ -123,8 +128,7 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
         accessibilityRole="tab"
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
-        className="flex-1 items-center justify-center"
-        style={{ height: TAB_CONTENT_HEIGHT }}
+        className="h-20 flex-1 items-center"
       >
         {({ pressed }) => (
           <View className="h-14 w-14 items-center justify-center rounded-pill bg-action-yellow">
@@ -142,13 +146,13 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={alertBadge ? `${label}, ${alertBadge} unread` : label}
       accessibilityState={{ selected: focused }}
-      className="flex-1 items-center justify-end gap-1"
-      style={{ height: TAB_CONTENT_HEIGHT, paddingBottom: 12 }}
+      // min-h-20 = MD3 80dp. pt-2 + icon 24 + gap-1 + label 16 + pb-2 = 60 natural.
+      className="min-h-20 flex-1 items-center justify-end gap-1 pb-2 pt-2"
     >
       {({ pressed }) => (
         <>
           <View className={pressed ? "opacity-60" : undefined}>
-            <View>
+            <View className="relative">
               <Icon
                 size={24}
                 strokeWidth={2}
