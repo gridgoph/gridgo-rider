@@ -10,13 +10,15 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
+import { useAuthGate } from "@/hooks/useAuthGate";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
+import { bindApiUnauthorizedHandler } from "@/store/session";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,6 +42,21 @@ function navigationTheme(scheme: ThemeName): Theme {
   };
 }
 
+/**
+ * Session ↔ route binding lives here, not only in app/index.tsx.
+ * Sign-out, 401, and expired tokens all clear the session; this gate
+ * replace-navigates to login so (tabs) is not left on the back stack.
+ */
+function AuthGate({ children }: { children: ReactNode }) {
+  useAuthGate();
+
+  useEffect(() => {
+    return bindApiUnauthorizedHandler();
+  }, []);
+
+  return <>{children}</>;
+}
+
 export default function RootLayout() {
   const scheme = useThemeName();
   const token = useThemeColors();
@@ -61,31 +78,33 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider value={navigationTheme(scheme)}>
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: token.surface },
-            headerTintColor: token.textPrimary,
-            headerTitleStyle: {
-              fontSize: typography.h3.fontSize,
-              fontFamily: typography.h3.fontFamily,
-            },
-            headerShadowVisible: false,
-            contentStyle: { backgroundColor: token.canvas },
-          }}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          {/* The tab shell draws its own headers per tab. */}
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="design-system"
-            options={{
-              title: "Design system",
-              ...multiOriginPushedScreenOptions,
+        <AuthGate>
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: token.surface },
+              headerTintColor: token.textPrimary,
+              headerTitleStyle: {
+                fontSize: typography.h3.fontSize,
+                fontFamily: typography.h3.fontFamily,
+              },
+              headerShadowVisible: false,
+              contentStyle: { backgroundColor: token.canvas },
             }}
-          />
-        </Stack>
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            {/* The tab shell draws its own headers per tab. */}
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="design-system"
+              options={{
+                title: "Design system",
+                ...multiOriginPushedScreenOptions,
+              }}
+            />
+          </Stack>
+        </AuthGate>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       </ThemeProvider>
     </SafeAreaProvider>
