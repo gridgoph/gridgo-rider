@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useNotifications } from "@/store/notifications";
 
 /**
  * One Lucide glyph per tab, all outline, all the same optical weight, so the
@@ -19,26 +20,21 @@ const ICONS: Record<TabName, LucideIcon> = {
 };
 
 /**
- * The GRIDGO tab bar.
+ * The GRIDGO rider tab bar.
  *
- * Four labelled destinations and one unlabelled action.
+ * Four labelled destinations and one raised centre disc for Active — the
+ * trip currently in hand. The disc is a deliberate product choice (see
+ * ACTION_TAB in constants/tabs.ts): Active is the primary working surface,
+ * so it earns the bar's single yellow. It is not a "start new" control.
  *
  * The labelled columns are a fixed 52px: an 8px foot, a 16px label box, a 4px
- * gap and a 24px glyph, bottom-aligned so all four share a baseline. Every one
- * of those boxes is pinned rather than measured, so no platform's text metrics
- * can move the icons. The action is a 56px disc — no label, because a filled
- * yellow plus in the middle of a tab bar needs no caption, and captioning it
- * would put a fifth word in a row of four.
- *
- * The disc's column is taller than the labelled ones, so the disc rises out of
- * the row on its own and the bar surface, which starts 16px below the row's
- * top edge, is what it breaks through. Nothing is ever drawn outside its
- * parent, which Android will not reliably render.
+ * gap and a 24px glyph, bottom-aligned so all four share a baseline. The
+ * action is a 56px disc with no visible caption — screen readers still hear
+ * "Active" via accessibilityLabel.
  *
  * The open tab is said twice over, in colour and in weight: its glyph goes
  * from muted to full-strength ink and its label from muted regular to medium.
- * The row therefore still reads correctly in grayscale. Yellow is spent in one
- * place only — the disc that starts a print request.
+ * The row therefore still reads correctly in grayscale.
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -95,6 +91,13 @@ type TabItemProps = {
 function TabItem({ name, label, focused, onPress }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
+  const unread = useNotifications((s) => s.unread);
+  const alertBadge =
+    name === "notifications" && unread > 0
+      ? unread > 9
+        ? "9+"
+        : String(unread)
+      : null;
 
   // 84 tall against the destinations' 56, which is what lifts the disc out of
   // the row. Its foot lands just above the labels' cap line, so the four
@@ -122,7 +125,7 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
     <Pressable
       onPress={onPress}
       accessibilityRole="tab"
-      accessibilityLabel={label}
+      accessibilityLabel={alertBadge ? `${label}, ${alertBadge} unread` : label}
       accessibilityState={{ selected: focused }}
       className="h-13 flex-1 items-center justify-end gap-1 pb-2"
     >
@@ -134,29 +137,24 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
             opens, so the row never shifts under your thumb.
           */}
           <View className={pressed ? "opacity-60" : undefined}>
-            <Icon
-              size={24}
-              strokeWidth={2}
-              color={focused ? colors.textPrimary : colors.textMuted}
-            />
+            <View>
+              <Icon
+                size={24}
+                strokeWidth={2}
+                color={focused ? colors.textPrimary : colors.textMuted}
+              />
+              {alertBadge ? (
+                <View className="absolute -right-2 -top-1 min-h-4 min-w-4 items-center justify-center rounded-pill bg-accent px-1">
+                  <Text className="text-nav text-accent-on" style={{ includeFontPadding: false }}>
+                    {alertBadge}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
           <Text
             numberOfLines={1}
-            /*
-              The label still grows with the system font scale, but only to
-              14px — the most a 16px line box holds. Left uncapped, a large
-              accessibility scale clips the label against the pinned box below,
-              and letting the box grow instead would hand the bar's height back
-              to text metrics, which is the bug the next comment describes.
-            */
             maxFontSizeMultiplier={1.4}
-            /*
-              Android pads a text box with the font's own ascent and descent on
-              top of the line height. Left on, Satoshi's metrics make this label
-              taller than the 16px the type scale promises, which pushes the
-              glyph away from its icon and shoves the icon up into the hairline.
-              Off, the box is the 16px it claims to be on every platform.
-            */
             style={{ includeFontPadding: false, textAlignVertical: "center" }}
             className={
               focused ? "h-4 text-nav font-medium text-text-primary" : "h-4 text-nav text-text-muted"
@@ -169,4 +167,3 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
     </Pressable>
   );
 }
-

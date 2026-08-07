@@ -1,0 +1,197 @@
+import {
+  ACTIVE_TRIP_STATES,
+  buildFailureNote,
+  codAmountDueMinor,
+  formatRelativeAt,
+  isActiveTripState,
+  isCodCollected,
+  isCodOrder,
+  orderStateLabel,
+  primaryActionLabel,
+  selectActiveTrip,
+  selectOffers,
+  shouldShareLocation,
+  timelineActorLabel,
+  tripPhase,
+  unreadCount,
+  zoneLabel,
+} from "@/lib/riderOrder";
+import type { Order } from "@/lib/api";
+
+function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
+  return {
+    clientId: "user_client",
+    supplierId: "user_supplier",
+    riderId: null,
+    productId: "prod_flyer",
+    title: "Test",
+    quantity: 1,
+    size: "A5",
+    material: "matte",
+    deadline: null,
+    address: "Matina Crossing, Davao City",
+    zone: "davao_south",
+    totalMinor: 85000,
+    deliveryFeeMinor: 10000,
+    paymentMethod: "pilot_credit",
+    paymentStatus: "authorized",
+    codEligible: true,
+    promisedDate: null,
+    artworkName: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    timeline: [],
+    ...partial,
+  };
+}
+
+describe("orderStateLabel", () => {
+  it("maps every active state to plain language, never snake_case", () => {
+    for (const state of ACTIVE_TRIP_STATES) {
+      const label = orderStateLabel(state);
+      expect(label).not.toMatch(/_/);
+      expect(label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("labels ready_for_dispatch as a pickup invitation", () => {
+    expect(orderStateLabel("ready_for_dispatch")).toBe("Ready for pickup");
+  });
+});
+
+describe("zoneLabel", () => {
+  it("humanises known zones", () => {
+    expect(zoneLabel("davao_south")).toBe("Davao South");
+  });
+
+  it("falls back without inventing an ETA", () => {
+    expect(zoneLabel("custom_zone")).toBe("custom zone");
+  });
+});
+
+describe("COD money and eligibility", () => {
+  it("adds total and delivery fee for the amount due", () => {
+    expect(codAmountDueMinor({ totalMinor: 85000, deliveryFeeMinor: 10000 })).toBe(95000);
+  });
+
+  it("treats only paymentMethod=cod as a cash job", () => {
+    expect(isCodOrder({ paymentMethod: "cod" })).toBe(true);
+    expect(isCodOrder({ paymentMethod: "pilot_credit" })).toBe(false);
+    expect(isCodOrder({ paymentMethod: null })).toBe(false);
+  });
+
+  it("requires collection before a COD delivery can complete", () => {
+    const unpaid = order({
+      id: "1",
+      state: "out_for_delivery",
+      paymentMethod: "cod",
+      paymentStatus: "unpaid",
+    });
+    expect(isCodCollected(unpaid)).toBe(false);
+    expect(tripPhase(unpaid)).toBe("collect_cod");
+    expect(primaryActionLabel(tripPhase(unpaid))).toBe("Record cash collection");
+
+    const paid = order({
+      id: "1",
+      state: "out_for_delivery",
+      paymentMethod: "cod",
+      paymentStatus: "collected",
+    });
+    expect(isCodCollected(paid)).toBe(true);
+    expect(tripPhase(paid)).toBe("delivery_proof");
+  });
+
+  it("skips the COD gate for pilot credit", () => {
+    const credit = order({
+      id: "1",
+      state: "out_for_delivery",
+      paymentMethod: "pilot_credit",
+      paymentStatus: "authorized",
+    });
+    expect(tripPhase(credit)).toBe("delivery_proof");
+  });
+});
+
+describe("tripPhase ladder", () => {
+  it("walks pickup → start delivery → delivery proof", () => {
+    expect(tripPhase(order({ id: "a", state: "rider_assigned", riderId: "r1" }))).toBe("pickup");
+    expect(tripPhase(order({ id: "a", state: "picked_up", riderId: "r1" }))).toBe("start_delivery");
+    expect(tripPhase(order({ id: "a", state: "out_for_delivery", riderId: "r1" }))).toBe(
+      "delivery_proof",
+    );
+    expect(tripPhase(order({ id: "a", state: "issue_window_open", riderId: "r1" }))).toBe(
+      "complete",
+    );
+    expect(tripPhase(null)).toBe("idle");
+  });
+});
+
+describe("selectOffers / selectActiveTrip", () => {
+  const pool = [
+    order({ id: "offer", state: "ready_for_dispatch", riderId: null, updatedAt: "2026-08-02T00:00:00Z" }),
+    order({
+      id: "mine",
+      state: "picked_up",
+      riderId: "user_rider",
+      updatedAt: "2026-08-03T00:00:00Z",
+    }),
+    order({
+      id: "other",
+      state: "rider_assigned",
+      riderId: "someone_else",
+      updatedAt: "2026-08-04T00:00:00Z",
+    }),
+  ];
+
+  it("lists only open dispatch offers", () => {
+    expect(selectOffers(pool).map((o) => o.id)).toEqual(["offer"]);
+  });
+
+  it("picks this rider's active trip only", () => {
+    expect(selectActiveTrip(pool, "user_rider")?.id).toBe("mine");
+    expect(selectActiveTrip(pool, "nobody")).toBeNull();
+  });
+});
+
+describe("location sharing window", () => {
+  it("shares only while the package is with the rider en route", () => {
+    expect(shouldShareLocation("rider_assigned")).toBe(false);
+    expect(shouldShareLocation("picked_up")).toBe(true);
+    expect(shouldShareLocation("out_for_delivery")).toBe(true);
+    expect(shouldShareLocation("issue_window_open")).toBe(false);
+  });
+});
+
+describe("timeline and alerts helpers", () => {
+  it("names the current rider You", () => {
+    expect(timelineActorLabel("user_rider", "user_rider")).toBe("You");
+    expect(timelineActorLabel("user_supplier", "user_rider")).toBe("Supplier");
+    expect(timelineActorLabel("system")).toBe("System");
+  });
+
+  it("counts unread alerts", () => {
+    expect(unreadCount([{ read: true }, { read: false }, { read: false }])).toBe(2);
+  });
+
+  it("formats relative times", () => {
+    const now = Date.parse("2026-08-08T12:00:00.000Z");
+    expect(formatRelativeAt("2026-08-08T11:59:30.000Z", now)).toBe("Just now");
+    expect(formatRelativeAt("2026-08-08T11:45:00.000Z", now)).toBe("15 min ago");
+    expect(formatRelativeAt("2026-08-08T10:00:00.000Z", now)).toBe("2h ago");
+  });
+
+  it("folds failure reason into a plain note", () => {
+    expect(buildFailureNote("unavailable", "  No one answered  ")).toBe(
+      "Client not available. No one answered",
+    );
+    expect(buildFailureNote("refused", "")).toBe("Client refused the package");
+  });
+});
+
+describe("isActiveTripState", () => {
+  it("accepts only mid-job states", () => {
+    expect(isActiveTripState("rider_assigned")).toBe(true);
+    expect(isActiveTripState("ready_for_dispatch")).toBe(false);
+    expect(isActiveTripState("issue_window_open")).toBe(false);
+  });
+});

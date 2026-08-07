@@ -245,6 +245,11 @@ export async function listOffers(): Promise<Order[]> {
   return result.offers;
 }
 
+export async function getOrder(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(`/orders/${orderId}`);
+  return result.order;
+}
+
 export async function acceptOffer(orderId: string): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/accept`, {
     method: "POST",
@@ -265,6 +270,84 @@ export async function transitionOrder(
   return result.order;
 }
 
+export type ProofKind = "pickup" | "delivery" | "cod" | "failure";
+
+export type ProofPayload = {
+  kind: ProofKind;
+  otp?: string;
+  photoName?: string;
+  note?: string;
+  reason?: string;
+};
+
+export type ProofResult = {
+  proof: {
+    id: string;
+    orderId: string;
+    riderId: string;
+    kind: string;
+    otp: string | null;
+    photoName: string | null;
+    note: string;
+    at: string;
+  };
+  order: Order;
+};
+
+/**
+ * Submit pickup, delivery, COD, or failure proof.
+ * Callers pass only the fields they collected — no silent defaults for OTP.
+ */
+export async function submitProof(orderId: string, payload: ProofPayload): Promise<ProofResult> {
+  return request(`/dispatch/${orderId}/proof`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * @deprecated Prefer submitProof with an explicit payload. Kept so existing
+ * call sites keep working during the rider UI build-out.
+ */
+export async function requestProof(
+  orderId: string,
+  kind: string,
+  extra: Record<string, unknown> = {},
+): Promise<{ order: Order }> {
+  return submitProof(orderId, {
+    kind: kind as ProofKind,
+    otp: "1234",
+    photoName: "demo.jpg",
+    ...extra,
+  });
+}
+
+export type LocationPing = {
+  id: string;
+  orderId: string;
+  riderId: string;
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  at: string;
+};
+
+/** Post a one-shot location ping. Never store pings client-side. */
+export async function postLocation(
+  orderId: string,
+  coords: { lat: number; lng: number; accuracy?: number | null },
+): Promise<LocationPing> {
+  const result = await request<{ ping: LocationPing }>(`/dispatch/${orderId}/location`, {
+    method: "POST",
+    body: JSON.stringify({
+      lat: coords.lat,
+      lng: coords.lng,
+      accuracy: coords.accuracy ?? null,
+    }),
+  });
+  return result.ping;
+}
+
 export async function listNotifications(): Promise<Notification[]> {
   const result = await request<{ notifications: Notification[] }>("/notifications");
   return result.notifications;
@@ -278,17 +361,6 @@ export async function health(): Promise<{ ok: boolean }> {
   return request("/health");
 }
 
-export async function requestProof(
-  orderId: string,
-  kind: string,
-  extra: Record<string, unknown> = {},
-): Promise<{ order: Order }> {
-  return request(`/dispatch/${orderId}/proof`, {
-    method: "POST",
-    body: JSON.stringify({ kind, otp: "1234", photoName: "demo.jpg", ...extra }),
-  });
-}
-
 /** Format PHP minor units (centavos) for display. */
 export function formatPhp(minor: number): string {
   return `₱${(minor / 100).toLocaleString("en-PH", {
@@ -296,3 +368,30 @@ export function formatPhp(minor: number): string {
     maximumFractionDigits: 2,
   })}`;
 }
+
+/** Map API errors to rider-facing recovery copy. */
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const code = typeof error.body === "object" && error.body && "error" in error.body
+      ? String((error.body as { error: string }).error)
+      : error.message;
+    switch (code) {
+      case "not_offerable":
+        return "This offer is no longer available. Pull to refresh the list.";
+      case "order_not_found":
+        return "That job is gone. Open Offers for a new one.";
+      case "tracking_not_active":
+        return "Location sharing only runs while a package is with you.";
+      case "forbidden":
+        return "You do not have access to this job.";
+      case "invalid_transition":
+      case "invalid_state":
+        return "This step is no longer available. Refresh the trip.";
+      default:
+        return error.message || fallback;
+    }
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
