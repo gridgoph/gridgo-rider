@@ -300,6 +300,8 @@ Be concise. Explain what changed and how to test it.
 
 ## Rider product notes
 
+- **Root stack pushes above tabs:** apply `multiOriginPushedScreenOptions` from `lib/navigationHeaders.ts` (`headerBackButtonDisplayMode: "minimal"`) so iOS never labels the back control with the `(tabs)` route group.
+
 - **Tab bar:** raised centre disc is `ACTION_TAB = "active"` — Active is the working surface, not a "create" action. Decision and rationale live in `constants/tabs.ts`.
 - **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window). Screens must not re-derive these rules inline.
 - **Location pings:** demo coordinates via `useLocationSharing` while `picked_up` / `out_for_delivery`; never persisted. Real GPS would need `expo-location` (not installed).
