@@ -17,11 +17,12 @@ Accept dispatch offers, pick up from supplier, deliver to client, submit proof, 
 | Feature | Status target |
 |---|---|
 | Custom login; role `rider` | required |
-| Offers list (ready_for_dispatch) | required |
+| Offers list with map, distance, ETA | required |
 | Accept job | required |
-| Active trip: pickup → delivery proof | required |
-| COD collection proof when paymentMethod=cod | partial |
-| Location pings while trip active | API ready; UI later |
+| Active trip map-first: pickup → delivery proof | required |
+| COD collection proof when paymentMethod=cod | required |
+| Live location pings while trip active | required |
+| Failed delivery recovery path | required |
 | Alerts + account | required |
 
 ## Design system

@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
@@ -18,21 +19,29 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
+import { TripMap } from "@/components/TripMap";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useLocationSharing } from "@/hooks/useLocationSharing";
+import { useRiderLocation } from "@/hooks/useRiderLocation";
+import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { captureProofPhoto } from "@/lib/proofPhoto";
 import {
   buildFailureNote,
   codAmountDueMinor,
+  dropoffLabel,
   FAILURE_REASONS,
   type FailureReasonId,
   orderStateChip,
+  pickupLabel,
   primaryActionLabel,
   selectActiveTrip,
+  stopLatLng,
   tripPhase,
   zoneLabel,
 } from "@/lib/riderOrder";
+import { routeSummaryLabel } from "@/lib/osrm";
 import { useSession } from "@/store/session";
 
 type Panel = "main" | "pickup" | "delivery" | "cod" | "failure";
@@ -51,14 +60,37 @@ export default function ActiveScreen() {
 
   // Proof fields — local UI only, never persisted.
   const [otp, setOtp] = useState("");
-  const [photoName, setPhotoName] = useState("demo-proof.jpg");
+  const [photoName, setPhotoName] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [failureReason, setFailureReason] = useState<FailureReasonId>("unavailable");
   const [failureNote, setFailureNote] = useState("");
 
   const phase = tripPhase(trip);
+  const pickup = stopLatLng(trip?.pickup);
+  const dropoff = stopLatLng(trip?.dropoff);
+
+  // Route for the full trip (pickup → dropoff). Failures fall back to a line.
+  const { route } = useRoute({
+    from: pickup,
+    to: dropoff,
+    enabled: Boolean(trip),
+  });
+
+  // Live GPS for the map and pings — memory only.
+  const needsGps =
+    focused &&
+    Boolean(trip) &&
+    (phase === "pickup" ||
+      phase === "start_delivery" ||
+      phase === "collect_cod" ||
+      phase === "delivery_proof");
+  const riderLocation = useRiderLocation({ enabled: needsGps });
+
   const { sharing } = useLocationSharing({
     orderId: trip?.id ?? null,
     state: trip?.state ?? null,
+    coords: riderLocation.coords,
+    accuracy: riderLocation.accuracy,
     enabled: focused,
   });
 
@@ -92,16 +124,20 @@ export default function ActiveScreen() {
     }, [reload]),
   );
 
+  function resetProofFields() {
+    setOtp("");
+    setPhotoName(null);
+    setPhotoUri(null);
+  }
+
   function openPrimaryPanel() {
     if (phase === "pickup") {
-      setOtp("");
-      setPhotoName("pickup-proof.jpg");
+      resetProofFields();
       setPanel("pickup");
     } else if (phase === "collect_cod") {
       setPanel("cod");
     } else if (phase === "delivery_proof") {
-      setOtp("");
-      setPhotoName("delivery-proof.jpg");
+      resetProofFields();
       setPanel("delivery");
     }
   }
@@ -121,10 +157,27 @@ export default function ActiveScreen() {
     }
   }
 
+  async function takePhoto(kind: "pickup" | "delivery") {
+    setError(null);
+    const captured = await captureProofPhoto(kind);
+    if (!captured) {
+      setError(
+        "Camera permission is required for proof photos, or the capture was cancelled. Try again.",
+      );
+      return;
+    }
+    setPhotoName(captured.photoName);
+    setPhotoUri(captured.uri);
+  }
+
   async function submitPickup() {
     if (!trip) return;
     if (otp.trim().length < 4) {
       setError("Enter the 4-digit pickup OTP from the supplier.");
+      return;
+    }
+    if (!photoName) {
+      setError("Take a photo of the package at the shop before confirming pickup.");
       return;
     }
     setBusy(true);
@@ -133,11 +186,11 @@ export default function ActiveScreen() {
       const { order } = await api.submitProof(trip.id, {
         kind: "pickup",
         otp: otp.trim(),
-        photoName: photoName.trim() || "pickup-proof.jpg",
+        photoName,
       });
       setTrip(order);
       setPanel("main");
-      setOtp("");
+      resetProofFields();
     } catch (e) {
       setError(api.apiErrorMessage(e, "Pickup proof was not recorded. Check the OTP and try again."));
     } finally {
@@ -170,7 +223,6 @@ export default function ActiveScreen() {
 
   async function submitDelivery() {
     if (!trip) return;
-    // Hard gate: never allow delivery proof on a COD job without collection.
     if (phase === "collect_cod") {
       setError("Record cash collection before confirming delivery.");
       setPanel("cod");
@@ -180,17 +232,21 @@ export default function ActiveScreen() {
       setError("Enter the 4-digit delivery OTP from the client.");
       return;
     }
+    if (!photoName) {
+      setError("Take a photo of the package at the door before confirming delivery.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const { order } = await api.submitProof(trip.id, {
         kind: "delivery",
         otp: otp.trim(),
-        photoName: photoName.trim() || "delivery-proof.jpg",
+        photoName,
       });
       setTrip(order);
       setPanel("main");
-      setOtp("");
+      resetProofFields();
     } catch (e) {
       setError(
         api.apiErrorMessage(e, "Delivery proof was not recorded. Check the OTP and try again."),
@@ -240,7 +296,7 @@ export default function ActiveScreen() {
     <SafeAreaView className="gg-screen" edges={["top"]}>
       <ScrollView
         className="flex-1"
-        contentContainerClassName="gg-page pb-10 pt-4"
+        contentContainerClassName="pb-10"
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -250,168 +306,202 @@ export default function ActiveScreen() {
           />
         }
       >
-        <Text className="text-h1 text-text-primary">Active trip</Text>
-
-        {error ? (
-          <View className="mt-4 rounded-card border border-error bg-surface p-4">
-            <Text className="text-body text-error">{error}</Text>
-          </View>
-        ) : null}
-
-        {loading && !trip ? (
-          <View className="mt-10 items-center">
-            <ActivityIndicator color={colors.textMuted} />
-            <Text className="mt-3 text-body text-text-muted">Loading trip…</Text>
-          </View>
-        ) : null}
-
-        {!loading && !trip ? (
-          <EmptyState
-            title="No active trip"
-            body="Accept an offer to start a job. Offers lists jobs ready for pickup."
-            actionLabel="Browse offers"
-            onAction={() => router.push("/(tabs)/offers")}
-          />
-        ) : null}
-
+        {/* Map-first: the route is the working surface. */}
         {trip ? (
-          <View className="mt-6 gap-4">
-            <LocationSharingBanner sharing={sharing} />
-
-            <View className="gg-card gap-3">
-              <View className="flex-row items-start justify-between gap-3">
-                <Text className="min-w-0 flex-1 text-h3 text-text-primary">{trip.title}</Text>
-                {chip ? (
-                  <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
-                ) : null}
-              </View>
-
-              <View>
-                <SpecRow label="Size" value={trip.size} />
-                <SpecRow label="Material" value={trip.material} />
-                <SpecRow label="Quantity" value={String(trip.quantity)} />
-                <SpecRow label="Zone" value={zoneLabel(trip.zone)} />
-                {trip.paymentMethod === "cod" ? (
-                  <SpecRow
-                    label="Cash due"
-                    value={api.formatPhp(codAmountDueMinor(trip))}
-                  />
-                ) : (
-                  <SpecRow label="Payment" value="Prepaid" />
-                )}
-              </View>
-            </View>
-
-            <View className="gap-2">
-              <AddressStop
-                kind="pickup"
-                address="Supplier print shop"
-                detail="Collect the finished job"
-                zone={zoneLabel(trip.zone)}
-                active={phase === "pickup"}
-              />
-              <AddressStop
-                kind="dropoff"
-                address={trip.address}
-                zone={zoneLabel(trip.zone)}
-                active={
-                  phase === "start_delivery" ||
-                  phase === "collect_cod" ||
-                  phase === "delivery_proof"
-                }
-              />
-            </View>
-
-            {panel === "main" && cta ? (
-              <View className="gap-3">
-                <PrimaryButton
-                  label={busy ? "Working…" : cta}
-                  onPress={() => void onPrimary()}
-                  disabled={busy}
-                />
-                {phase === "delivery_proof" ||
-                phase === "collect_cod" ||
-                phase === "start_delivery" ? (
-                  <SecondaryButton
-                    label="Report failed attempt"
-                    onPress={() => setPanel("failure")}
-                    disabled={busy}
-                  />
-                ) : null}
-              </View>
-            ) : null}
-
-            {phase === "complete" ? (
-              <View className="gg-card gap-3">
-                <StatusChip tone="success" label="Delivery complete" icon="circle-check" />
-                <Text className="text-body text-text-secondary">
-                  The 24-hour issue window is open for the client. Browse offers
-                  for the next job.
-                </Text>
-                <PrimaryButton
-                  label="Browse offers"
-                  onPress={() => router.push("/(tabs)/offers")}
-                />
-              </View>
-            ) : null}
-
-            {panel === "pickup" ? (
-              <ProofForm
-                title="Pickup proof"
-                helper="Get the OTP from the supplier and photograph the package at the shop."
-                otp={otp}
-                onOtp={setOtp}
-                photoName={photoName}
-                onPhotoName={setPhotoName}
-                primaryLabel={busy ? "Recording…" : "Confirm pickup"}
-                onPrimary={() => void submitPickup()}
-                onCancel={() => setPanel("main")}
-                busy={busy}
-              />
-            ) : null}
-
-            {panel === "cod" && trip ? (
-              <CodPanel
-                amountMinor={codAmountDueMinor(trip)}
-                busy={busy}
-                onConfirm={() => void submitCod()}
-                onCancel={() => setPanel("main")}
-              />
-            ) : null}
-
-            {panel === "delivery" ? (
-              <ProofForm
-                title="Delivery proof"
-                helper="Get the OTP from the client and photograph the package at the door."
-                otp={otp}
-                onOtp={setOtp}
-                photoName={photoName}
-                onPhotoName={setPhotoName}
-                primaryLabel={busy ? "Recording…" : "Confirm delivery"}
-                onPrimary={() => void submitDelivery()}
-                onCancel={() => setPanel("main")}
-                busy={busy}
-              />
-            ) : null}
-
-            {panel === "failure" ? (
-              <FailureForm
-                reason={failureReason}
-                onReason={setFailureReason}
-                note={failureNote}
-                onNote={setFailureNote}
-                busy={busy}
-                onSubmit={() => void submitFailure()}
-                onCancel={() => setPanel("main")}
-              />
-            ) : null}
-
-            <View className="gg-card gap-3">
-              <Text className="text-overline text-text-muted">TIMELINE</Text>
-              <TripTimeline timeline={trip.timeline} selfId={user?.id} />
-            </View>
+          <View className="px-4 pt-3" style={{ height: 280 }}>
+            <TripMap
+              pickup={pickup}
+              dropoff={dropoff}
+              pickupLabel={pickupLabel(trip)}
+              dropoffLabel={dropoffLabel(trip)}
+              routeCoordinates={route?.coordinates ?? []}
+              routeUnavailable={Boolean(route && !route.routed)}
+              rider={riderLocation.coords}
+            />
           </View>
         ) : null}
+
+        <View className="gg-page gap-4 pt-4">
+          <Text className="text-h1 text-text-primary">Active trip</Text>
+
+          {error ? (
+            <View className="rounded-card border border-error bg-surface p-4">
+              <Text className="text-body text-error">{error}</Text>
+            </View>
+          ) : null}
+
+          {loading && !trip ? (
+            <View className="mt-10 items-center">
+              <ActivityIndicator color={colors.textMuted} />
+              <Text className="mt-3 text-body text-text-muted">Loading trip…</Text>
+            </View>
+          ) : null}
+
+          {!loading && !trip ? (
+            <EmptyState
+              title="No active trip"
+              body="Accept an offer to start a job. Each offer shows the map, distance, and fee so you can decide."
+              actionLabel="Browse offers"
+              onAction={() => router.push("/(tabs)/offers")}
+            />
+          ) : null}
+
+          {trip ? (
+            <View className="gap-4">
+              <LocationSharingBanner sharing={sharing} />
+
+              {route ? (
+                <Text className="text-body text-text-secondary">
+                  {routeSummaryLabel(route)}
+                  {route.statusLabel ? ` · ${route.statusLabel}` : ""}
+                </Text>
+              ) : null}
+
+              <View className="gg-card gap-3">
+                <View className="flex-row items-start justify-between gap-3">
+                  <Text className="min-w-0 flex-1 text-h3 text-text-primary">{trip.title}</Text>
+                  {chip ? (
+                    <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
+                  ) : null}
+                </View>
+
+                <View>
+                  <SpecRow label="Size" value={trip.size} />
+                  <SpecRow label="Material" value={trip.material} />
+                  <SpecRow label="Quantity" value={String(trip.quantity)} />
+                  <SpecRow label="Zone" value={zoneLabel(trip.zone)} />
+                  {trip.paymentMethod === "cod" ? (
+                    <SpecRow
+                      label="Cash due"
+                      value={api.formatPhp(codAmountDueMinor(trip))}
+                    />
+                  ) : (
+                    <SpecRow label="Payment" value="Prepaid" />
+                  )}
+                </View>
+              </View>
+
+              <View className="gap-2">
+                <AddressStop
+                  kind="pickup"
+                  address={pickupLabel(trip)}
+                  detail="Collect the finished job"
+                  zone={zoneLabel(trip.zone)}
+                  active={phase === "pickup"}
+                />
+                <AddressStop
+                  kind="dropoff"
+                  address={dropoffLabel(trip)}
+                  zone={zoneLabel(trip.zone)}
+                  active={
+                    phase === "start_delivery" ||
+                    phase === "collect_cod" ||
+                    phase === "delivery_proof"
+                  }
+                />
+              </View>
+
+              {panel === "main" && cta ? (
+                <View className="gap-3">
+                  <PrimaryButton
+                    label={busy ? "Working…" : cta}
+                    onPress={() => void onPrimary()}
+                    disabled={busy}
+                    size="large"
+                  />
+                  {phase === "delivery_proof" ||
+                  phase === "collect_cod" ||
+                  phase === "start_delivery" ? (
+                    <SecondaryButton
+                      label="Report failed attempt"
+                      onPress={() => setPanel("failure")}
+                      disabled={busy}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+
+              {phase === "complete" ? (
+                <View className="gg-card gap-3">
+                  <StatusChip tone="success" label="Delivery complete" icon="circle-check" />
+                  <Text className="text-body text-text-secondary">
+                    The 24-hour issue window is open for the client. Browse offers
+                    for the next job.
+                  </Text>
+                  <PrimaryButton
+                    label="Browse offers"
+                    onPress={() => router.push("/(tabs)/offers")}
+                    size="large"
+                  />
+                </View>
+              ) : null}
+
+              {panel === "pickup" ? (
+                <ProofForm
+                  title="Pickup proof"
+                  helper="Get the OTP from the supplier and photograph the package at the shop."
+                  otp={otp}
+                  onOtp={setOtp}
+                  photoUri={photoUri}
+                  photoName={photoName}
+                  onTakePhoto={() => void takePhoto("pickup")}
+                  primaryLabel={busy ? "Recording…" : "Confirm pickup"}
+                  onPrimary={() => void submitPickup()}
+                  onCancel={() => {
+                    setPanel("main");
+                    resetProofFields();
+                  }}
+                  busy={busy}
+                />
+              ) : null}
+
+              {panel === "cod" && trip ? (
+                <CodPanel
+                  amountMinor={codAmountDueMinor(trip)}
+                  busy={busy}
+                  onConfirm={() => void submitCod()}
+                  onCancel={() => setPanel("main")}
+                />
+              ) : null}
+
+              {panel === "delivery" ? (
+                <ProofForm
+                  title="Delivery proof"
+                  helper="Get the OTP from the client and photograph the package at the door."
+                  otp={otp}
+                  onOtp={setOtp}
+                  photoUri={photoUri}
+                  photoName={photoName}
+                  onTakePhoto={() => void takePhoto("delivery")}
+                  primaryLabel={busy ? "Recording…" : "Confirm delivery"}
+                  onPrimary={() => void submitDelivery()}
+                  onCancel={() => {
+                    setPanel("main");
+                    resetProofFields();
+                  }}
+                  busy={busy}
+                />
+              ) : null}
+
+              {panel === "failure" ? (
+                <FailureForm
+                  reason={failureReason}
+                  onReason={setFailureReason}
+                  note={failureNote}
+                  onNote={setFailureNote}
+                  busy={busy}
+                  onSubmit={() => void submitFailure()}
+                  onCancel={() => setPanel("main")}
+                />
+              ) : null}
+
+              <View className="gg-card gap-3">
+                <Text className="text-overline text-text-muted">TIMELINE</Text>
+                <TripTimeline timeline={trip.timeline} selfId={user?.id} />
+              </View>
+            </View>
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -422,8 +512,9 @@ function ProofForm({
   helper,
   otp,
   onOtp,
+  photoUri,
   photoName,
-  onPhotoName,
+  onTakePhoto,
   primaryLabel,
   onPrimary,
   onCancel,
@@ -433,8 +524,9 @@ function ProofForm({
   helper: string;
   otp: string;
   onOtp: (v: string) => void;
-  photoName: string;
-  onPhotoName: (v: string) => void;
+  photoUri: string | null;
+  photoName: string | null;
+  onTakePhoto: () => void;
   primaryLabel: string;
   onPrimary: () => void;
   onCancel: () => void;
@@ -460,23 +552,37 @@ function ProofForm({
       </View>
       <View className="gap-2">
         <Text className="text-caption text-text-muted">Photo evidence</Text>
-        <TextInput
-          value={photoName}
-          onChangeText={onPhotoName}
-          className="gg-field"
-          accessibilityLabel="Photo file name"
-          placeholderTextColor={colors.textMuted}
+        {photoUri ? (
+          <View className="overflow-hidden rounded-field border border-outline">
+            <Image
+              source={{ uri: photoUri }}
+              style={{ width: "100%", height: 160 }}
+              contentFit="cover"
+              accessibilityLabel="Captured proof photo"
+            />
+            <Text className="px-3 py-2 text-caption text-text-muted">{photoName}</Text>
+          </View>
+        ) : (
+          <Text className="text-caption text-text-muted">
+            No photo yet. Capture is required before you can confirm.
+          </Text>
+        )}
+        <SecondaryButton
+          label={photoUri ? "Retake photo" : "Take photo"}
+          onPress={onTakePhoto}
+          disabled={busy}
         />
-        <Text className="text-caption text-text-muted">
-          Demo MVP records a photo file name. Camera capture lands with the Navigation SDK.
-        </Text>
       </View>
-      <PrimaryButton label={primaryLabel} onPress={onPrimary} disabled={busy} />
+      <PrimaryButton label={primaryLabel} onPress={onPrimary} disabled={busy} size="large" />
       <SecondaryButton label="Cancel" onPress={onCancel} disabled={busy} />
     </View>
   );
 }
 
+/**
+ * Highest-consequence panel in the app. A misread amount is money the rider
+ * loses personally. Amount is large, plain language, and must confirm first.
+ */
 function CodPanel({
   amountMinor,
   busy,
@@ -489,10 +595,11 @@ function CodPanel({
   onCancel: () => void;
 }) {
   return (
-    <View className="gap-3 rounded-card border-2 border-accent bg-surface p-4">
+    <View className="gap-3 rounded-card border-2 border-accent bg-surface p-5">
       <Text className="text-overline text-text-muted">CASH ON DELIVERY</Text>
-      <Text className="text-body text-text-secondary">
+      <Text className="text-body-lg text-text-secondary">
         Collect this exact amount from the client before you confirm delivery.
+        Delivery cannot complete until collection is recorded.
       </Text>
       <Text
         className="text-display text-text-primary"
@@ -502,12 +609,14 @@ function CodPanel({
         {api.formatPhp(amountMinor)}
       </Text>
       <Text className="text-caption text-text-muted">
-        Order total plus delivery fee. Count the cash, then record the collection.
+        Order total plus delivery fee. Count the cash in front of the client,
+        then record the collection.
       </Text>
       <PrimaryButton
         label={busy ? "Recording…" : "I collected this amount"}
         onPress={onConfirm}
         disabled={busy}
+        size="large"
       />
       <SecondaryButton label="Not yet" onPress={onCancel} disabled={busy} />
     </View>
@@ -574,6 +683,7 @@ function FailureForm({
         label={busy ? "Recording…" : "Record failed attempt"}
         onPress={onSubmit}
         disabled={busy}
+        size="large"
       />
       <SecondaryButton label="Cancel" onPress={onCancel} disabled={busy} />
       <Text className="text-caption text-text-muted">

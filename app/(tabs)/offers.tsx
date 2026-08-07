@@ -12,14 +12,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
 import { OfferCard } from "@/components/OfferCard";
-import * as api from "@/lib/api";
-import { selectOffers } from "@/lib/riderOrder";
 import { useThemeColors } from "@/hooks/useTheme";
+import * as api from "@/lib/api";
+import { selectActiveTrip, selectOffers } from "@/lib/riderOrder";
+import { useSession } from "@/store/session";
 
 export default function OffersScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const { user } = useSession();
   const [offers, setOffers] = useState<api.Order[]>([]);
+  const [hasActive, setHasActive] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,9 +32,12 @@ export default function OffersScreen() {
     if (mode === "refresh") setRefreshing(true);
     else setLoading(true);
     try {
-      // Offers endpoint returns ready_for_dispatch (+ any of our assigned).
-      const list = await api.listOffers();
+      const [list, orders] = await Promise.all([
+        api.listOffers(),
+        api.listOrders(),
+      ]);
       setOffers(selectOffers(list));
+      setHasActive(Boolean(user && selectActiveTrip(orders, user.id)));
       setError(null);
     } catch (e) {
       setError(
@@ -44,7 +50,7 @@ export default function OffersScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -86,8 +92,23 @@ export default function OffersScreen() {
       >
         <Text className="text-h1 text-text-primary">Offers</Text>
         <Text className="mt-1 text-body text-text-secondary">
-          Jobs ready for pickup. One active trip at a time.
+          Jobs ready for pickup. Distance and time help you decide. One active
+          trip at a time.
         </Text>
+
+        {hasActive ? (
+          <Pressable
+            onPress={() => router.push("/(tabs)/active")}
+            accessibilityRole="button"
+            accessibilityLabel="Open your active trip"
+            className="mt-4 rounded-card border border-accent bg-surface p-4"
+          >
+            <Text className="text-body text-text-primary">
+              You already have a trip in hand. Finish it before accepting another.
+            </Text>
+            <Text className="mt-1 text-button text-text-primary">Open active trip</Text>
+          </Pressable>
+        ) : null}
 
         {error ? (
           <View className="mt-4 rounded-card border border-error bg-surface p-4">
@@ -114,7 +135,7 @@ export default function OffersScreen() {
             <OfferCard
               key={job.id}
               offer={job}
-              busy={busyId === job.id}
+              busy={busyId === job.id || hasActive}
               onAccept={() => void accept(job.id)}
             />
           ))}
@@ -123,10 +144,13 @@ export default function OffersScreen() {
         {!loading && !offers.length && !error ? (
           <EmptyState
             title="No open offers"
-            body="When a supplier marks a job ready for dispatch, it shows up here. Pull down to refresh, or check Active if you already accepted one."
-            actionLabel="Open Active"
-            onAction={() => router.push("/(tabs)/active")}
-            secondaryAction
+            body={
+              hasActive
+                ? "Finish your active trip, then pull to refresh for the next job."
+                : "When a supplier marks a job ready for dispatch, it shows up here with map and distance. Pull down to refresh."
+            }
+            actionLabel={hasActive ? "Open active trip" : undefined}
+            onAction={hasActive ? () => router.push("/(tabs)/active") : undefined}
           />
         ) : null}
       </ScrollView>

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
+import type { LatLng } from "@/lib/geo";
 import {
-  DEMO_LOCATION_PING,
   LOCATION_PING_INTERVAL_MS,
   shouldShareLocation,
 } from "@/lib/riderOrder";
@@ -10,26 +10,38 @@ import {
 type Args = {
   orderId: string | null;
   state: string | null;
+  /** Live GPS from useRiderLocation — never from storage. */
+  coords: LatLng | null;
+  accuracy?: number | null;
   /** When false, the hook never starts (e.g. screen unfocused). */
   enabled?: boolean;
 };
 
 /**
- * Posts periodic demo location pings while a trip is in transit.
+ * Posts periodic location pings while a trip is in transit.
  *
  * - Explicit UI (LocationSharingBanner) must show when `sharing` is true.
  * - Sharing stops the moment the trip leaves picked_up / out_for_delivery.
  * - Coordinates are never written to AsyncStorage or any other store.
- * - Uses fixed Davao demo coordinates — no GPS library (MVP).
+ * - Uses live GPS when available; skips the ping if GPS is not ready yet.
  */
-export function useLocationSharing({ orderId, state, enabled = true }: Args) {
+export function useLocationSharing({
+  orderId,
+  state,
+  coords,
+  accuracy = null,
+  enabled = true,
+}: Args) {
   const [sharing, setSharing] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  // Keep the latest values without restarting the interval on every render.
   const orderIdRef = useRef(orderId);
   const stateRef = useRef(state);
+  const coordsRef = useRef(coords);
+  const accuracyRef = useRef(accuracy);
   orderIdRef.current = orderId;
   stateRef.current = state;
+  coordsRef.current = coords;
+  accuracyRef.current = accuracy;
 
   useEffect(() => {
     const active =
@@ -49,10 +61,15 @@ export function useLocationSharing({ orderId, state, enabled = true }: Args) {
     async function pingOnce() {
       const id = orderIdRef.current;
       const tripState = stateRef.current;
-      if (!id || !shouldShareLocation(tripState ?? "")) return;
+      const point = coordsRef.current;
+      if (!id || !shouldShareLocation(tripState ?? "") || !point) return;
       try {
-        // Demo coords only — never persist.
-        await api.postLocation(id, { ...DEMO_LOCATION_PING });
+        // Live coords only — never persist.
+        await api.postLocation(id, {
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: accuracyRef.current ?? null,
+        });
         if (!cancelled) setLastError(null);
       } catch (e) {
         if (!cancelled) {
@@ -72,7 +89,7 @@ export function useLocationSharing({ orderId, state, enabled = true }: Args) {
       // Sharing ends with the effect teardown — trip ended or screen left.
       setSharing(false);
     };
-  }, [orderId, state, enabled]);
+  }, [orderId, state, enabled, coords != null]);
 
   return { sharing, lastError };
 }

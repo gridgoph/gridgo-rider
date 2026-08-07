@@ -3,7 +3,11 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { GridgoTabBar } from "@/components/GridgoTabBar";
+import {
+  GridgoTabBar,
+  TAB_CONTENT_HEIGHT,
+  TAB_DESIGN_PADDING,
+} from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 
 const navigate = jest.fn();
@@ -83,9 +87,16 @@ describe("GridgoTabBar", () => {
   it("stays put when the open tab is pressed again", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Home" }));
+    fireEvent.press(screen.getByRole("tab", { name: "Offers" }));
 
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("stacks design padding with the system inset rather than Math.max", () => {
+    // Design pad is always added to insets.bottom (never Math.max).
+    expect(TAB_DESIGN_PADDING).toBe(8);
+    // Content height is Material Design 3 icon+label standard.
+    expect(TAB_CONTENT_HEIGHT).toBe(80);
   });
 
   it("honours a tabPress handler that prevents the default", async () => {

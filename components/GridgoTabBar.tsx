@@ -1,5 +1,5 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { Bell, House, Inbox, Navigation, User, type LucideIcon } from "lucide-react-native";
+import { Bell, Inbox, Navigation, User, type LucideIcon } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -8,11 +8,9 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { useNotifications } from "@/store/notifications";
 
 /**
- * One Lucide glyph per tab, all outline, all the same optical weight, so the
- * row reads as one set.
+ * One Lucide glyph per tab, all outline, all the same optical weight.
  */
 const ICONS: Record<TabName, LucideIcon> = {
-  home: House,
   offers: Inbox,
   active: Navigation,
   notifications: Bell,
@@ -20,34 +18,52 @@ const ICONS: Record<TabName, LucideIcon> = {
 };
 
 /**
+ * Tab bar geometry (Material Design 3 icon+label bar = 80dp content).
+ *
+ * System inset (gesture bar / three-button nav) and design padding STACK:
+ *   paddingBottom = insets.bottom + TAB_DESIGN_PADDING
+ * Math.max was wrong — it discarded the design pad whenever the inset
+ * exceeded 8px (every modern Android phone).
+ *
+ * Resulting total height below the top hairline:
+ *   - gesture nav (insets.bottom ≈ 24–48): 80 + inset + 8
+ *   - three-button nav (insets.bottom ≈ 48): 80 + inset + 8
+ *   - zero inset (emulator / older): 80 + 0 + 8 = 88
+ *
+ * The surface and top border span the full inset region so the bar reads as
+ * one solid slab to the physical edge of the device.
+ */
+export const TAB_CONTENT_HEIGHT = 80;
+/** Design padding under the icon+label row — always stacked with the system inset. */
+export const TAB_DESIGN_PADDING = 8;
+
+/**
  * The GRIDGO rider tab bar.
  *
- * Four labelled destinations and one raised centre disc for Active — the
+ * Three labelled destinations and one raised centre disc for Active — the
  * trip currently in hand. The disc is a deliberate product choice (see
- * ACTION_TAB in constants/tabs.ts): Active is the primary working surface,
- * so it earns the bar's single yellow. It is not a "start new" control.
- *
- * The labelled columns are a fixed 52px: an 8px foot, a 16px label box, a 4px
- * gap and a 24px glyph, bottom-aligned so all four share a baseline. The
- * action is a 56px disc with no visible caption — screen readers still hear
- * "Active" via accessibilityLabel.
- *
- * The open tab is said twice over, in colour and in weight: its glyph goes
- * from muted to full-strength ink and its label from muted regular to medium.
- * The row therefore still reads correctly in grayscale.
+ * ACTION_TAB): Active is the primary working surface, so it earns the bar's
+ * single yellow.
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
+  // Stack system keep-out with design padding — never Math.max.
+  const bottomPad = insets.bottom + TAB_DESIGN_PADDING;
 
   return (
-    <View className="relative" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
-      {/*
-        Drawn before the row, so the action disc paints over the top border and
-        the hairline breaks around it with no cut-out to maintain.
-      */}
-      <View className="absolute inset-x-0 bottom-0 top-4 border-t border-outline bg-surface" />
-
-      <View className="flex-row items-end">
+    <View
+      style={{
+        paddingBottom: bottomPad,
+        backgroundColor: colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: colors.outline,
+      }}
+    >
+      <View
+        className="flex-row items-end"
+        style={{ height: TAB_CONTENT_HEIGHT }}
+      >
         {state.routes.map((route, index) => {
           const tab = TABS.find((entry) => entry.name === route.name);
           if (!tab) return null;
@@ -99,9 +115,7 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
         : String(unread)
       : null;
 
-  // 84 tall against the destinations' 56, which is what lifts the disc out of
-  // the row. Its foot lands just above the labels' cap line, so the four
-  // destinations and the action still read as one row rather than two.
+  // Raised disc for Active — 56px circle, lifted in the 80dp content row.
   if (name === ACTION_TAB) {
     return (
       <Pressable
@@ -109,7 +123,8 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
         accessibilityRole="tab"
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
-        className="h-20 flex-1 items-center"
+        className="flex-1 items-center justify-center"
+        style={{ height: TAB_CONTENT_HEIGHT }}
       >
         {({ pressed }) => (
           <View className="h-14 w-14 items-center justify-center rounded-pill bg-action-yellow">
@@ -127,15 +142,11 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={alertBadge ? `${label}, ${alertBadge} unread` : label}
       accessibilityState={{ selected: focused }}
-      className="h-13 flex-1 items-center justify-end gap-1 pb-2"
+      className="flex-1 items-center justify-end gap-1"
+      style={{ height: TAB_CONTENT_HEIGHT, paddingBottom: 12 }}
     >
       {({ pressed }) => (
         <>
-          {/*
-            One glyph, one size, one stroke weight, in both states. Only the
-            colour moves — nothing is filled, swapped or rescaled when a tab
-            opens, so the row never shifts under your thumb.
-          */}
           <View className={pressed ? "opacity-60" : undefined}>
             <View>
               <Icon

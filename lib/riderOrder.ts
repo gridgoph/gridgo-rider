@@ -1,4 +1,6 @@
-import type { Order } from "@/lib/api";
+import type { Order, OrderStop } from "@/lib/api";
+import type { LatLng } from "@/lib/geo";
+import { isValidLatLng } from "@/lib/geo";
 
 /** States where this rider is mid-job. */
 export const ACTIVE_TRIP_STATES = [
@@ -239,15 +241,22 @@ export function buildFailureNote(reasonId: FailureReasonId, note: string): strin
   return trimmed ? `${reason}. ${trimmed}` : reason;
 }
 
-/**
- * Demo location ping for Davao City centre.
- * Real GPS would need expo-location; MVP posts fixed demo coordinates.
- * Never persist these values.
- */
-export const DEMO_LOCATION_PING = {
-  lat: 7.1907,
-  lng: 125.4553,
-  accuracy: 25,
-} as const;
-
+/** Interval between live location pings while a package is in transit. */
 export const LOCATION_PING_INTERVAL_MS = 15_000;
+
+/** Extract a LatLng from an API stop, or null when missing/invalid. */
+export function stopLatLng(stop: OrderStop | null | undefined): LatLng | null {
+  if (!stop) return null;
+  const point = { lat: stop.lat, lng: stop.lng };
+  return isValidLatLng(point) ? point : null;
+}
+
+/** Pickup label from API, with a plain fallback. */
+export function pickupLabel(order: Pick<Order, "pickup" | "zone">): string {
+  return order.pickup?.label?.trim() || "Supplier print shop";
+}
+
+/** Drop-off label from API / address field. */
+export function dropoffLabel(order: Pick<Order, "dropoff" | "address">): string {
+  return order.dropoff?.label?.trim() || order.address || "Client address";
+}
