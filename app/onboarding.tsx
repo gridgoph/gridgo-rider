@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   Pressable,
@@ -6,6 +6,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
@@ -29,17 +30,18 @@ import {
 } from "@/components/illustrations";
 import { onboardingSlides } from "@/data/onboarding";
 import { useThemeColors } from "@/hooks/useTheme";
+import { resolveOnboardingExit } from "@/lib/onboardingExit";
 
 /**
- * Client onboarding.
+ * Rider onboarding.
  *
- * Three regions moving at three rates: a stack of illustrations that drift at
- * half the text's speed, a pager carrying only the text, and a fixed footer.
- * The art sits outside the pager and cross-fades on scroll position, which is
- * what lets it move at its own rate instead of locking to the page.
+ * Art sits in a fixed layer behind a full-height horizontal pager so a swipe
+ * anywhere in the content area advances the page, while the art still drifts
+ * at 40% of the text's speed and cross-fades between beats.
  *
- * Reachable from the launcher today. The once-only gate lands with the
- * session store, so nothing here persists.
+ * Entry points: first-run / public (`/onboarding`) and Settings replay
+ * (`/onboarding?from=settings`). Exit is explicit via `resolveOnboardingExit`
+ * — never dependent on navigation history alone.
  */
 
 const HERO_MAX = 360;
@@ -48,10 +50,12 @@ export default function OnboardingScreen() {
   const colors = useThemeColors();
   const { width } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
+  const { from } = useLocalSearchParams<{ from?: string }>();
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollX = useSharedValue(0);
   const [index, setIndex] = useState(0);
+  const [pagerHeight, setPagerHeight] = useState(0);
 
   // `useWindowDimensions` reports 0 on the first web paint, and a negative
   // width is not a valid SVG dimension. Clamp rather than let it through.
@@ -82,8 +86,11 @@ export default function OnboardingScreen() {
   }
 
   function dismiss() {
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
+    router.replace(resolveOnboardingExit(from));
+  }
+
+  function onPagerLayout(event: LayoutChangeEvent) {
+    setPagerHeight(event.nativeEvent.layout.height);
   }
 
   return (
@@ -93,6 +100,7 @@ export default function OnboardingScreen() {
         <Pressable
           onPress={dismiss}
           accessibilityRole="button"
+          accessibilityLabel="Skip onboarding"
           className="gg-touch items-end justify-center"
           style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
         >
@@ -100,43 +108,55 @@ export default function OnboardingScreen() {
         </Pressable>
       </View>
 
-      <View className="flex-1 overflow-hidden">
-        {onboardingSlides.map((slide, slideIndex) => (
-          <Hero
-            key={slide.id}
-            index={slideIndex}
-            art={slide.art}
-            scrollX={scrollX}
-            width={width}
-            heroWidth={heroWidth}
-            palette={palette}
-          />
-        ))}
-      </View>
+      {/*
+        Content area: art behind (no gestures), full-height pager in front so
+        a thumb swipe over the illustration, the text, or empty space all page.
+      */}
+      <View className="flex-1" onLayout={onPagerLayout}>
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, { overflow: "hidden" }]}
+        >
+          {onboardingSlides.map((slide, slideIndex) => (
+            <Hero
+              key={slide.id}
+              index={slideIndex}
+              art={slide.art}
+              scrollX={scrollX}
+              width={width}
+              heroWidth={heroWidth}
+              palette={palette}
+            />
+          ))}
+        </View>
 
-      <Animated.ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        scrollEventThrottle={16}
-        style={{ flexGrow: 0 }}
-      >
-        {onboardingSlides.map((slide, slideIndex) => (
-          <Slide
-            key={slide.id}
-            active={slideIndex === index}
-            index={slideIndex}
-            step={slide.step}
-            title={slide.title}
-            body={slide.body}
-            scrollX={scrollX}
-            width={width}
-          />
-        ))}
-      </Animated.ScrollView>
+        <Animated.ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={onScroll}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          scrollEventThrottle={16}
+          style={{ flex: 1 }}
+          // No vertical scrolling — horizontal pages only.
+          bounces={false}
+        >
+          {onboardingSlides.map((slide, slideIndex) => (
+            <Slide
+              key={slide.id}
+              active={slideIndex === index}
+              index={slideIndex}
+              step={slide.step}
+              title={slide.title}
+              body={slide.body}
+              scrollX={scrollX}
+              width={width}
+              height={pagerHeight}
+            />
+          ))}
+        </Animated.ScrollView>
+      </View>
 
       <View className="gg-page gap-4 pb-2 pt-5">
         <PaginationDots
@@ -219,6 +239,8 @@ type SlideProps = {
   body: string;
   scrollX: SharedValue<number>;
   width: number;
+  /** Full pager height so the page captures vertical gesture space. */
+  height: number;
 };
 
 /**
@@ -226,12 +248,11 @@ type SlideProps = {
  * the design-system route already uses, and the number is what states position
  * when motion is off.
  *
- * All three pages stay mounted so the pager can scroll, and fading one out
- * does not take it out of the accessibility tree. Without the two hiding props
- * below, VoiceOver and TalkBack walk straight through headings and copy the
- * user cannot see.
+ * The page is full-height and transparent above the copy so swipes over the
+ * art hit the pager. All three pages stay mounted so the pager can scroll,
+ * and fading one out does not take it out of the accessibility tree.
  */
-function Slide({ active, index, step, title, body, scrollX, width }: SlideProps) {
+function Slide({ active, index, step, title, body, scrollX, width, height }: SlideProps) {
   const reducedMotion = useReducedMotion();
 
   const style = useAnimatedStyle(() => {
@@ -244,15 +265,17 @@ function Slide({ active, index, step, title, body, scrollX, width }: SlideProps)
     <Animated.View
       accessibilityElementsHidden={!active}
       importantForAccessibility={active ? "auto" : "no-hide-descendants"}
-      style={[{ width }, style]}
+      style={[{ width, height: height > 0 ? height : undefined }, style]}
     >
-      <View className="gg-page gap-2">
-        <View className="gg-divider" />
-        <Text className="pt-2 text-overline text-text-muted">{step}</Text>
-        <Text className="text-h1 text-text-primary" accessibilityRole="header">
-          {title}
-        </Text>
-        <Text className="text-body-lg text-text-secondary">{body}</Text>
+      <View className="flex-1 justify-end">
+        <View className="gg-page gap-2 pb-2">
+          <View className="gg-divider" />
+          <Text className="pt-2 text-overline text-text-muted">{step}</Text>
+          <Text className="text-h1 text-text-primary" accessibilityRole="header">
+            {title}
+          </Text>
+          <Text className="text-body-lg text-text-secondary">{body}</Text>
+        </View>
       </View>
     </Animated.View>
   );

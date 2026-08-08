@@ -17,7 +17,7 @@ export type AuthRedirect =
  * Route groups / top-level segments that require a signed-in rider.
  * Anything else is treated as public (login, onboarding, index).
  */
-export const PROTECTED_ROOTS = new Set(["(tabs)", "design-system"]);
+export const PROTECTED_ROOTS = new Set(["(tabs)", "design-system", "settings"]);
 
 /** Auth-only surfaces — a signed-in rider should not linger here. */
 export const AUTH_ROOTS = new Set(["(auth)"]);
