@@ -310,6 +310,7 @@ Be concise. Explain what changed and how to test it.
 - **Location pings:** live GPS via `expo-location` + `useRiderLocation` / `useLocationSharing` while `picked_up` / `out_for_delivery`; never persisted.
 - **Proof photos:** real capture via `expo-image-picker` (`lib/proofPhoto.ts`); required before pickup/delivery confirm.
 - **Onboarding:** full-height horizontal pager over a non-interactive art layer (parallax 0.4× + cross-fade). Exit is explicit via `lib/onboardingExit.ts` — Settings replay uses `?from=settings` and returns to `/settings`; do not rely on `canGoBack()` alone. Copy and art in `data/onboarding.ts` + `components/illustrations/` (rider beats only).
+- **Logo lockup:** `components/GridgoLogo.tsx` — mark + wordmark + typed `role`. Rider product always uses `role="rider"` (yellow `RIDER` pill). Identity screens only (login, onboarding, design-system masthead); do not decorate every header. Do not recolour the mark.
 - **Settings:** pushed route `app/settings.tsx` (theme + View onboarding). Account keeps identity and Sign out. Destination rows use label + chevron, not primary CTA styling.
 - **Illustrations:** source SVGs in `assets/illustrations/` (provenance in `NOTICE.md`); RN components collapse fills onto the five-step ramp in `palette.ts` — no yellow in art. Do not hand-edit generated `*Illustration.tsx`; re-convert from the SVG.
 - **Package versions:** install only versions from `node_modules/expo/bundledNativeModules.json` (`npx expo install …`); confirm with `npx expo install --check` before shipping.
