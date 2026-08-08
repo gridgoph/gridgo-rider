@@ -97,6 +97,13 @@ export default function RootLayout() {
             {/* The tab shell draws its own headers per tab. */}
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen
+              name="settings"
+              options={{
+                title: "Settings",
+                ...multiOriginPushedScreenOptions,
+              }}
+            />
+            <Stack.Screen
               name="design-system"
               options={{
                 title: "Design system",

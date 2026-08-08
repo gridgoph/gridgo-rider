@@ -12,6 +12,7 @@ describe("resolveAuthRedirect", () => {
 
   it("sends a signed-out rider off other protected roots", () => {
     expect(resolveAuthRedirect(false, ["design-system"])).toBe("/(auth)/login");
+    expect(resolveAuthRedirect(false, ["settings"])).toBe("/(auth)/login");
   });
 
   it("does not bounce a signed-out rider already on login", () => {

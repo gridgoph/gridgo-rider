@@ -1,13 +1,13 @@
 /**
- * Client onboarding copy.
+ * Rider onboarding copy.
  *
- * Three beats, in the order a print job actually moves: the request, the
- * proof, the delivery. Riders and suppliers meet their own context after
- * sign-in, through role gating.
+ * Three beats, in the order a delivery actually moves: the offer arrives,
+ * the rider carries the package, the rider proves the handoff. Client and
+ * supplier meet their own context in their own apps.
  *
- * The copy names things the Davao pilot's clients already recognise — the
- * Messenger back-and-forth it replaces, the preflight check, the stale
- * location warning — rather than describing features.
+ * The copy names things a Davao pilot rider already recognises — dispatch
+ * offers, pickup at the supplier, photo proof, COD — rather than describing
+ * features in the abstract.
  */
 
 import type { IllustrationName } from "@/components/illustrations";
@@ -26,27 +26,27 @@ export type OnboardingSlide = {
 
 export const onboardingSlides: readonly OnboardingSlide[] = [
   {
-    id: "order",
+    id: "offer",
     step: "01 / 03",
-    title: "Order print the right way",
-    body: "Pick the product, size, material and deadline in four steps. No back-and-forth on Messenger.",
+    title: "Work lands on your phone",
+    body: "Dispatch offers arrive with pickup, drop-off and pay. Accept the ones you can take; decline the rest.",
     cta: "Next",
-    art: "workstation",
+    art: "mobile_guy",
   },
   {
-    id: "approve",
+    id: "carry",
     step: "02 / 03",
-    title: "Approve before it prints",
-    body: "Every file runs a preflight check. You see the proof and approve it, or send it back for changes.",
+    title: "Pick up, then deliver",
+    body: "Navigate to the supplier, collect the package, and ride it to the client. Share live location while the job is with you.",
     cta: "Next",
-    art: "proof",
+    art: "scooter",
   },
   {
-    id: "track",
+    id: "proof",
     step: "03 / 03",
-    title: "Watch it come to you",
-    body: "Track your rider on the map with a live ETA, and an honest note when the location goes stale.",
+    title: "Prove the handoff",
+    body: "Capture photo proof at pickup and delivery. When the job is COD, record the cash you collected before you close it out.",
     cta: "Get Started",
-    art: "scooter",
+    art: "postman",
   },
 ] as const;
