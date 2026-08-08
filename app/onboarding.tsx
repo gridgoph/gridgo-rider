@@ -96,7 +96,7 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
       <View className="gg-page flex-row items-center justify-between py-3">
-        <GridgoLogo />
+        <GridgoLogo role="rider" />
         <Pressable
           onPress={dismiss}
           accessibilityRole="button"

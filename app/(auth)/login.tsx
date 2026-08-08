@@ -37,7 +37,7 @@ export default function LoginScreen() {
 
   return (
     <View className="flex-1 justify-center bg-canvas px-6">
-      <GridgoLogo />
+      <GridgoLogo role="rider" />
       <Text className="mt-6 font-satoshi-bold text-2xl text-text-primary">Rider sign in</Text>
       <Text className="mt-1 font-satoshi text-text-secondary">Demo API · gridgo-api</Text>
       <TextInput

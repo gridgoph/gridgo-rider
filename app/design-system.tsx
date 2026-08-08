@@ -171,7 +171,7 @@ export default function DesignSystemScreen() {
           {/* Masthead — the job ticket for the system itself. */}
           <View>
             <View className="pb-1">
-              <GridgoLogo size={32} />
+              <GridgoLogo size={32} role="rider" />
             </View>
             <Text className="pb-5 text-body text-text-secondary">
               Design system · Davao City pilot
