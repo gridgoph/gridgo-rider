@@ -1,4 +1,5 @@
 import {
+  Bell,
   CircleCheck,
   CircleX,
   Clock,
@@ -26,6 +27,7 @@ const ICONS = {
   "circle-x": CircleX,
   clock: Clock,
   "square-pen": SquarePen,
+  bell: Bell,
 } satisfies Record<string, LucideIcon>;
 
 export type StatusIconName = keyof typeof ICONS;

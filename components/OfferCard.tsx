@@ -9,6 +9,7 @@ import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
+import { routeSummaryLabel } from "@/lib/osrm";
 import {
   dropoffLabel,
   isCodOrder,
@@ -16,7 +17,6 @@ import {
   stopLatLng,
   zoneLabel,
 } from "@/lib/riderOrder";
-import { routeSummaryLabel } from "@/lib/osrm";
 
 type Props = {
   offer: Order;
@@ -25,38 +25,36 @@ type Props = {
 };
 
 /**
- * One dispatch offer with map context to decide.
+ * One dispatch offer, with everything the decision needs and nothing else.
  *
- * Pickup and drop-off are shape-differentiated. Road distance and duration
- * come from OSRM (straight-line estimate when routing fails). One yellow
- * Accept is the only yellow on the card.
+ * The fee is the number a rider decides on, so it is the largest thing here
+ * after the job name. Distance comes from OSRM; when routing fails the card
+ * says the line is direct and offers no travel time rather than guessing one.
+ * One yellow Accept per card, and the card is the bounded panel that owns it.
  */
 export function OfferCard({ offer, busy, onAccept }: Props) {
   const colors = useThemeColors();
   const cod = isCodOrder(offer);
   const pickup = stopLatLng(offer.pickup);
   const dropoff = stopLatLng(offer.dropoff);
-  const { route, loading: routeLoading } = useRoute({
-    from: pickup,
-    to: dropoff,
-  });
+  const { route, loading: routeLoading } = useRoute({ from: pickup, to: dropoff });
 
   return (
-    <View className="gg-card gap-4">
+    <View className="gg-card gap-5">
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-h3 text-text-primary">{offer.title}</Text>
           <Text className="text-caption text-text-muted">
-            {offer.size} · {offer.material} · qty {offer.quantity}
+            {offer.size} · {offer.material} · {offer.quantity} pcs
           </Text>
         </View>
         {cod ? (
           <View className="flex-row items-center gap-1.5 rounded-pill border border-warning px-3 py-1">
             <Banknote size={13} color={colors.warning} strokeWidth={2} />
-            <Text className="text-caption text-warning">COD</Text>
+            <Text className="text-caption text-warning">Cash on delivery</Text>
           </View>
         ) : (
-          <StatusChip tone="neutral" label="Prepaid" icon="circle-check" />
+          <StatusChip tone="neutral" label="Already paid" icon="circle-check" />
         )}
       </View>
 
@@ -71,17 +69,17 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
         compact
       />
 
-      <View className="flex-row items-center gap-2">
-        <Route size={16} color={colors.textMuted} strokeWidth={2} />
-        <Text className="flex-1 text-body text-text-secondary">
-          {routeLoading && !route
-            ? "Measuring route…"
-            : routeSummaryLabel(route)}
-        </Text>
+      <View className="gap-2">
+        <View className="flex-row items-center gap-2">
+          <Route size={16} color={colors.textMuted} strokeWidth={2} />
+          <Text className="flex-1 text-body text-text-secondary">
+            {routeLoading && !route ? "Measuring the route…" : routeSummaryLabel(route)}
+          </Text>
+        </View>
+        {route?.statusLabel ? (
+          <Text className="text-caption text-text-muted">{route.statusLabel}</Text>
+        ) : null}
       </View>
-      {route?.statusLabel ? (
-        <Text className="text-caption text-text-muted">{route.statusLabel}</Text>
-      ) : null}
 
       <View className="gap-2">
         <AddressStop
@@ -97,24 +95,23 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
         />
       </View>
 
-      <View className="flex-row items-end justify-between gap-3 border-t border-outline-subtle pt-3">
-        <View>
-          <Text className="text-caption text-text-muted">Delivery fee</Text>
-          <Text className="text-body-lg text-text-primary">
-            {formatPhp(offer.deliveryFeeMinor)}
-          </Text>
+      <View className="flex-row items-end justify-between gap-4 border-t border-outline-subtle pt-4">
+        <View className="gap-0.5">
+          <Text className="text-overline text-text-muted">YOU EARN</Text>
+          <Text className="text-h2 text-text-primary">{formatPhp(offer.deliveryFeeMinor)}</Text>
         </View>
         {cod ? (
-          <Text className="shrink text-caption text-text-secondary">
-            Cash collection required on arrival
+          <Text className="shrink text-right text-caption text-text-secondary">
+            Collect {formatPhp(offer.totalMinor + offer.deliveryFeeMinor)} in cash on arrival
           </Text>
         ) : null}
       </View>
 
       <PrimaryButton
-        label={busy ? "Accepting…" : "Accept"}
+        label={busy ? "Accepting…" : "Accept this job"}
         onPress={onAccept}
         disabled={busy}
+        size="large"
       />
     </View>
   );

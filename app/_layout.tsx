@@ -110,6 +110,27 @@ export default function RootLayout() {
                 ...multiOriginPushedScreenOptions,
               }}
             />
+            {/*
+              Each proof step is its own screen so it can carry one action.
+              The titles name the step, which lets the screens themselves stay
+              quiet under it.
+            */}
+            <Stack.Screen
+              name="trip/pickup"
+              options={{ title: "Pickup proof", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="trip/delivery"
+              options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="trip/cod"
+              options={{ title: "Cash on delivery", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="trip/failed"
+              options={{ title: "Failed attempt", ...multiOriginPushedScreenOptions }}
+            />
           </Stack>
         </AuthGate>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />

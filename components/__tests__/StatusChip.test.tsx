@@ -19,7 +19,14 @@ describe("StatusChip", () => {
   });
 
   it("accepts every icon in the registry", async () => {
-    const icons = ["circle-check", "triangle-alert", "circle-x", "clock", "square-pen"] as const;
+    const icons = [
+      "circle-check",
+      "triangle-alert",
+      "circle-x",
+      "clock",
+      "square-pen",
+      "bell",
+    ] as const;
 
     for (const icon of icons) {
       const { unmount } = await render(<StatusChip tone="neutral" label={icon} icon={icon} />);

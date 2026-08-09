@@ -3,10 +3,8 @@ import { Platform, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
-import type { LatLng } from "@/lib/geo";
-import { isValidLatLng } from "@/lib/geo";
+import { isValidLatLng, type LatLng, type LonLat } from "@/lib/geo";
 import { buildMapHtml, type MapModel } from "@/lib/mapHtml";
-import type { LonLat } from "@/lib/geo";
 
 type Props = {
   pickup: LatLng | null;

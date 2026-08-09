@@ -17,19 +17,64 @@ export type TripPhase =
   | "start_delivery"
   | "collect_cod"
   | "delivery_proof"
+  | "returning"
+  | "returned"
   | "complete"
   | "idle";
 
-/** Failure reasons the rider can record (plain language; never snake_case on screen). */
+/**
+ * Failure reasons the rider can record.
+ *
+ * The id is what the API stores; the label is what the rider reads. `retryable`
+ * seeds the follow-up choice — nobody home is worth a second attempt, a wrong
+ * address is not — but the rider always makes the final call.
+ */
 export const FAILURE_REASONS = [
-  { id: "unavailable", label: "Client not available" },
-  { id: "wrong_address", label: "Wrong or incomplete address" },
-  { id: "refused", label: "Client refused the package" },
-  { id: "access", label: "Could not access the site" },
-  { id: "other", label: "Other" },
+  {
+    id: "unavailable",
+    label: "Nobody at the address",
+    helper: "You arrived, nobody came to the door or answered the phone.",
+    retryable: true,
+  },
+  {
+    id: "wrong_address",
+    label: "Address is wrong or incomplete",
+    helper: "The address does not exist, or it is missing a unit or landmark.",
+    retryable: false,
+  },
+  {
+    id: "refused",
+    label: "Client refused the package",
+    helper: "Someone was there and would not take it.",
+    retryable: false,
+  },
+  {
+    id: "access",
+    label: "Could not get in",
+    helper: "A gate, guard, or closed building stopped you reaching the door.",
+    retryable: true,
+  },
+  {
+    id: "other",
+    label: "Something else",
+    helper: "Anything the four reasons above do not cover. Add a note.",
+    retryable: true,
+  },
 ] as const;
 
 export type FailureReasonId = (typeof FAILURE_REASONS)[number]["id"];
+
+export function failureReason(id: FailureReasonId) {
+  return FAILURE_REASONS.find((r) => r.id === id) ?? FAILURE_REASONS[4];
+}
+
+/** What the rider does with the package after a failed attempt. */
+export type FailureOutcome = "retry" | "return";
+
+/** Outcome the reason suggests. The rider can still choose the other one. */
+export function suggestedOutcome(id: FailureReasonId): FailureOutcome {
+  return failureReason(id).retryable ? "retry" : "return";
+}
 
 const ZONE_LABELS: Record<string, string> = {
   davao_central: "Davao Central",
@@ -73,7 +118,9 @@ export function orderStateChip(state: string): {
     case "ready_for_dispatch":
       return { label: "Ready for pickup", tone: "info", icon: "clock" };
     case "rider_assigned":
-      return { label: "Head to pickup", tone: "warning", icon: "triangle-alert" };
+      // Heading to the shop is the normal next step, not a risk. A warning tone
+      // here would spend an alarm on a job going exactly to plan.
+      return { label: "Head to pickup", tone: "info", icon: "clock" };
     case "picked_up":
       return { label: "Package with you", tone: "info", icon: "circle-check" };
     case "out_for_delivery":
@@ -144,12 +191,30 @@ export function selectOffers(orders: Order[]): Order[] {
 }
 
 /**
+ * What the rider recorded on this device after a failed attempt.
+ *
+ * The demo API stores a failure proof but exposes no state for it, so the
+ * follow-up the rider chose lives here. Screens must label it as recorded on
+ * this phone rather than presenting it as the job's server state.
+ */
+export type TripExceptionSummary = {
+  attemptCount: number;
+  outcome: FailureOutcome | null;
+  /** ISO time the rider recorded handing the package back, if they did. */
+  returnedAt: string | null;
+};
+
+/**
  * Derive the next action phase for the Active trip screen.
  *
  * COD is a hard gate: a COD order cannot complete delivery proof until cash
- * collection is recorded.
+ * collection is recorded. A recorded return outranks both — a package on its
+ * way back to the shop is not a delivery waiting to be confirmed.
  */
-export function tripPhase(order: Order | null): TripPhase {
+export function tripPhase(
+  order: Order | null,
+  exception?: TripExceptionSummary | null,
+): TripPhase {
   if (!order) return "idle";
 
   switch (order.state) {
@@ -158,6 +223,8 @@ export function tripPhase(order: Order | null): TripPhase {
     case "picked_up":
       return "start_delivery";
     case "out_for_delivery":
+      if (exception?.returnedAt) return "returned";
+      if (exception?.outcome === "return") return "returning";
       if (isCodOrder(order) && !isCodCollected(order)) {
         return "collect_cod";
       }
@@ -181,6 +248,25 @@ export function primaryActionLabel(phase: TripPhase): string | null {
       return "Record cash collection";
     case "delivery_proof":
       return "Confirm delivery";
+    case "returning":
+      return "Confirm handover to supplier";
+    default:
+      return null;
+  }
+}
+
+/** The stop the rider is heading to right now. Drives the map and the labels. */
+export function activeStopKind(phase: TripPhase): "pickup" | "dropoff" | null {
+  switch (phase) {
+    case "pickup":
+      return "pickup";
+    case "start_delivery":
+    case "collect_cod":
+    case "delivery_proof":
+      return "dropoff";
+    case "returning":
+      // Back to the shop the job came from.
+      return "pickup";
     default:
       return null;
   }
@@ -231,14 +317,75 @@ export function unreadCount(
   return items.reduce((n, item) => n + (item.read ? 0 : 1), 0);
 }
 
+export type FailureReport = {
+  reasonId: FailureReasonId;
+  outcome: FailureOutcome;
+  /** Optional free text — the one field here that genuinely is free text. */
+  note?: string;
+  /** Chosen with a date/time picker, only when the outcome is another attempt. */
+  nextAttemptAt?: Date | null;
+  /** Whether the rider reached the client by phone before giving up. */
+  contacted?: boolean;
+};
+
+/** Local short form for a planned next attempt, e.g. "10 Aug, 3:00 PM". */
+export function formatAttemptAt(date: Date): string {
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 /**
  * Build the failure note body sent to the API.
- * The API stores a single `note` string — reason id is folded into plain language.
+ *
+ * The API stores one `note` string per proof, so everything needed to settle a
+ * dispute later — what happened, whether the client was reached, what the rider
+ * did with the package, when they will try again — is folded into plain
+ * language here. No ids, no snake_case: a person reads this.
  */
-export function buildFailureNote(reasonId: FailureReasonId, note: string): string {
-  const reason = FAILURE_REASONS.find((r) => r.id === reasonId)?.label ?? "Other";
-  const trimmed = note.trim();
-  return trimmed ? `${reason}. ${trimmed}` : reason;
+export function buildFailureNote(report: FailureReport): string {
+  const parts: string[] = [failureReason(report.reasonId).label];
+
+  if (report.contacted === true) parts.push("Client reached by phone");
+  if (report.contacted === false) parts.push("Client did not answer the phone");
+
+  if (report.outcome === "return") {
+    parts.push("Package returned to the supplier");
+  } else if (report.nextAttemptAt && !Number.isNaN(report.nextAttemptAt.getTime())) {
+    parts.push(`Trying again ${formatAttemptAt(report.nextAttemptAt)}`);
+  } else {
+    parts.push("Rider is trying again");
+  }
+
+  const trimmed = (report.note ?? "").trim();
+  if (trimmed) parts.push(trimmed);
+
+  return `${parts.join(". ")}`.replace(/\.\.$/, ".");
+}
+
+/** Copy for the confirmation that stands between the rider and each outcome. */
+export function failureOutcomeConfirm(
+  outcome: FailureOutcome,
+  supplierLabel: string,
+): { question: string; body: string; confirmLabel: string; cancelLabel: string } {
+  if (outcome === "return") {
+    return {
+      question: `Return this package to ${supplierLabel}?`,
+      body: "The client will not get it today. Operations has to reschedule the delivery, and you keep the package until the supplier takes it back.",
+      confirmLabel: "Return the package",
+      cancelLabel: "Keep trying today",
+    };
+  }
+  return {
+    question: "Record this attempt and try again later?",
+    body: "The job stays with you. The client and Operations see the attempt and when you plan to return.",
+    confirmLabel: "Record and try again",
+    cancelLabel: "Back to the report",
+  };
 }
 
 /** Interval between live location pings while a package is in transit. */

@@ -340,23 +340,6 @@ export async function submitProof(orderId: string, payload: ProofPayload): Promi
   });
 }
 
-/**
- * @deprecated Prefer submitProof with an explicit payload. Kept so existing
- * call sites keep working during the rider UI build-out.
- */
-export async function requestProof(
-  orderId: string,
-  kind: string,
-  extra: Record<string, unknown> = {},
-): Promise<{ order: Order }> {
-  return submitProof(orderId, {
-    kind: kind as ProofKind,
-    otp: "1234",
-    photoName: "demo.jpg",
-    ...extra,
-  });
-}
-
 export type LocationPing = {
   id: string;
   orderId: string;
@@ -392,8 +375,25 @@ export async function creditBalance(): Promise<{ balanceMinor: number }> {
   return request("/credits/balance");
 }
 
-export async function health(): Promise<{ ok: boolean }> {
+export type Health = {
+  ok: boolean;
+  /** Present only once the API ships object storage. */
+  storage?: { status: "checking" | "available" | "unavailable" };
+};
+
+export async function health(): Promise<Health> {
   return request("/health");
+}
+
+/**
+ * Whether this server can store proof files.
+ * "unknown" means the API predates file storage — do not guess either way.
+ */
+export function storageStatus(health: Health | null): "available" | "unavailable" | "unknown" {
+  const status = health?.storage?.status;
+  if (status === "available") return "available";
+  if (status === "unavailable") return "unavailable";
+  return "unknown";
 }
 
 /** Format PHP minor units (centavos) for display. */

@@ -11,6 +11,12 @@ type Args = {
 export type RiderLocationState = {
   coords: LatLng | null;
   accuracy: number | null;
+  /**
+   * Epoch ms of the fix these coordinates came from, so the UI can age them.
+   * A position without its age cannot be labelled stale, and an unlabelled
+   * stale position is a lie about where the rider is.
+   */
+  fixAtMs: number | null;
   permission: "unknown" | "granted" | "denied";
   error: string | null;
 };
@@ -22,6 +28,7 @@ export type RiderLocationState = {
 export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationState {
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [fixAtMs, setFixAtMs] = useState<number | null>(null);
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">(
     "unknown",
   );
@@ -31,6 +38,7 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
     if (!enabled) {
       setCoords(null);
       setAccuracy(null);
+      setFixAtMs(null);
       setError(null);
       return;
     }
@@ -66,6 +74,9 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
               lng: last.coords.longitude,
             });
             setAccuracy(last.coords.accuracy);
+            // Age the cached fix from when it was taken, not from now — a
+            // last-known position can be minutes old and must read as stale.
+            setFixAtMs(last.timestamp ?? Date.now());
           }
         } catch {
           // ignore — watch will fill in
@@ -85,6 +96,7 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
               lng: pos.coords.longitude,
             });
             setAccuracy(pos.coords.accuracy);
+            setFixAtMs(pos.timestamp ?? Date.now());
           },
         );
       } catch {
@@ -100,5 +112,5 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
     };
   }, [enabled]);
 
-  return { coords, accuracy, permission, error };
+  return { coords, accuracy, fixAtMs, permission, error };
 }
