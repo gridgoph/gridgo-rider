@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { GridgoLogo } from "@/components/GridgoLogo";
+import { GridgoLogo, type GridgoLogoRole } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
@@ -66,6 +66,21 @@ const TYPE_SCALE: { name: string; className: string; spec: string }[] = [
   { name: "Body", className: "text-body", spec: "14 / 20 · Regular" },
   { name: "Caption", className: "text-caption", spec: "12 / 16 · Regular" },
   { name: "Button", className: "text-button", spec: "14 / 20 · Bold" },
+];
+
+/**
+ * Every lockup this binary ships, at the sizes real screens ask for. `size` is
+ * the wordmark type size; the mark follows from the text block beside it.
+ */
+const LOCKUPS: {
+  name: string;
+  role: GridgoLogoRole;
+  size: number;
+  spec: string;
+}[] = [
+  { name: "Rider · masthead", role: "rider", size: 24, spec: "size 24" },
+  { name: "Rider · login and onboarding", role: "rider", size: 20, spec: "size 20 · default" },
+  { name: "Wordmark only", role: "client", size: 20, spec: "size 20 · no role line" },
 ];
 
 const RADII: { label: string; use: string; className: string }[] = [
@@ -171,7 +186,7 @@ export default function DesignSystemScreen() {
           {/* Masthead — the job ticket for the system itself. */}
           <View>
             <View className="pb-1">
-              <GridgoLogo size={32} role="rider" />
+              <GridgoLogo size={24} role="rider" />
             </View>
             <Text className="pb-5 text-body text-text-secondary">
               Design system · Davao City pilot
@@ -186,6 +201,28 @@ export default function DesignSystemScreen() {
             </View>
 
             <ThemeSwitch />
+          </View>
+
+          {/* Lockup */}
+          <View className="gap-4">
+            <SectionHead
+              title="LOCKUP"
+              rule="Mark spans the whole text block. Yellow appears twice: the lit dot and GO."
+            />
+            <View className="border-t border-outline">
+              {LOCKUPS.map((lockup) => (
+                <View
+                  key={`${lockup.role}-${lockup.size}`}
+                  className="gap-2 border-b border-outline-subtle py-4"
+                >
+                  <View className="flex-row items-center justify-between gap-3">
+                    <Text className="text-caption text-text-secondary">{lockup.name}</Text>
+                    <Text className="text-caption text-text-muted">{lockup.spec}</Text>
+                  </View>
+                  <GridgoLogo size={lockup.size} role={lockup.role} />
+                </View>
+              ))}
+            </View>
           </View>
 
           {/* Ink */}

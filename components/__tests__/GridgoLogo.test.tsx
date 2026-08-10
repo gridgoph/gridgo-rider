@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react-native";
 import {
   GridgoLogo,
   gridgoLogoAccessibilityLabel,
+  gridgoLogoMetrics,
   type GridgoLogoRole,
 } from "@/components/GridgoLogo";
 
@@ -20,17 +21,74 @@ describe("gridgoLogoAccessibilityLabel", () => {
   });
 });
 
+describe("gridgoLogoMetrics", () => {
+  // The reason the lockup was wrong twice: the mark was sized independently of
+  // the text beside it, so it could only ever be one line tall.
+  it("makes the two-line mark exactly as tall as the stacked text block", () => {
+    for (const size of [16, 20, 24, 32]) {
+      const m = gridgoLogoMetrics(size);
+      expect(m.textBlockHeight).toBe(m.wordmarkLineHeight + m.roleLineHeight);
+      // Taller than the wordmark line alone — that is the whole fix.
+      expect(m.textBlockHeight).toBeGreaterThan(m.wordmarkLineHeight);
+    }
+  });
+
+  it("keeps the role type subordinate but never below the 12px floor", () => {
+    const m = gridgoLogoMetrics(20);
+    expect(m.roleSize).toBe(12);
+    expect(m.roleSize / m.wordmarkSize).toBeGreaterThanOrEqual(0.55);
+    expect(m.roleSize / m.wordmarkSize).toBeLessThanOrEqual(0.6);
+  });
+
+  it("gives the wordmark-only lockup its own single-line proportion", () => {
+    const m = gridgoLogoMetrics(20);
+    expect(m.soloMarkSize).toBeLessThan(m.textBlockHeight);
+    expect(m.soloMarkSize).toBeGreaterThan(m.wordmarkLineHeight);
+  });
+});
+
 describe("GridgoLogo", () => {
+  /** The single accessible node wrapping mark + wordmark + role. */
+  function lockup(role: GridgoLogoRole) {
+    return screen.getByLabelText(gridgoLogoAccessibilityLabel(role));
+  }
+
+  type JsonNode = {
+    type: string;
+    props: Record<string, unknown>;
+    children: JsonNode[] | null;
+  };
+
+  /**
+   * The square the mark is drawn into, read off the host tree.
+   *
+   * `react-native-svg` renders `<Svg>` as a host `RNSVGSvgView` carrying the
+   * resolved width and height, which is the number this whole fix is about.
+   */
+  function markBox() {
+    const walk = (node: JsonNode): JsonNode | null => {
+      if (node.type === "RNSVGSvgView") return node;
+      for (const child of node.children ?? []) {
+        const hit = walk(child);
+        if (hit) return hit;
+      }
+      return null;
+    };
+
+    const svg = walk(screen.toJSON() as unknown as JsonNode);
+    if (!svg) throw new Error("The lockup rendered no mark.");
+    return { width: svg.props.width, height: svg.props.height };
+  }
+
   // @testing-library/react-native 14 made render/unmount async by default.
   it("keeps the bare wordmark when no role is passed", async () => {
     await render(<GridgoLogo />);
 
-    const lockup = screen.getByLabelText("GRIDGO");
-    expect(lockup).toBeTruthy();
+    expect(lockup("client")).toBeTruthy();
     // Nested Text splits GRID + GO; match the outer run that contains both.
     expect(screen.getByText(/GRID/)).toBeTruthy();
     expect(screen.getByText("GO")).toBeTruthy();
-    expect(screen.queryByText("RIDER")).toBeNull();
+    expect(screen.queryByText("Rider")).toBeNull();
     expect(screen.queryByText("Supplier")).toBeNull();
     expect(screen.queryByText("Business")).toBeNull();
     expect(screen.queryByText("Admin")).toBeNull();
@@ -39,35 +97,96 @@ describe("GridgoLogo", () => {
   it("keeps the bare wordmark for the client role", async () => {
     await render(<GridgoLogo role="client" />);
 
-    expect(screen.getByLabelText("GRIDGO")).toBeTruthy();
+    expect(lockup("client")).toBeTruthy();
     expect(screen.queryByText("Business")).toBeNull();
   });
 
   it.each([
-    ["business", "Business", "GRIDGO Business"],
-    ["supplier", "Supplier", "GRIDGO Supplier"],
-    ["admin", "Admin", "GRIDGO Admin"],
-  ] as const)(
-    "renders the %s role as plain type under the wordmark",
-    async (role, label, a11y) => {
-      await render(<GridgoLogo role={role} />);
+    ["business", "Business"],
+    ["supplier", "Supplier"],
+    ["rider", "Rider"],
+    ["admin", "Admin"],
+  ] as const)("renders the %s role as plain type under the wordmark", async (role, label) => {
+    await render(<GridgoLogo role={role} />);
 
-      expect(screen.getByLabelText(a11y)).toBeTruthy();
-      expect(screen.getByText(label)).toBeTruthy();
-      // Pill is rider-only — plain roles must not show RIDER.
-      expect(screen.queryByText("RIDER")).toBeNull();
+    expect(lockup(role)).toBeTruthy();
+    expect(screen.getByText(label)).toBeTruthy();
+  });
+
+  it("retired the uppercase rider pill for the shared plain-type lockup", async () => {
+    await render(<GridgoLogo role="rider" />);
+
+    expect(screen.getByText("Rider")).toBeTruthy();
+    expect(screen.queryByText("RIDER")).toBeNull();
+  });
+
+  it("stacks the wordmark above the role, both left-aligned in one column", async () => {
+    await render(<GridgoLogo role="rider" size={20} />);
+
+    const metrics = gridgoLogoMetrics(20);
+    const wordmark = screen.getByText(/GRID/);
+    const roleLabel = screen.getByText("Rider");
+
+    // Both text lines live in the same column, to the right of the mark, and
+    // carry the explicit line heights the mark height is derived from.
+    expect(wordmark.props.style).toEqual(
+      expect.objectContaining({
+        fontSize: metrics.wordmarkSize,
+        lineHeight: metrics.wordmarkLineHeight,
+      }),
+    );
+    expect(roleLabel.props.style).toEqual(
+      expect.objectContaining({
+        fontSize: metrics.roleSize,
+        lineHeight: metrics.roleLineHeight,
+      }),
+    );
+    expect(roleLabel.parent).toBe(wordmark.parent);
+  });
+
+  it("lays the mark beside the text column rather than above the role line", async () => {
+    await render(<GridgoLogo role="rider" size={20} />);
+
+    const row = lockup("rider");
+    // NativeWind classes are not resolved under jest, so the direction is
+    // asserted on the class and the computed geometry on the style.
+    expect(row.props.className).toContain("flex-row");
+    expect(row.props.style).toEqual(
+      expect.objectContaining({
+        // Mark and text column share a top edge — nothing hangs below the row.
+        alignItems: "flex-start",
+        columnGap: gridgoLogoMetrics(20).markGap,
+      }),
+    );
+  });
+
+  // The regression this file exists to stop. Reported wrong twice: the mark
+  // rendered only as tall as the single GRIDGO line, with the role hung under
+  // the whole row. It must span GRIDGO *and* the role word.
+  it.each([16, 20, 24, 32])(
+    "spans the mark across the whole two-line text block at size %i",
+    async (size) => {
+      await render(<GridgoLogo role="rider" size={size} />);
+
+      const metrics = gridgoLogoMetrics(size);
+      expect(markBox()).toEqual({
+        width: metrics.textBlockHeight,
+        height: metrics.textBlockHeight,
+      });
+      expect(markBox().height).toBeGreaterThan(metrics.wordmarkLineHeight);
     },
   );
 
-  it("renders the rider role as an uppercase RIDER pill", async () => {
-    await render(<GridgoLogo role="rider" />);
+  it("falls back to the single-line mark when there is no role word", async () => {
+    await render(<GridgoLogo role="client" size={20} />);
 
-    expect(screen.getByLabelText("GRIDGO Rider")).toBeTruthy();
-    expect(screen.getByText("RIDER")).toBeTruthy();
-    // No plain-type role labels mixed in.
-    expect(screen.queryByText("Supplier")).toBeNull();
-    expect(screen.queryByText("Business")).toBeNull();
-    expect(screen.queryByText("Admin")).toBeNull();
+    const metrics = gridgoLogoMetrics(20);
+    expect(markBox()).toEqual({
+      width: metrics.soloMarkSize,
+      height: metrics.soloMarkSize,
+    });
+    // Deliberately its own shape, not the two-line block with a row missing.
+    expect(markBox().height).toBeLessThan(metrics.textBlockHeight);
   });
 
   it("exposes a single accessible node for every role variant", async () => {
@@ -81,8 +200,7 @@ describe("GridgoLogo", () => {
 
     for (const role of roles) {
       const { unmount } = await render(<GridgoLogo role={role} />);
-      const label = gridgoLogoAccessibilityLabel(role);
-      const node = screen.getByLabelText(label);
+      const node = lockup(role);
       expect(node.props.accessible).toBe(true);
       expect(node.props.accessibilityRole).toBe("image");
       await unmount();
