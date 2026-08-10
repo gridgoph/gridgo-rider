@@ -50,73 +50,165 @@ const ACTION_GLYPHS: Record<RiderActionGlyph, LucideIcon> = {
   waiting: Hourglass,
 };
 
-/**
- * Tab bar geometry (Material Design 3 icon+label bar = 80dp content column).
- *
- * The painted surface is an absolute overlay starting 16dp (top-4) below the
- * container top, so the visible bar is 64 + paddingBottom. The top 16dp stays
- * transparent; the raised action disc paints over that strip and breaks the
- * hairline — same structure as gridgo-client, and none of it moves here.
- */
-export const TAB_CONTENT_HEIGHT = 80;
-/**
- * Design padding under the icon+label row.
- *
- * Not a universal constant: see `tabBarPaddingBottom` for where it applies and
- * why iOS does not take it.
- */
-export const TAB_DESIGN_PADDING = 8;
-/**
- * How far the painted surface (bg + top hairline) sits below the container top.
- * Matches NativeWind `top-4` (16dp). Visible bar height = content − this + padding.
- */
-export const TAB_SURFACE_TOP_OFFSET = 16;
+/* ---------------------------------------------------------------------------
+   Bar geometry
+
+   Two platforms publish two different content-row heights, and one rule governs
+   what sits underneath both. Both halves have been reported wrong by the
+   captain once each, so both are cited rather than remembered. This file must
+   stay in step with gridgo-client and gridgo-supplier.
+
+   **iOS.** The UIKit tab bar is a 49pt content row — 83pt overall on a
+   home-indicator iPhone, 49 of content plus the 34pt bottom safe-area inset.
+   UIKit adds no design padding under the labels on top of that inset. This bar
+   used to run Material's 80dp column on iOS too, which put it at 80 + 34 = 114
+   against the platform's 83, and 31pt taller than the client and supplier bars
+   on the same phone.
+
+   **Android.** Material 3's navigation bar container is 80dp
+   (`NavigationBarTokens.TallContainerHeight`), and the system inset is added
+   *beneath* that container rather than absorbed into it. `NavigationBar` lays
+   its row out as
+
+       Modifier.fillMaxWidth()
+               .windowInsetsPadding(windowInsets)                 // outer
+               .defaultMinSize(minHeight = NavigationBarHeight)   // inner
+
+   so the 80dp minimum applies to the content inside the padding and the total
+   is 80 + inset. Under Expo's edge-to-edge Android the inset is real and
+   non-zero on every phone: ~48dp for three-button navigation, ~24dp for
+   gesture navigation. A three-button phone genuinely is 128dp, and that is
+   Material's own answer rather than a double-count.
+
+   **The rule both follow.** Whatever the platform reserves below the row is the
+   breathing room, and nothing is added on top of it. The design gap is a floor
+   under that, for the cases where the platform reserves less.
+
+   Resulting bar heights — the content column plus whatever sits under it:
+     iOS, home indicator     49 + 34 = 83pt   (UIKit exactly)
+     iOS, no indicator       49 +  8 = 57pt
+     Android, gesture nav    80 + 24 = 104dp
+     Android, three-button   80 + 48 = 128dp
+     Android/web, no inset   80 +  8 = 88dp
+   `tabBarHeight` is that table as code, so the tests assert the totals rather
+   than re-deriving them.
+   --------------------------------------------------------------------------- */
 
 /**
- * The bar's bottom padding, which is genuinely not the same rule per platform.
- *
- * Both platforms' own specs say "content row + the system inset, and nothing
- * else" — but their insets do not mean the same thing, which is why one rule
- * cannot serve both and why both a bare add and a bare `Math.max` have now been
- * reported as wrong from opposite directions.
- *
- * **iOS.** A UIKit tab bar on a home-indicator iPhone is 49pt of content plus
- * the 34pt safe-area inset — 83pt in total, with no padding of its own.
- * React Navigation's own `BottomTabBar` does exactly this
- * (`TABBAR_HEIGHT_UIKIT + inset`, `paddingBottom: insets.bottom`). That 34pt is
- * already the bar's visual breathing room, so adding 8 on top of it is 8pt of
- * bar nobody asked for — which is the "sits too high above the safe area"
- * report. On an older iPhone the inset is 0 and there is nothing to breathe on,
- * so the design pad stands in.
- *
- * **Android.** MD3's navigation bar is an 80dp container that sits *above* the
- * system inset (`paddingBottomSystemWindowInsets`), and the gesture inset is a
- * thin ~24dp strip the gesture handle lives in rather than a margin. GRIDGO's
- * painted content row is 64dp, 16 short of MD3's 80, so the inset alone leaves
- * the row tighter than the spec — which is the earlier "too tight" report, and
- * why `Math.max` was banned. The design pad stacks here.
- *
- * Resulting painted bar heights (64 + padding):
- *
- * | Device | Inset | Painted |
- * |---|---:|---:|
- * | iPhone with home indicator | 34 | 98 |
- * | iPhone with a home button | 0 | 72 |
- * | Android, gesture navigation | 24 | 96 |
- * | Android, three-button navigation | 48 | 120 |
- *
- * The two current-generation cases land 2dp apart, so the three apps still read
- * as one family. Platform is a parameter rather than a read of `Platform.OS`
- * so both branches are testable without a render tree.
+ * The least breathing room the bar will leave under its labels. A floor beneath
+ * whatever the platform reserves, not an alternative to it.
  */
-export function tabBarPaddingBottom(
-  insetBottom: number,
-  platformOS: string = Platform.OS,
-): number {
+export const TAB_BAR_MIN_BOTTOM_GAP = 8;
+
+/**
+ * The label's line box, on both platforms and in every column.
+ *
+ * It is the same 16 for a destination and for the action, which is the whole
+ * reason the action's verb sits on the line its neighbours' labels sit on.
+ */
+export const TAB_LABEL_BOX = 16;
+
+export type TabBarMetrics = {
+  /** The content row, above whatever the platform reserves below it. */
+  columnHeight: number;
+  itemPaddingTop: number;
+  itemGap: number;
+  itemPaddingBottom: number;
+  /** The raised action disc. */
+  actionDiameter: number;
+  /** How far below the row top the painted surface starts, so the disc breaks it. */
+  actionRise: number;
+};
+
+/**
+ * Pure, so both platforms' geometry can be asserted in one test run rather
+ * than only whichever one the suite happens to be executing on.
+ */
+export function tabBarMetrics(platformOS: string): TabBarMetrics {
   if (platformOS === "ios") {
-    return insetBottom > 0 ? insetBottom : TAB_DESIGN_PADDING;
+    // 4 + 24 icon + 2 + 16 label + 3 = 49, the HIG row exactly.
+    return {
+      columnHeight: 49,
+      itemPaddingTop: 4,
+      itemGap: 2,
+      itemPaddingBottom: 3,
+      actionDiameter: 44,
+      actionRise: 10,
+    };
   }
-  return insetBottom + TAB_DESIGN_PADDING;
+  // Material 3's 80dp container. These are the numbers this bar already
+  // shipped on Android — 8 above, 4 between, 8 below, a 56 disc and a 16
+  // surface offset — and the captain has approved the result, so none of them
+  // move: `justify-end` puts the label box at 56..72 in both column kinds.
+  return {
+    columnHeight: 80,
+    itemPaddingTop: 8,
+    itemGap: 4,
+    itemPaddingBottom: 8,
+    actionDiameter: 56,
+    actionRise: 16,
+  };
+}
+
+export const TAB_BAR_METRICS = tabBarMetrics(Platform.OS);
+
+/**
+ * How far the action disc rises above the top of the content row.
+ *
+ * The disc and its label are one bottom-aligned stack, and the label box is
+ * pinned to the same line as every other label. On Android the stack is
+ * 56 + 16 + 8 = 80 — the column exactly, so the disc's top is the row's top and
+ * nothing overhangs. On iOS a 49pt row cannot hold a 44pt disc above a 16pt
+ * label, so the stack is 14pt taller than the row and the disc rises that far
+ * through it.
+ *
+ * That overhang is the deliberate answer to "a 56 disc does not fit a 49 row",
+ * and it is the raised action behaving like one. The alternatives were both
+ * worse: shrinking the disc to the ~28pt that would fit means an icon smaller
+ * than the glyph it carries and a disc unlike the client's on the same phone,
+ * and dropping the label means an unlabelled disc that performs four different
+ * jobs — which is a guess, not an action. The bar's *height* is unaffected
+ * either way: the overhang is drawn above the row, never measured into it, so
+ * iOS stays on UIKit's 83pt.
+ */
+export function tabBarActionOverhang(platformOS: string): number {
+  const { columnHeight, actionDiameter, itemPaddingBottom } = tabBarMetrics(platformOS);
+  const stack = actionDiameter + TAB_LABEL_BOX + itemPaddingBottom;
+  return Math.max(0, stack - columnHeight);
+}
+
+/**
+ * What sits below the content row: whatever the platform reserves, with the
+ * design gap as a deliberate floor under it.
+ *
+ * Not `inset + gap`: on a home-indicator iPhone that added 8pt to a 34pt
+ * keep-out the platform had already sized as the bar's breathing room, and on
+ * Android it overshot Material's own total on every phone — ~24dp of gesture
+ * inset and ~48dp of three-button inset were both being double-counted.
+ *
+ * The floor is compared against the gap, not against zero. A `> 0` test reads
+ * as if it says this, but it only floors at *nothing*: a device reporting a 2dp
+ * inset would get a 2dp gap and sit closer to the physical edge than a phone
+ * reserving nothing at all — a bar that gets shorter as the device reserves
+ * more, which cannot be right in either direction. Spelled longhand rather than
+ * as `Math.max` so it stays legible that the gap is a floor and never a
+ * replacement for the inset, which is what got `Math.max` banned.
+ *
+ * Platform is not a parameter here because it is not a term: it decides what
+ * the inset *is*, and what the row above it measures, never what is done with
+ * the inset.
+ */
+export function tabBarPaddingBottom(insetBottom: number): number {
+  return insetBottom >= TAB_BAR_MIN_BOTTOM_GAP ? insetBottom : TAB_BAR_MIN_BOTTOM_GAP;
+}
+
+/**
+ * The bar's whole height: the platform's content row plus whatever sits under
+ * it. Pure arithmetic over a platform and an inset, so every device case in the
+ * table above is one assertion rather than a re-derivation in the test.
+ */
+export function tabBarHeight(platformOS: string, insetBottom: number): number {
+  return tabBarMetrics(platformOS).columnHeight + tabBarPaddingBottom(insetBottom);
 }
 
 /**
@@ -157,14 +249,21 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
     <View
       testID="gridgo-tab-bar"
       className="relative"
-      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom) }}
+      // `overflow: visible` is the React Native default, and it is written down
+      // because on iOS the action disc is drawn 14pt above this container (see
+      // `tabBarActionOverhang`). A later style setting it to "hidden" would
+      // slice the top off the disc rather than fail loudly.
+      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom), overflow: "visible" }}
     >
       {/*
         Drawn before the row, so the action disc paints over the top border and
         the hairline breaks around it with no cut-out to maintain. Spans the
         full outer height including the bottom inset region.
       */}
-      <View className="absolute inset-x-0 bottom-0 top-4 border-t border-outline bg-surface" />
+      <View
+        className="absolute inset-x-0 bottom-0 border-t border-outline bg-surface"
+        style={{ top: TAB_BAR_METRICS.actionRise }}
+      />
 
       <View className="flex-row items-end">
         {TABS.map((tab) => {
@@ -223,10 +322,16 @@ type ActionDiscProps = {
 /**
  * The raised action.
  *
- * 80 tall, matching the destinations' MD3 height. The 56 disc sits at the top
- * of the column; the surface starts 16 below the row top, so the disc breaks
- * the hairline. `justify-between` puts the label in the same 16dp box the
- * destination labels sit in — 56 + 16 + 8 is exactly 80, so nothing shifts.
+ * The column is the platform's own row height, so the disc's label lands in the
+ * same line box as the destination labels beside it. `justify-end` pins that
+ * stack to the bottom, which is what keeps the labels on one line: on Android
+ * 56 + 16 + 8 is exactly the 80dp column and the disc's top *is* the row's top,
+ * and on iOS the stack is 14pt taller than the 49pt row, so the disc rises that
+ * far above it. See `tabBarActionOverhang` for why the overhang is the right
+ * answer on a row too short to hold the disc.
+ *
+ * The surface starts `actionRise` below the row top either way, so the disc
+ * breaks the hairline on both platforms.
  *
  * Unlike the client's plus, this verb changes with the job, so it is labelled.
  * An unlabelled disc that does four different things is a guess, not an action.
@@ -234,6 +339,7 @@ type ActionDiscProps = {
 function ActionDisc({ glyph, label, spoken, onPress }: ActionDiscProps) {
   const colors = useThemeColors();
   const Glyph = ACTION_GLYPHS[glyph];
+  const { columnHeight, actionDiameter, itemPaddingBottom } = TAB_BAR_METRICS;
 
   return (
     <Pressable
@@ -241,11 +347,18 @@ function ActionDisc({ glyph, label, spoken, onPress }: ActionDiscProps) {
       accessibilityRole="button"
       accessibilityLabel={spoken}
       testID="tab-action-disc"
-      className="h-20 flex-1 items-center justify-between pb-2"
+      className="flex-1 items-center justify-end"
+      // The row height is the touch target, and it is the platform's own: 49pt
+      // clears the 44pt floor, 80dp clears it comfortably.
+      style={{ height: columnHeight, paddingBottom: itemPaddingBottom }}
     >
       {({ pressed }) => (
         <>
-          <View className="h-14 w-14 items-center justify-center rounded-pill bg-action-yellow">
+          <View
+            className="items-center justify-center rounded-pill bg-action-yellow"
+            style={{ height: actionDiameter, width: actionDiameter }}
+          >
+            {/* 26 on both platforms, as in gridgo-client — the disc resizes, the glyph does not. */}
             <Glyph size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
             {pressed ? <View className="gg-pressed absolute inset-0 rounded-pill" /> : null}
           </View>
@@ -280,9 +393,16 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected: focused }}
-      // min-h-20 = MD3 80dp icon+label bar. pt-2 keeps the glyph off the
-      // hairline. Grows with content if the label scales; never a rigid h-13.
-      className="min-h-20 flex-1 items-center justify-end gap-1 pb-2 pt-2"
+      // Height and padding are the platform's, from `tabBarMetrics` — the HIG's
+      // 49pt row or Material's 80dp container. A minimum rather than a fixed
+      // height, so the column still grows if the label scales.
+      className="flex-1 items-center justify-end"
+      style={{
+        minHeight: TAB_BAR_METRICS.columnHeight,
+        paddingTop: TAB_BAR_METRICS.itemPaddingTop,
+        paddingBottom: TAB_BAR_METRICS.itemPaddingBottom,
+        rowGap: TAB_BAR_METRICS.itemGap,
+      }}
     >
       {({ pressed }) => (
         <>
