@@ -1,16 +1,44 @@
-import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
 import { Redirect } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { GridgoLogo } from "@/components/GridgoLogo";
+import { InlineNotice } from "@/components/InlineNotice";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { StatusChip } from "@/components/StatusChip";
+import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
 import { useSession } from "@/store/session";
 
 type HealthState = "checking" | "reachable" | "unreachable";
 
+/**
+ * The first screen of the app, and until now the only one built out of
+ * utilities the design system does not define: `font-satoshi`, `text-2xl` and
+ * `text-sm` are all absent from `global.css` (the default Tailwind type and
+ * weight scales are reset on purpose), so every line of it rendered in the
+ * system font at Tailwind's own sizes. It is on tokens now, like everything
+ * else.
+ *
+ * The API address stays, with its reachability, because this build talks to a
+ * demo server that moves between machines and "cannot reach GRIDGO" is
+ * unanswerable without it. It is the one screen where that is true.
+ */
 export default function LoginScreen() {
-  const { user, login, loading, error } = useSession();
+  const user = useSession((s) => s.user);
+  const login = useSession((s) => s.login);
+  const loading = useSession((s) => s.loading);
+  const error = useSession((s) => s.error);
+  const colors = useThemeColors();
+
   const [email, setEmail] = useState("rider@gridgo.local");
   const [password, setPassword] = useState("demo");
   const [apiBase] = useState(() => getApiBase());
@@ -36,46 +64,88 @@ export default function LoginScreen() {
   if (user) return <Redirect href="/(tabs)/active" />;
 
   return (
-    <View className="flex-1 justify-center bg-canvas px-6">
-      <GridgoLogo role="rider" />
-      <Text className="mt-6 font-satoshi-bold text-2xl text-text-primary">Rider sign in</Text>
-      <Text className="mt-1 font-satoshi text-text-secondary">Demo API · gridgo-api</Text>
-      <TextInput
-        className="mt-6 rounded-xl border border-outline bg-surface px-4 py-3 font-satoshi text-text-primary"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        className="mt-3 rounded-xl border border-outline bg-surface px-4 py-3 font-satoshi text-text-primary"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      {error ? <Text className="mt-3 font-satoshi text-error">{error}</Text> : null}
-      <Pressable
-        className="mt-5 items-center rounded-xl bg-action-yellow py-3.5"
-        disabled={loading}
-        onPress={() => void login(email.trim(), password)}
+    <SafeAreaView className="gg-screen">
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <Text className="font-satoshi-medium text-action-yellow-on">
-          {loading ? "Signing in…" : "Sign in"}
-        </Text>
-      </Pressable>
-      <Text className="mt-4 font-satoshi text-sm text-text-muted">rider@gridgo.local / demo</Text>
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName="gg-page grow justify-center gap-8 py-8"
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="gap-6">
+            <GridgoLogo role="rider" />
+            <View className="gap-1">
+              <Text className="text-h1 text-text-primary">Sign in</Text>
+              <Text className="text-body-lg text-text-secondary">
+                Riders only. Operations issues the account.
+              </Text>
+            </View>
+          </View>
 
-      <View className="absolute bottom-8 left-6 right-6 flex-row flex-wrap items-center gap-2">
-        <Text className="font-satoshi text-caption text-text-muted" numberOfLines={2}>
-          {apiBase}
-        </Text>
-        {healthState === "checking" ? (
-          <StatusChip tone="neutral" label="Checking…" icon="clock" />
-        ) : healthState === "reachable" ? (
-          <StatusChip tone="success" label="Reachable" icon="circle-check" />
-        ) : (
-          <StatusChip tone="error" label="Unreachable" icon="circle-x" />
-        )}
-      </View>
-    </View>
+          <View className="gap-4">
+            <View className="gap-2">
+              <Text className="text-overline text-text-muted">EMAIL</Text>
+              <TextInput
+                className="gg-field"
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@gridgo.local"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Email"
+              />
+            </View>
+
+            <View className="gap-2">
+              <Text className="text-overline text-text-muted">PASSWORD</Text>
+              <TextInput
+                className="gg-field"
+                secureTextEntry
+                autoComplete="current-password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Your password"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Password"
+                onSubmitEditing={() => void login(email.trim(), password)}
+                returnKeyType="go"
+              />
+            </View>
+
+            {error ? (
+              <InlineNotice tone="error" icon="circle-x" title="Not signed in" body={error} />
+            ) : null}
+
+            <PrimaryButton
+              label={loading ? "Signing in…" : "Sign in"}
+              onPress={() => void login(email.trim(), password)}
+              disabled={loading}
+              size="large"
+            />
+
+            <Text className="text-caption text-text-muted">
+              Demo account: rider@gridgo.local / demo
+            </Text>
+          </View>
+
+          <View className="flex-row flex-wrap items-center gap-2 pt-2">
+            <Text className="text-caption text-text-muted" numberOfLines={2}>
+              {apiBase}
+            </Text>
+            {healthState === "checking" ? (
+              <StatusChip tone="neutral" label="Checking…" icon="clock" />
+            ) : healthState === "reachable" ? (
+              <StatusChip tone="success" label="Reachable" icon="circle-check" />
+            ) : (
+              <StatusChip tone="error" label="Unreachable" icon="circle-x" />
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

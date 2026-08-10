@@ -17,10 +17,42 @@ export type AuthRedirect =
  * Route groups / top-level segments that require a signed-in rider.
  * Anything else is treated as public (login, onboarding, index).
  */
-export const PROTECTED_ROOTS = new Set(["(tabs)", "design-system", "settings"]);
+export const PROTECTED_ROOTS = new Set([
+  "(tabs)",
+  "design-system",
+  "settings",
+  // Alerts and every trip step read a rider's own job — they are as protected
+  // as the tab shell, and a deep link is how someone would land on them.
+  "alerts",
+  "trip",
+]);
 
 /** Auth-only surfaces — a signed-in rider should not linger here. */
 export const AUTH_ROOTS = new Set(["(auth)"]);
+
+/**
+ * Whether the gate is allowed to navigate at all yet.
+ *
+ * Two things have to be true before a redirect is safe, and both were missing:
+ *
+ * 1. **The root navigator is mounted.** `router.replace` before the navigation
+ *    container is ready throws "Attempted to navigate before mounting the Root
+ *    Layout component", which in a release build is a blank screen and in
+ *    development is the red LogBox over the whole app. It reproduces on every
+ *    cold start that begins on a protected route — a deep link, a notification
+ *    tap, or a browser reload on Expo web.
+ * 2. **The stored session has been read back.** Until AsyncStorage answers, a
+ *    signed-in rider looks signed out, and the gate would throw them to login
+ *    a frame before their own session arrives.
+ */
+export function canGateNavigate(input: {
+  /** Truthy key from `useRootNavigationState()` once the navigator exists. */
+  rootNavigatorKey: string | undefined | null;
+  /** Whether the persisted session has been read back yet. */
+  sessionHydrated: boolean;
+}): boolean {
+  return Boolean(input.rootNavigatorKey) && input.sessionHydrated;
+}
 
 /**
  * Decide whether to leave the current route given session + segments.

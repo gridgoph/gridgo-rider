@@ -31,9 +31,17 @@ export function LocationSharingBanner({ sharing, freshness = null }: Props) {
   const Icon = degraded ? TriangleAlert : MapPinned;
   const tint = degraded ? colors.warning : colors.info;
   const border = degraded ? "border-warning" : "border-info";
-  // Before a package is in transit nothing is being shared, so the headline is
-  // the problem with the fix itself rather than a pause nobody asked for.
-  const title = sharing ? "Location sharing on" : (freshness?.label ?? "Location sharing paused");
+  /*
+    The headline is whichever fact the rider has to act on. A degraded fix wins
+    even while sharing is on: "Location sharing on / Location is off" stacked
+    two lines apart was the app contradicting itself, and the half that needs
+    doing something about is the broken fix.
+  */
+  const title = degraded
+    ? (freshness?.label ?? "Location is not reaching the client")
+    : sharing
+      ? "Location sharing on"
+      : "Location sharing paused";
 
   return (
     <View
@@ -49,22 +57,15 @@ export function LocationSharingBanner({ sharing, freshness = null }: Props) {
       </View>
       <View className="min-w-0 flex-1 gap-1">
         <Text className="text-body font-bold text-text-primary">{title}</Text>
-        {freshness && sharing ? (
-          <Text
-            className={
-              degraded ? "text-body text-text-primary" : "text-body text-text-secondary"
-            }
-          >
-            {freshness.label}
-          </Text>
+        {freshness && sharing && !degraded ? (
+          <Text className="text-body text-text-secondary">{freshness.label}</Text>
         ) : null}
         {freshness?.detail ? (
-          <Text className="text-caption text-text-muted">{freshness.detail}</Text>
+          <Text className="text-body text-text-secondary">{freshness.detail}</Text>
         ) : null}
-        {sharing ? (
+        {sharing && !degraded ? (
           <Text className="text-caption text-text-muted">
-            Your position is sent only while this trip is active, and nothing is saved on
-            this phone.
+            Sent only while this trip is active, and never saved on this phone.
           </Text>
         ) : null}
       </View>

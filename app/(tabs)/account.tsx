@@ -1,60 +1,68 @@
-import { router } from "expo-router";
-import { ChevronRight } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Bell, Settings2 } from "lucide-react-native";
+import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { DestinationRow } from "@/components/DestinationRow";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
-import { useThemeColors } from "@/hooks/useTheme";
-import { getApiBase } from "@/lib/api";
+import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
 
+/** First letter of the rider's name, for the identity mark. */
+function initial(name: string | undefined): string {
+  return (name?.trim()[0] ?? "?").toUpperCase();
+}
+
+/**
+ * Who this phone is signed in as, and the way to everything that is not a
+ * daily destination.
+ */
 export default function AccountScreen() {
-  const { user, logout } = useSession();
-  const colors = useThemeColors();
+  const router = useRouter();
+  const user = useSession((s) => s.user);
+  const logout = useSession((s) => s.logout);
+  const unread = useNotifications((s) => s.unread);
 
   return (
     <SafeAreaView className="gg-screen" edges={["top"]}>
-      <View className="gg-page flex-1 gap-6 pt-6">
-        <View className="gap-2">
-          <Text className="text-h1 text-text-primary">Account</Text>
-          <Text className="text-body-lg text-text-secondary">
-            Who this phone is signed in as.
-          </Text>
+      <ScrollView className="flex-1" contentContainerClassName="gg-page gap-6 pb-10 pt-3">
+        <ScreenHeader title="Account" />
+
+        <View className="gg-card flex-row items-center gap-4">
+          <View className="h-14 w-14 items-center justify-center rounded-pill bg-accent">
+            <Text className="text-h3 text-accent-on">{initial(user?.name)}</Text>
+          </View>
+          <View className="min-w-0 flex-1 gap-0.5">
+            <Text className="text-h3 text-text-primary" numberOfLines={1}>
+              {user?.name ?? "Signed out"}
+            </Text>
+            <Text className="text-body text-text-secondary" numberOfLines={1}>
+              {user?.email ?? "—"}
+            </Text>
+            <Text className="text-caption text-text-muted">GRIDGO rider</Text>
+          </View>
         </View>
 
-        <View className="gg-card gap-1">
-          <Text className="text-overline text-text-muted">SIGNED IN</Text>
-          <Text className="text-h3 text-text-primary">{user?.name ?? "—"}</Text>
-          <Text className="text-body text-text-secondary">{user?.email ?? "—"}</Text>
+        <View className="gg-card-flush">
+          <DestinationRow
+            icon={Bell}
+            label="Alerts"
+            detail="Everything dispatch has sent you"
+            value={unread > 0 ? `${unread} unread` : null}
+            onPress={() => router.push("/alerts")}
+          />
+          <DestinationRow
+            icon={Settings2}
+            label="Settings"
+            detail="Theme, and the introduction slides"
+            onPress={() => router.push("/settings")}
+            last
+          />
         </View>
-
-        {/* Destination row — not a primary action. Chevron marks the push. */}
-        <Pressable
-          onPress={() => router.push("/settings")}
-          accessibilityRole="button"
-          accessibilityLabel="Settings"
-          accessibilityHint="Opens device preferences and onboarding"
-          className="gg-card min-h-11 flex-row items-center justify-between"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-        >
-          <Text className="text-body text-text-primary">Settings</Text>
-          <ChevronRight size={20} color={colors.textMuted} accessibilityElementsHidden />
-        </Pressable>
 
         <SecondaryButton label="Sign out" onPress={() => void logout()} />
-
-        {/*
-          Kept, but demoted to a footnote: the rider cannot act on it, and it
-          only earns its place because this build talks to a demo server that
-          moves between machines.
-        */}
-        <View className="mt-auto gap-1 pb-6">
-          <Text className="text-caption text-text-muted">Connected to</Text>
-          <Text className="text-caption text-text-secondary" selectable>
-            {getApiBase()}
-          </Text>
-        </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

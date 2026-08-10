@@ -17,8 +17,11 @@ import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
-import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
-import { bindApiUnauthorizedHandler } from "@/store/session";
+import {
+  confirmSheetScreenOptions,
+  multiOriginPushedScreenOptions,
+} from "@/lib/navigationHeaders";
+import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,7 +64,15 @@ export default function RootLayout() {
   const scheme = useThemeName();
   const token = useThemeColors();
   const fontsReady = useAppFonts();
+  const sessionHydrated = useSession((s) => s.hydrated);
+  const hydrateSession = useSession((s) => s.hydrate);
   useHydrateTheme();
+
+  // Read the stored session here, not in the gate: the gate lives inside the
+  // tree that this component refuses to render until hydration finishes.
+  useEffect(() => {
+    void hydrateSession();
+  }, [hydrateSession]);
 
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.
@@ -69,11 +80,19 @@ export default function RootLayout() {
     SystemUI.setBackgroundColorAsync(token.canvas);
   }, [token.canvas]);
 
+  // The splash covers the session read as well as the fonts. Hiding it earlier
+  // shows a login screen to a rider who is already signed in.
   useEffect(() => {
-    if (fontsReady) SplashScreen.hideAsync();
-  }, [fontsReady]);
+    if (fontsReady && sessionHydrated) SplashScreen.hideAsync();
+  }, [fontsReady, sessionHydrated]);
 
-  if (!fontsReady) return null;
+  /*
+    Nothing renders until the fonts AND the stored session are ready. A screen
+    that mounts first fires its data load with no bearer, the server answers
+    401, and the 401 handler wipes the very session that was still loading —
+    which is how a signed-in rider ended up back at login on every cold start.
+  */
+  if (!fontsReady || !sessionHydrated) return null;
 
   return (
     <SafeAreaProvider>
@@ -96,6 +115,10 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             {/* The tab shell draws its own headers per tab. */}
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="alerts"
+              options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
+            />
             <Stack.Screen
               name="settings"
               options={{
@@ -131,6 +154,13 @@ export default function RootLayout() {
               name="trip/failed"
               options={{ title: "Failed attempt", ...multiOriginPushedScreenOptions }}
             />
+            {/*
+              Confirmations are the platform's own sheet, not a drawn overlay —
+              see `confirmSheetScreenOptions` for what that buys.
+            */}
+            <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+            <Stack.Screen name="trip/handback" options={confirmSheetScreenOptions} />
+            <Stack.Screen name="trip/cod-confirm" options={confirmSheetScreenOptions} />
           </Stack>
         </AuthGate>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />

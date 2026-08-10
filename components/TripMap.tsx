@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Platform, Text, View } from "react-native";
-import { WebView } from "react-native-webview";
+import { Text, View } from "react-native";
 
+import { MapFrame, type MapFrameHandle } from "@/components/MapFrame";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { isValidLatLng, type LatLng, type LonLat } from "@/lib/geo";
 import { buildMapHtml, type MapModel } from "@/lib/mapHtml";
@@ -22,7 +22,7 @@ type Props = {
 };
 
 /**
- * Leaflet map over OpenStreetMap tiles, rendered in a WebView.
+ * Leaflet map over OpenStreetMap tiles.
  *
  * No Google Maps, no API key. Attribution is always visible (licence).
  * When tiles fail to load the surrounding addresses and actions still work —
@@ -41,7 +41,7 @@ export function TripMap({
 }: Props) {
   const theme = useThemeName();
   const colors = useThemeColors();
-  const webRef = useRef<WebView>(null);
+  const frameRef = useRef<MapFrameHandle>(null);
   const readyRef = useRef(false);
 
   const model: MapModel = useMemo(
@@ -73,12 +73,8 @@ export function TripMap({
   const html = useMemo(() => buildMapHtml(model), [model.theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!readyRef.current || !webRef.current) return;
-    const payload = JSON.stringify(model);
-    // Both iOS and Android WebView accept injectJavaScript.
-    webRef.current.injectJavaScript(
-      `try { applyModel(${payload}); } catch (e) {} true;`,
-    );
+    if (!readyRef.current) return;
+    frameRef.current?.post(JSON.stringify(model));
   }, [model]);
 
   const hasStops = model.pickup || model.dropoff;
@@ -94,36 +90,19 @@ export function TripMap({
       accessibilityLabel="Trip map"
     >
       {hasStops ? (
-        <WebView
-          ref={webRef}
-          originWhitelist={["*"]}
-          source={{ html, baseUrl: "https://localhost" }}
-          onLoadEnd={() => {
-            readyRef.current = true;
-            const payload = JSON.stringify(model);
-            webRef.current?.injectJavaScript(
-              `try { applyModel(${payload}); } catch (e) {} true;`,
-            );
-          }}
-          style={{ flex: 1, backgroundColor: colors.surfaceVariant }}
-          // Map gestures should not fight the parent ScrollView on Android.
-          nestedScrollEnabled
-          scrollEnabled={false}
-          overScrollMode="never"
-          setSupportMultipleWindows={false}
-          javaScriptEnabled
-          domStorageEnabled
-          // Allow OSM / Leaflet CDN and tile hosts.
-          mixedContentMode="compatibility"
-          // Keep Android hardware layer for smoother pan.
-          androidLayerType={Platform.OS === "android" ? "hardware" : undefined}
+        <MapFrame
+          ref={frameRef}
+          html={html}
           accessibilityLabel="Map showing pickup, drop-off, and route"
+          onReady={() => {
+            readyRef.current = true;
+            frameRef.current?.post(JSON.stringify(model));
+          }}
         />
       ) : (
         <View className="flex-1 items-center justify-center bg-surface-variant p-4">
           <Text className="text-center text-body text-text-secondary">
-            Map coordinates are not available for this job. Use the addresses
-            below.
+            No map for this job — the addresses below are what to follow.
           </Text>
         </View>
       )}

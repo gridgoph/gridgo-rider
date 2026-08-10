@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,6 +15,8 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { OtpInput } from "@/components/OtpInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { LoadingCard } from "@/components/Skeleton";
+import { StickyActionBar } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -138,15 +139,10 @@ export default function DeliveryProofScreen() {
       >
         <ScrollView
           className="flex-1"
-          contentContainerClassName="gg-page gap-8 pb-10 pt-6"
+          contentContainerClassName="gg-page gap-8 pb-8 pt-6"
           keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
-            <View className="items-center gap-3 pt-10">
-              <ActivityIndicator color={colors.textMuted} />
-              <Text className="text-body text-text-muted">Loading the job…</Text>
-            </View>
-          ) : null}
+          {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
 
           {loadError ? (
             <InlineNotice
@@ -248,30 +244,33 @@ export default function DeliveryProofScreen() {
                 />
               ) : null}
 
-              <View className="gap-3">
-                <PrimaryButton
-                  label={busy ? "Recording…" : "Confirm delivery"}
-                  onPress={() => void confirmDelivery()}
-                  disabled={busy || Boolean(blocked)}
-                  size="large"
-                />
-                {blocked ? (
-                  <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-                ) : null}
-                <SecondaryButton
-                  label="Nobody can take it — report a failed attempt"
-                  onPress={() =>
-                    router.replace({
-                      pathname: "/trip/failed",
-                      params: { orderId: order.id },
-                    })
-                  }
-                  disabled={busy}
-                />
-              </View>
             </>
           ) : null}
         </ScrollView>
+
+        {order ? (
+          <StickyActionBar>
+            <PrimaryButton
+              label={busy ? "Recording…" : "Confirm delivery"}
+              onPress={() => void confirmDelivery()}
+              disabled={busy || Boolean(blocked)}
+              size="large"
+            />
+            {blocked ? (
+              <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+            ) : null}
+            <SecondaryButton
+              label="Nobody can take it — report a failed attempt"
+              onPress={() =>
+                router.replace({
+                  pathname: "/trip/failed",
+                  params: { orderId: order.id },
+                })
+              }
+              disabled={busy}
+            />
+          </StickyActionBar>
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

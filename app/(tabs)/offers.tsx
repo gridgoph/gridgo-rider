@@ -1,49 +1,65 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AlertsButton } from "@/components/AlertsButton";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { LoadingCard } from "@/components/Skeleton";
 import { OfferCard } from "@/components/OfferCard";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { selectActiveTrip, selectOffers } from "@/lib/riderOrder";
+import { selectOffers } from "@/lib/riderOrder";
+import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
 
+/**
+ * The open dispatch pool.
+ *
+ * A rider carries one job at a time, so the screen's first duty when a trip is
+ * already in hand is to say so and send them back to it, rather than offering
+ * jobs they cannot take.
+ */
 export default function OffersScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const { user } = useSession();
-  const [offers, setOffers] = useState<api.Order[]>([]);
-  const [hasActive, setHasActive] = useState(false);
+  const user = useSession((s) => s.user);
+  const activeTrip = useActiveTrip((s) => s.order);
+  const refreshTrip = useActiveTrip((s) => s.refresh);
+  const setOrder = useActiveTrip((s) => s.setOrder);
+
+  const [offers, setOffers] = useState<api.Order[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const hasActive = Boolean(activeTrip);
 
   const reload = useCallback(
     async (mode: "load" | "refresh" = "load") => {
       if (mode === "refresh") setRefreshing(true);
-      else setLoading(true);
       try {
-        const [list, orders] = await Promise.all([api.listOffers(), api.listOrders()]);
+        const [list] = await Promise.all([
+          api.listOffers(),
+          refreshTrip(user?.id ?? null, "refresh"),
+        ]);
         setOffers(selectOffers(list));
-        setHasActive(Boolean(user && selectActiveTrip(orders, user.id)));
         setError(null);
       } catch (e) {
         setError(
           api.apiErrorMessage(
             e,
-            "Could not load offers. Check your connection and pull down to try again.",
+            "Offers did not load. Check the phone's connection and pull down to try again.",
           ),
         );
+        setOffers((current) => current ?? []);
       } finally {
-        setLoading(false);
         setRefreshing(false);
       }
     },
-    [user],
+    [refreshTrip, user?.id],
   );
 
   useFocusEffect(
@@ -56,13 +72,16 @@ export default function OffersScreen() {
     setBusyId(id);
     setError(null);
     try {
-      await api.acceptOffer(id);
-      await reload();
+      setOrder(await api.acceptOffer(id));
       router.push("/(tabs)/active");
     } catch (e) {
       setError(
-        api.apiErrorMessage(e, "Could not accept this offer. Pull down to refresh and try another."),
+        api.apiErrorMessage(
+          e,
+          "That job could not be accepted. Pull down to refresh and take another.",
+        ),
       );
+      void reload("refresh");
     } finally {
       setBusyId(null);
     }
@@ -72,7 +91,7 @@ export default function OffersScreen() {
     <SafeAreaView className="gg-screen" edges={["top"]}>
       <ScrollView
         className="flex-1"
-        contentContainerClassName="gg-page gap-6 pb-10 pt-6"
+        contentContainerClassName="gg-page gap-6 pb-10 pt-3"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -81,19 +100,31 @@ export default function OffersScreen() {
           />
         }
       >
-        <View className="gap-2">
-          <Text className="text-h1 text-text-primary">Offers</Text>
-          <Text className="text-body-lg text-text-secondary">
-            Jobs ready for pickup, newest first. You carry one at a time.
-          </Text>
-        </View>
+        <ScreenHeader
+          title="Offers"
+          subtitle="Jobs ready for pickup. You carry one at a time."
+          action={<AlertsButton />}
+        />
 
-        {hasActive ? (
+        {/*
+          One job at a time. With a trip in hand and nothing else waiting, the
+          rule is the whole answer, so it fills the screen rather than sitting
+          as a notice above 600px of nothing.
+        */}
+        {hasActive && offers?.length === 0 ? (
+          <EmptyState
+            icon="trip"
+            title="You already have a job in hand"
+            body="Close it, or hand the package back, and the next offers appear here straight away."
+            actionLabel="Open my trip"
+            onAction={() => router.push("/(tabs)/active")}
+          />
+        ) : hasActive ? (
           <InlineNotice
             tone="info"
             icon="info"
-            title="You already have a trip in hand"
-            body="Finish it, or hand the package back, before you take another job. New offers appear here once it is closed."
+            title="You already have a job in hand"
+            body="Close it, or hand the package back, before taking another. These stay open for other riders in the meantime."
             actionLabel="Open my trip"
             onAction={() => router.push("/(tabs)/active")}
           />
@@ -110,14 +141,14 @@ export default function OffersScreen() {
           />
         ) : null}
 
-        {loading && !offers.length ? (
-          <View className="items-center gap-3 pt-6">
-            <ActivityIndicator color={colors.textMuted} />
-            <Text className="text-body text-text-muted">Loading offers…</Text>
+        {offers === null ? (
+          <View className="gap-4">
+            <LoadingCard label="Loading open offers" rows={3} />
+            <LoadingCard label="Loading open offers" rows={3} />
           </View>
         ) : null}
 
-        {offers.length ? (
+        {offers?.length ? (
           <View className="gap-4">
             {offers.map((job) => (
               <OfferCard
@@ -135,10 +166,11 @@ export default function OffersScreen() {
           and offers the next step, so an empty state repeating it would be a
           second invitation to the same place.
         */}
-        {!loading && !offers.length && !error && !hasActive ? (
+        {offers !== null && !offers.length && !error && !hasActive ? (
           <EmptyState
+            icon="offers"
             title="No open offers"
-            body="A job appears here the moment a supplier marks it ready, with its route and fee. Pull down to check again."
+            body="A job appears here the moment a supplier marks it ready, with its route and its fee. Pull down to check again."
           />
         ) : null}
       </ScrollView>

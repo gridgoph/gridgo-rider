@@ -1,15 +1,16 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OtpInput } from "@/components/OtpInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { LoadingCard } from "@/components/Skeleton";
+import { StickyActionBar } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
-import { useThemeColors } from "@/hooks/useTheme";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
@@ -27,7 +28,6 @@ const OTP_LENGTH = 4;
  */
 export default function PickupProofScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
   const { order, loading, error: loadError } = useTripOrder(id);
@@ -97,15 +97,10 @@ export default function PickupProofScreen() {
       >
         <ScrollView
           className="flex-1"
-          contentContainerClassName="gg-page gap-8 pb-10 pt-6"
+          contentContainerClassName="gg-page gap-8 pb-8 pt-6"
           keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
-            <View className="items-center gap-3 pt-10">
-              <ActivityIndicator color={colors.textMuted} />
-              <Text className="text-body text-text-muted">Loading the job…</Text>
-            </View>
-          ) : null}
+          {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
 
           {loadError ? (
             <InlineNotice
@@ -159,21 +154,23 @@ export default function PickupProofScreen() {
                   body={submitError}
                 />
               ) : null}
-
-              <View className="gap-3">
-                <PrimaryButton
-                  label={busy ? "Recording…" : "Confirm pickup"}
-                  onPress={() => void confirmPickup()}
-                  disabled={busy || Boolean(blocked)}
-                  size="large"
-                />
-                {blocked ? (
-                  <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-                ) : null}
-              </View>
             </>
           ) : null}
         </ScrollView>
+
+        {order ? (
+          <StickyActionBar>
+            <PrimaryButton
+              label={busy ? "Recording…" : "Confirm pickup"}
+              onPress={() => void confirmPickup()}
+              disabled={busy || Boolean(blocked)}
+              size="large"
+            />
+            {blocked ? (
+              <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+            ) : null}
+          </StickyActionBar>
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

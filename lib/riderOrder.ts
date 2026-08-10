@@ -367,24 +367,39 @@ export function buildFailureNote(report: FailureReport): string {
   return `${parts.join(". ")}`.replace(/\.\.$/, ".");
 }
 
-/** Copy for the confirmation that stands between the rider and each outcome. */
-export function failureOutcomeConfirm(
+/**
+ * What the rider is committing to, said on the button and above it.
+ *
+ * There is no confirmation dialog behind this on purpose. The rider has just
+ * chosen a reason, taken a photo and picked what happens to the package; a
+ * modal asking the same question again is a step, not a safeguard. Instead the
+ * button names the exact outcome and the line above it names the consequence,
+ * which is the same information without the interruption. Nothing here is
+ * irreversible either way — Active offers "the client can take it after all"
+ * for as long as the package is with the rider.
+ */
+export function failureOutcomeCommit(
   outcome: FailureOutcome,
   supplierLabel: string,
-): { question: string; body: string; confirmLabel: string; cancelLabel: string } {
+  nextAttemptAt?: Date | null,
+): { label: string; consequence: string } {
   if (outcome === "return") {
     return {
-      question: `Return this package to ${supplierLabel}?`,
-      body: "The client will not get it today. Operations has to reschedule the delivery, and you keep the package until the supplier takes it back.",
-      confirmLabel: "Return the package",
-      cancelLabel: "Keep trying today",
+      label: "Record it and take the package back",
+      consequence: `The client does not get it today. Operations reschedules the delivery once ${supplierLabel} has the package again.`,
     };
   }
+
+  const when =
+    nextAttemptAt && !Number.isNaN(nextAttemptAt.getTime())
+      ? formatAttemptAt(nextAttemptAt)
+      : null;
+
   return {
-    question: "Record this attempt and try again later?",
-    body: "The job stays with you. The client and Operations see the attempt and when you plan to return.",
-    confirmLabel: "Record and try again",
-    cancelLabel: "Back to the report",
+    label: when ? `Record it and try again ${when}` : "Record it and try again later",
+    consequence: when
+      ? `The job stays with you. The client and Operations see this attempt and that you are coming back ${when}.`
+      : "The job stays with you. The client and Operations see this attempt.",
   };
 }
 

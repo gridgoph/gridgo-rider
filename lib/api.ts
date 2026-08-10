@@ -219,6 +219,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const sentBearer = Boolean(tokenMemory);
   if (tokenMemory) headers.Authorization = `Bearer ${tokenMemory}`;
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
@@ -234,7 +235,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     // Expired/invalid bearer — wipe local auth so the routing gate leaves (tabs).
     // Login 401 is wrong password, not session death; skip that path.
-    if (shouldInvalidateSessionOnStatus(res.status, path)) {
+    //
+    // A 401 on a request that carried no bearer at all proves nothing about the
+    // stored session — it usually means the request went out before the session
+    // was read back from the phone. Treating it as expiry deleted the very
+    // session that was still loading, which signed the rider out on every cold
+    // start.
+    if (sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
       tokenMemory = null;
       unauthorizedHandler?.();
     }
@@ -404,7 +411,26 @@ export function formatPhp(minor: number): string {
   })}`;
 }
 
-/** Map API errors to rider-facing recovery copy. */
+/**
+ * Whether a string is an internal identifier rather than something to read.
+ *
+ * The demo API answers failures with `{ error: "not_offerable" }`, and an
+ * `HTTP 500` is no better. Either one on a rider's screen is the clearest tell
+ * that nobody finished the screen, so anything shaped like a code or a status
+ * line is swapped for the caller's own sentence.
+ */
+export function isInternalCode(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  // snake_case / kebab-case / SCREAMING_CASE identifiers, and "HTTP 503".
+  if (/^[a-z][a-z0-9]*([_-][a-z0-9]+)+$/i.test(trimmed)) return true;
+  if (/^HTTP\s+\d{3}$/i.test(trimmed)) return true;
+  // A single lowercase word with no sentence around it is a code too.
+  if (/^[a-z0-9]+$/.test(trimmed)) return true;
+  return false;
+}
+
+/** Map API errors to rider-facing recovery copy. Never shows a raw code. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     const code = typeof error.body === "object" && error.body && "error" in error.body
@@ -412,21 +438,30 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       : error.message;
     switch (code) {
       case "not_offerable":
-        return "This offer is no longer available. Pull to refresh the list.";
+        return "Another rider took this job. Pull down to refresh the list.";
       case "order_not_found":
-        return "That job is gone. Open Offers for a new one.";
+        return "That job is gone. Open Offers to take a new one.";
       case "tracking_not_active":
         return "Location sharing only runs while a package is with you.";
       case "forbidden":
-        return "You do not have access to this job.";
+        return "This job is not assigned to you.";
       case "invalid_transition":
       case "invalid_state":
-        return "This step is no longer available. Refresh the trip.";
+        return "This step is no longer available. Pull down to refresh the trip.";
+      case "minio_unavailable":
+      case "storage_initializing":
+        return "Photo storage is offline, so nothing can be proven yet. Tell Operations.";
       default:
-        return error.message || fallback;
+        break;
     }
+    if (error.status >= 500) {
+      return `${fallback} If it keeps happening, tell Operations the server is failing.`;
+    }
+    return isInternalCode(code) ? fallback : code;
   }
-  if (error instanceof Error && error.message) return error.message;
+  if (error instanceof Error && error.message && !isInternalCode(error.message)) {
+    return error.message;
+  }
   return fallback;
 }
 
