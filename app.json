@@ -62,8 +62,7 @@
           "cameraPermission": "GRIDGO uses the camera for pickup and delivery proof photos.",
           "photosPermission": "GRIDGO may attach a proof photo from your library when the camera is unavailable."
         }
-      ],
-      "@react-native-community/datetimepicker"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
