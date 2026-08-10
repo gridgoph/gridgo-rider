@@ -4,6 +4,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
+import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
@@ -26,20 +27,22 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { classifyLocation } from "@/lib/locationFreshness";
 import { routeSummaryLabel } from "@/lib/osrm";
+import { checklistSummary } from "@/lib/pickupChecklist";
+import { approvalPresentation } from "@/lib/riderApproval";
 import {
   activeStopKind,
-  codAmountDueMinor,
   dropoffLabel,
-  formatTimelineAt,
+  issueWindowLabel,
   orderStateChip,
+  owesSignOff,
   pickupLabel,
   primaryActionLabel,
+  signOffPrompt,
   stopLatLng,
   zoneLabel,
 } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
-import { useTripProof } from "@/store/tripProof";
 
 /** How often the position age on screen is recomputed. */
 const FRESHNESS_TICK_MS = 5_000;
@@ -52,11 +55,13 @@ const MAP_HEIGHT = 200;
  *
  * Reading order is the order a rider needs it in: where you are going, how far,
  * the step that gets it done, then the map, then what the job is, then its
- * history. The step used to sit under a spec table and a pair of address
- * cards, which put the one control that matters below the fold on every phone.
+ * history. Every proof step is its own pushed screen, so this screen never
+ * grows a second yellow button and never asks for anything.
  *
- * Every proof step is its own pushed screen, so this screen never grows a
- * second yellow button and never asks for anything.
+ * Two states outrank the ladder, and both replace the step rather than sitting
+ * beside it: a failed pickup check, where there is no next step until
+ * Operations says so, and the spoken sign-off, which the rider owes the
+ * supplier before the wheels turn.
  */
 export default function ActiveScreen() {
   const router = useRouter();
@@ -68,25 +73,18 @@ export default function ActiveScreen() {
   const loaded = useActiveTrip((s) => s.loaded);
   const tripError = useActiveTrip((s) => s.error);
   const refreshTrip = useActiveTrip((s) => s.refresh);
-  const setOrder = useActiveTrip((s) => s.setOrder);
 
   const [refreshing, setRefreshing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [focused, setFocused] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+  const [issueWindowHours, setIssueWindowHours] = useState<number | null>(null);
 
-  const clearException = useTripProof((state) => state.clearException);
-  const exceptions = useTripProof((state) => state.exceptions);
-
+  const approval = approvalPresentation(user);
   const { phase } = useRiderAction();
-  const exception = trip ? (exceptions[trip.id] ?? null) : null;
   const pickup = stopLatLng(trip?.pickup);
   const dropoff = stopLatLng(trip?.dropoff);
   const heading = activeStopKind(phase);
 
-  // Route to the stop the rider is actually heading to, so a package on its way
-  // back to the shop is not drawn as a delivery.
   const { route } = useRoute({
     from: heading === "pickup" ? dropoff : pickup,
     to: heading === "pickup" ? pickup : dropoff,
@@ -111,6 +109,21 @@ export default function ActiveScreen() {
     const handle = setInterval(() => setNow(Date.now()), FRESHNESS_TICK_MS);
     return () => clearInterval(handle);
   }, [needsGps]);
+
+  // The issue window is one global setting Operations can change without a
+  // release, so the length is read rather than written into the copy.
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getSettings()
+      .then((settings) => {
+        if (!cancelled) setIssueWindowHours(settings.issueWindowHours);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const freshness = useMemo(
     () =>
@@ -160,55 +173,31 @@ export default function ActiveScreen() {
     if (!trip) return;
     const params = { orderId: trip.id };
     switch (phase) {
-      case "pickup":
+      case "pickup_checks":
         router.push({ pathname: "/trip/pickup", params });
         return;
       case "start_delivery":
         router.push({ pathname: "/trip/start", params });
         return;
-      case "collect_cod":
-        router.push({ pathname: "/trip/cod", params });
-        return;
       case "delivery_proof":
         router.push({ pathname: "/trip/delivery", params });
-        return;
-      case "returning":
-        router.push({ pathname: "/trip/handback", params });
         return;
       default:
     }
   }
 
-  async function undoReturn() {
-    if (!trip) return;
-    setBusy(true);
-    setActionError(null);
-    try {
-      clearException(trip.id);
-      setOrder(await api.getOrder(trip.id));
-    } catch (e) {
-      setActionError(
-        api.apiErrorMessage(e, "The job did not refresh. Pull down and try again."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const chip = trip ? orderStateChip(trip.state) : null;
+  const chip = trip ? orderStateChip(trip) : null;
   const cta = primaryActionLabel(phase);
-  const lastAttempt = exception?.attempts.at(-1) ?? null;
+  const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
   const stopAddress = trip
     ? heading === "pickup"
       ? pickupLabel(trip)
       : dropoffLabel(trip)
     : "";
   const stopHeading =
-    phase === "returning"
-      ? "Take the package back to the shop it came from"
-      : heading === "pickup"
-        ? "Collect the finished job from the counter"
-        : "Hand the package to the client";
+    heading === "pickup"
+      ? "Check the finished job at the counter before you carry it"
+      : "Hand the package to the client";
 
   return (
     <Screen edges={["top"]}>
@@ -231,40 +220,46 @@ export default function ActiveScreen() {
             a skeleton of the trip that is about to appear, is the screen
             contradicting itself.
           */
-          subtitle={loaded && !trip ? "Nothing with you right now." : null}
+          subtitle={approval.canWork && loaded && !trip ? "Nothing with you right now." : null}
           action={<AlertsButton />}
         />
 
-        {tripError ? (
-          <InlineNotice
-            tone="error"
-            icon="circle-x"
-            title="Your trip did not load"
-            body={tripError}
-            actionLabel="Try again"
-            onAction={() => void reload()}
-          />
+        {!approval.canWork ? <ApprovalNotice /> : null}
+
+        {approval.canWork ? (
+          <>
+            {tripError ? (
+              <InlineNotice
+                tone="error"
+                icon="circle-x"
+                title="Your trip did not load"
+                body={tripError}
+                actionLabel="Try again"
+                onAction={() => void reload()}
+              />
+            ) : null}
+
+            {!loaded && !trip ? <ActiveTripSkeleton /> : null}
+
+            {loaded && !trip && !tripError ? (
+              <EmptyState
+                icon="trip"
+                title="No job in hand"
+                body="Accept an offer and it appears here with the route, the stops, and every step you need to close it."
+                actionLabel="Browse offers"
+                onAction={() => router.push("/(tabs)/offers")}
+                /*
+                  Quiet on purpose: the raised disc below already offers this
+                  exact move in yellow, and the same action twice in the same
+                  colour makes both of them ordinary.
+                */
+                secondaryAction
+              />
+            ) : null}
+          </>
         ) : null}
 
-        {!loaded && !trip ? <ActiveTripSkeleton /> : null}
-
-        {loaded && !trip && !tripError ? (
-          <EmptyState
-            icon="trip"
-            title="No job in hand"
-            body="Accept an offer and it appears here with the route, the stops, and every step you need to close it."
-            actionLabel="Browse offers"
-            onAction={() => router.push("/(tabs)/offers")}
-            /*
-              Quiet on purpose: the raised disc below already offers this exact
-              move in yellow, and the same action twice in the same colour makes
-              both of them ordinary.
-            */
-            secondaryAction
-          />
-        ) : null}
-
-        {trip ? (
+        {trip && approval.canWork ? (
           <>
             {heading ? (
               <NextStopCard
@@ -273,6 +268,20 @@ export default function ActiveScreen() {
                 address={stopAddress}
                 routeSummary={route ? routeSummaryLabel(route) : "Measuring the route…"}
                 zone={zoneLabel(trip.zone)}
+              />
+            ) : null}
+
+            {/*
+              Transport is refused, so the step is refused with it. A yellow
+              button here would be the app offering a move the business has
+              already stopped.
+            */}
+            {phase === "pickup_blocked" ? (
+              <InlineNotice
+                tone="error"
+                icon="circle-x"
+                title="Do not transport this package"
+                body={`${checklistSummary(trip) ?? "A pickup check failed."} GRIDGO has logged it against the supplier and raised it with the founder. Leave the package at the shop and wait — you will get an alert here with what to do next.`}
               />
             ) : null}
 
@@ -288,29 +297,28 @@ export default function ActiveScreen() {
                 entering={reducedMotion ? undefined : FadeIn.duration(200)}
                 className="gap-2"
               >
-                <PrimaryButton
-                  label={busy ? "Working…" : cta}
-                  onPress={openPrimary}
-                  disabled={busy}
-                  size="large"
-                />
-                {phase === "delivery_proof" || phase === "collect_cod" ? (
-                  <SecondaryButton
-                    label="Report a failed attempt"
-                    onPress={() =>
-                      router.push({ pathname: "/trip/failed", params: { orderId: trip.id } })
-                    }
-                    disabled={busy}
-                  />
-                ) : null}
-                {phase === "returning" ? (
-                  <SecondaryButton
-                    label="The client can take it after all"
-                    onPress={() => void undoReturn()}
-                    disabled={busy}
-                  />
-                ) : null}
+                <PrimaryButton label={cta} onPress={openPrimary} size="large" />
               </Animated.View>
+            ) : null}
+
+            {/*
+              The trained sign-off, for as long as it is owed. Not a phase: no
+              server record clears it, and a step only this phone could tick
+              would sit there forever.
+            */}
+            {signOff ? (
+              <View className="gap-3 rounded-card border-2 border-accent bg-surface p-4">
+                <Text className="text-overline text-text-muted">
+                  SAY THIS TO THE SUPPLIER BEFORE YOU RIDE
+                </Text>
+                <Text className="text-h3 text-text-primary">{signOff}</Text>
+                <SecondaryButton
+                  label="Show me the checkpoint again"
+                  onPress={() =>
+                    router.push({ pathname: "/trip/sign-off", params: { orderId: trip.id } })
+                  }
+                />
+              </View>
             ) : null}
 
             <View style={{ height: MAP_HEIGHT }}>
@@ -333,40 +341,12 @@ export default function ActiveScreen() {
 
             <LocationSharingBanner sharing={sharing} freshness={freshness} />
 
-            {lastAttempt ? (
-              <InlineNotice
-                tone="warning"
-                icon="triangle-alert"
-                title={
-                  exception && exception.attempts.length > 1
-                    ? `${exception.attempts.length} failed attempts recorded`
-                    : "Failed attempt recorded"
-                }
-                body={`${lastAttempt.note} · ${formatTimelineAt(lastAttempt.at)}. Kept on this phone; Operations has the report.`}
-              />
-            ) : null}
-
-            {actionError ? (
-              <InlineNotice tone="error" icon="circle-x" title="That did not go through" body={actionError} />
-            ) : null}
-
-            {phase === "returned" ? (
-              <InlineNotice
-                tone="success"
-                icon="circle-check"
-                title={`Package handed back to ${pickupLabel(trip)}`}
-                body="Operations reschedules this delivery from here. You are free to take the next offer."
-                actionLabel="Browse offers"
-                onAction={() => router.push("/(tabs)/offers")}
-              />
-            ) : null}
-
             {phase === "complete" ? (
               <InlineNotice
                 tone="success"
                 icon="circle-check"
                 title="Delivered"
-                body="The client has 24 hours to raise an issue. Nothing else is needed from you."
+                body={`The client has ${issueWindowLabel(issueWindowHours)} to raise an issue. Nothing else is needed from you.`}
                 actionLabel="Browse offers"
                 onAction={() => router.push("/(tabs)/offers")}
               />
@@ -383,15 +363,7 @@ export default function ActiveScreen() {
                 <SpecRow label="Size" value={trip.size} />
                 <SpecRow label="Material" value={trip.material} />
                 <SpecRow label="Quantity" value={String(trip.quantity)} />
-                {trip.paymentMethod === "cod" ? (
-                  <SpecRow
-                    label="Cash to collect"
-                    value={api.formatPhp(codAmountDueMinor(trip))}
-                    last
-                  />
-                ) : (
-                  <SpecRow label="Payment" value="Already paid" last />
-                )}
+                <SpecRow label="Your fee" value={api.formatPhp(trip.deliveryFeeMinor)} last />
               </View>
             </View>
 
@@ -402,7 +374,6 @@ export default function ActiveScreen() {
           </>
         ) : null}
       </ScrollView>
-
     </Screen>
   );
 }

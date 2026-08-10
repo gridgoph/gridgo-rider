@@ -147,6 +147,17 @@ export function SkeletonBlock({
   return <Placeholder width={width} height={height} shape="block" />;
 }
 
+/** A fully rounded control — an answer pill, a chip, a tag. */
+export function SkeletonPill({
+  width = "100%",
+  height = 44,
+}: {
+  width?: number | `${number}%`;
+  height?: number;
+}) {
+  return <Placeholder width={width} height={height} shape="pill" />;
+}
+
 /**
  * The box a button will occupy.
  *

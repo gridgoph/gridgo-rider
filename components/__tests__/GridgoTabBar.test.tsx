@@ -142,7 +142,7 @@ describe("GridgoTabBar", () => {
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    expect(screen.getByText("Pick up")).toBeTruthy();
+    expect(screen.getByText("Check it")).toBeTruthy();
     fireEvent.press(screen.getByTestId("tab-action-disc"));
 
     expect(mockPush).toHaveBeenCalledWith({
@@ -153,19 +153,45 @@ describe("GridgoTabBar", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("stacks design padding with the system inset rather than Math.max", () => {
-    // Design pad is always added to insets.bottom (never Math.max).
-    expect(TAB_DESIGN_PADDING).toBe(8);
-    expect(tabBarPaddingBottom(34)).toBe(42);
-    expect(tabBarPaddingBottom(0)).toBe(8);
-    // Content height is Material Design 3 icon+label standard.
-    expect(TAB_CONTENT_HEIGHT).toBe(80);
+  describe("bottom padding follows each platform's own bottom-bar spec", () => {
+    // The visible painted bar is 64 + padding; see `tabBarPaddingBottom`.
+    const PAINTED_ROW = TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET;
+
+    it("gives iOS the safe-area inset and nothing on top of it", () => {
+      // UIKit is 49pt of content + the 34pt inset = 83pt, with no padding of
+      // its own; React Navigation's own bar does the same. Adding the design
+      // pad here is the 8pt of extra bar that was reported as sitting too high.
+      expect(tabBarPaddingBottom(34, "ios")).toBe(34);
+      expect(PAINTED_ROW + tabBarPaddingBottom(34, "ios")).toBe(98);
+    });
+
+    it("still pads an iPhone that has no home indicator to breathe on", () => {
+      expect(tabBarPaddingBottom(0, "ios")).toBe(TAB_DESIGN_PADDING);
+      expect(PAINTED_ROW + tabBarPaddingBottom(0, "ios")).toBe(72);
+    });
+
+    it("stacks the design pad on Android, where the inset is a gesture strip", () => {
+      // MD3's 80dp container sits above the system inset, and our painted row
+      // is 64. Math.max is still banned: it would hand Android the bare inset.
+      expect(tabBarPaddingBottom(24, "android")).toBe(32);
+      expect(PAINTED_ROW + tabBarPaddingBottom(24, "android")).toBe(96);
+      expect(tabBarPaddingBottom(48, "android")).toBe(56);
+      expect(PAINTED_ROW + tabBarPaddingBottom(48, "android")).toBe(120);
+      expect(tabBarPaddingBottom(24, "android")).not.toBe(Math.max(24, TAB_DESIGN_PADDING));
+    });
+
+    it("keeps the two current-generation phones within a few dp of each other", () => {
+      const ios = PAINTED_ROW + tabBarPaddingBottom(34, "ios");
+      const android = PAINTED_ROW + tabBarPaddingBottom(24, "android");
+      expect(Math.abs(ios - android)).toBeLessThanOrEqual(4);
+    });
   });
 
-  it("offsets the painted surface 16dp so the visible bar matches client (64 + inset + 8)", () => {
+  it("offsets the painted surface 16dp so the disc breaks the hairline", () => {
     // top-4 overlay: transparent strip above the hairline; disc overhangs into it.
     expect(TAB_SURFACE_TOP_OFFSET).toBe(16);
-    // Visible painted height above the design pad (before system inset).
+    // Content height is Material Design 3 icon+label standard.
+    expect(TAB_CONTENT_HEIGHT).toBe(80);
     expect(TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET).toBe(64);
     // 56dp disc + 16dp label box + 8dp pad is exactly the 80dp column, which is
     // what puts the action's label in the same box as the destinations' labels.

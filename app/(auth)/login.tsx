@@ -1,4 +1,4 @@
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -13,6 +13,7 @@ import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
@@ -33,6 +34,7 @@ type HealthState = "checking" | "reachable" | "unreachable";
  * unanswerable without it. It is the one screen where that is true.
  */
 export default function LoginScreen() {
+  const router = useRouter();
   const user = useSession((s) => s.user);
   const login = useSession((s) => s.login);
   const loading = useSession((s) => s.loading);
@@ -79,7 +81,8 @@ export default function LoginScreen() {
             <View className="gap-1">
               <Text className="text-h1 text-text-primary">Sign in</Text>
               <Text className="text-body-lg text-text-secondary">
-                Riders only. Operations issues the account.
+                Riders only. New here? Create your account below — Operations accredits it
+                before your first job.
               </Text>
             </View>
           </View>
@@ -125,6 +128,12 @@ export default function LoginScreen() {
               onPress={() => void login(email.trim(), password)}
               disabled={loading}
               size="large"
+            />
+
+            <SecondaryButton
+              label="Create a rider account"
+              onPress={() => router.push("/(auth)/signup")}
+              disabled={loading}
             />
 
             <Text className="text-caption text-text-muted">

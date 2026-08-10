@@ -1,8 +1,8 @@
 import { useFocusEffect } from "expo-router";
-import { Banknote } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 
+import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
@@ -10,16 +10,17 @@ import { EarningsSkeleton } from "@/components/SkeletonScreens";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { approvalPresentation } from "@/lib/riderApproval";
 import { earningsDayLabel, summariseEarnings } from "@/lib/riderEarnings";
 import { useSession } from "@/store/session";
 
 /**
- * What today paid, and what of GRIDGO's cash is in the rider's pocket.
+ * What today paid.
  *
- * Two numbers that must never merge. The fee total is the rider's; the cash
- * figure is customer money they are holding until Operations reconciles it,
- * and a rider who adds them up goes home short. So they are two cards, worded
- * differently, and the cash one only exists when there is cash to hand in.
+ * This screen used to carry a second, louder figure: the customer cash the
+ * rider was holding until Operations reconciled it. Cash on delivery is gone,
+ * so that number is gone with it, and everything on screen is now the rider's
+ * own money — which is the whole reason the two were ever kept apart.
  *
  * The demo backend has no payouts endpoint, so every figure here is derived
  * from the rider's own delivered orders. The footnote says exactly that rather
@@ -28,6 +29,7 @@ import { useSession } from "@/store/session";
 export default function EarningsScreen() {
   const colors = useThemeColors();
   const user = useSession((s) => s.user);
+  const approval = approvalPresentation(user);
 
   const [orders, setOrders] = useState<api.Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +91,9 @@ export default function EarningsScreen() {
       >
         <ScreenHeader title="Earnings" subtitle="Delivery fees from jobs you closed." />
 
-        {error ? (
+        {!approval.canWork ? <ApprovalNotice /> : null}
+
+        {error && approval.canWork ? (
           <InlineNotice
             tone="error"
             icon="circle-x"
@@ -100,9 +104,9 @@ export default function EarningsScreen() {
           />
         ) : null}
 
-        {orders === null ? <EarningsSkeleton /> : null}
+        {orders === null && approval.canWork ? <EarningsSkeleton /> : null}
 
-        {orders !== null ? (
+        {orders !== null && approval.canWork ? (
           <>
             {/* Today, as one number. The reason a rider opens this tab. */}
             <View className="gg-card gap-1">
@@ -118,29 +122,6 @@ export default function EarningsScreen() {
                     : `${summary.todayCount} deliveries closed today.`}
               </Text>
             </View>
-
-            {/*
-              Emphasis is the monochrome accent border, the same device the
-              cash-collection screen uses for the amount. In Dark the warning
-              token sits a shade away from actionYellow, and a yellow-edged card
-              an inch from the yellow disc would spend the screen's attention
-              budget on something that is not an action.
-            */}
-            {summary.cashToHandInMinor > 0 ? (
-              <View className="gap-3 rounded-card border-2 border-accent bg-surface p-4">
-                <View className="flex-row items-center gap-2">
-                  <Banknote size={16} color={colors.textPrimary} strokeWidth={2} />
-                  <Text className="text-overline text-text-muted">CASH TO HAND IN</Text>
-                </View>
-                <Text className="text-h1 text-text-primary">
-                  {api.formatPhp(summary.cashToHandInMinor)}
-                </Text>
-                <Text className="text-body text-text-secondary">
-                  Client money you collected on delivery. It is not part of your fees — hand
-                  it to Operations at the end of your shift.
-                </Text>
-              </View>
-            ) : null}
 
             {summary.entries.length ? (
               <View className="gap-3">
@@ -166,9 +147,6 @@ export default function EarningsScreen() {
                         </Text>
                         <Text className="text-caption text-text-muted">
                           {earningsDayLabel(entry.at)}
-                          {entry.cashCollectedMinor > 0
-                            ? ` · ${api.formatPhp(entry.cashCollectedMinor)} cash taken`
-                            : ""}
                         </Text>
                       </View>
                       <Text className="text-h3 text-text-primary">
@@ -187,7 +165,7 @@ export default function EarningsScreen() {
               <EmptyState
                 icon="earnings"
                 title="Nothing earned yet"
-                body="Every delivery you close adds its fee here, with the cash you took at the door listed separately."
+                body="Every delivery you close adds its fee here. The fee is banded by how far the drop-off is from the shop."
               />
             ) : null}
           </>

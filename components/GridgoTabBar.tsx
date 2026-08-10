@@ -2,13 +2,13 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import {
-  Banknote,
   Camera,
+  CircleAlert,
+  ClipboardCheck,
+  Hourglass,
   Inbox,
   Navigation,
-  Package,
   Search,
-  Undo2,
   User,
   Wallet,
   type LucideIcon,
@@ -42,41 +42,80 @@ const ICONS: Record<TabName, LucideIcon> = {
  * keeps it legible at a glance, and in greyscale.
  */
 const ACTION_GLYPHS: Record<RiderActionGlyph, LucideIcon> = {
-  package: Package,
+  checklist: ClipboardCheck,
+  hold: CircleAlert,
   navigate: Navigation,
-  cash: Banknote,
   camera: Camera,
-  undo: Undo2,
   search: Search,
+  waiting: Hourglass,
 };
 
 /**
  * Tab bar geometry (Material Design 3 icon+label bar = 80dp content column).
  *
- * System inset (gesture bar / three-button nav) and design padding STACK:
- *   paddingBottom = insets.bottom + TAB_DESIGN_PADDING
- * Math.max was wrong — it discarded the design pad whenever the inset
- * exceeded 8px (every modern Android phone).
- *
  * The painted surface is an absolute overlay starting 16dp (top-4) below the
- * container top so the visible bar is 64 + inset + 8. The top 16dp stays
+ * container top, so the visible bar is 64 + paddingBottom. The top 16dp stays
  * transparent; the raised action disc paints over that strip and breaks the
- * hairline — same structure as gridgo-client.
+ * hairline — same structure as gridgo-client, and none of it moves here.
  */
 export const TAB_CONTENT_HEIGHT = 80;
-/** Design padding under the icon+label row — always stacked with the system inset. */
+/**
+ * Design padding under the icon+label row.
+ *
+ * Not a universal constant: see `tabBarPaddingBottom` for where it applies and
+ * why iOS does not take it.
+ */
 export const TAB_DESIGN_PADDING = 8;
 /**
  * How far the painted surface (bg + top hairline) sits below the container top.
- * Matches NativeWind `top-4` (16dp). Visible bar height = content − this + inset + pad.
+ * Matches NativeWind `top-4` (16dp). Visible bar height = content − this + padding.
  */
 export const TAB_SURFACE_TOP_OFFSET = 16;
 
 /**
- * Compose the bar's bottom padding: system inset + design pad.
- * Pure so tests can lock the add (not max) composition without a render tree.
+ * The bar's bottom padding, which is genuinely not the same rule per platform.
+ *
+ * Both platforms' own specs say "content row + the system inset, and nothing
+ * else" — but their insets do not mean the same thing, which is why one rule
+ * cannot serve both and why both a bare add and a bare `Math.max` have now been
+ * reported as wrong from opposite directions.
+ *
+ * **iOS.** A UIKit tab bar on a home-indicator iPhone is 49pt of content plus
+ * the 34pt safe-area inset — 83pt in total, with no padding of its own.
+ * React Navigation's own `BottomTabBar` does exactly this
+ * (`TABBAR_HEIGHT_UIKIT + inset`, `paddingBottom: insets.bottom`). That 34pt is
+ * already the bar's visual breathing room, so adding 8 on top of it is 8pt of
+ * bar nobody asked for — which is the "sits too high above the safe area"
+ * report. On an older iPhone the inset is 0 and there is nothing to breathe on,
+ * so the design pad stands in.
+ *
+ * **Android.** MD3's navigation bar is an 80dp container that sits *above* the
+ * system inset (`paddingBottomSystemWindowInsets`), and the gesture inset is a
+ * thin ~24dp strip the gesture handle lives in rather than a margin. GRIDGO's
+ * painted content row is 64dp, 16 short of MD3's 80, so the inset alone leaves
+ * the row tighter than the spec — which is the earlier "too tight" report, and
+ * why `Math.max` was banned. The design pad stacks here.
+ *
+ * Resulting painted bar heights (64 + padding):
+ *
+ * | Device | Inset | Painted |
+ * |---|---:|---:|
+ * | iPhone with home indicator | 34 | 98 |
+ * | iPhone with a home button | 0 | 72 |
+ * | Android, gesture navigation | 24 | 96 |
+ * | Android, three-button navigation | 48 | 120 |
+ *
+ * The two current-generation cases land 2dp apart, so the three apps still read
+ * as one family. Platform is a parameter rather than a read of `Platform.OS`
+ * so both branches are testable without a render tree.
  */
-export function tabBarPaddingBottom(insetBottom: number): number {
+export function tabBarPaddingBottom(
+  insetBottom: number,
+  platformOS: string = Platform.OS,
+): number {
+  if (platformOS === "ios") {
+    return insetBottom > 0 ? insetBottom : TAB_DESIGN_PADDING;
+  }
   return insetBottom + TAB_DESIGN_PADDING;
 }
 
@@ -86,8 +125,8 @@ export function tabBarPaddingBottom(insetBottom: number): number {
  * Four labelled destinations around one raised action, in the shape the client
  * app already ships. What changed is what the disc means: it used to open
  * Active, which is a place, and a raised disc that delivers a screen reads as
- * an unfinished shortcut. It now performs the next step of the job — collect,
- * set off, take the cash, hand over — and says which in a word underneath.
+ * an unfinished shortcut. It now performs the next step of the job — check it,
+ * set off, hand over — and says which in a word underneath.
  *
  * The disc keeps its label inside the 24dp the column already had spare below
  * a 56dp disc in an 80dp column, so it lands in exactly the same 16dp label box
@@ -111,7 +150,7 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
       router.push({ pathname: action.route, params: { orderId } });
       return;
     }
-    router.push("/(tabs)/offers");
+    router.push(action.route);
   }
 
   return (

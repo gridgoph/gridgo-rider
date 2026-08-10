@@ -1,8 +1,7 @@
-import { Banknote, Route } from "lucide-react-native";
+import { Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { StatusChip } from "@/components/StatusChip";
 import { StopList } from "@/components/StopList";
 import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
@@ -10,7 +9,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { routeSummaryLabel } from "@/lib/osrm";
-import { dropoffLabel, isCodOrder, pickupLabel, stopLatLng } from "@/lib/riderOrder";
+import { dropoffLabel, feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
 
 /** Small enough to keep the whole decision on one screen, big enough to orient. */
 const CARD_MAP_HEIGHT = 120;
@@ -30,10 +29,13 @@ type Props = {
  * from OSRM; when routing fails the card says the line is direct and offers no
  * travel time rather than guessing one. One yellow Accept per card, and the
  * card is the bounded panel that owns it.
+ *
+ * The fee is banded by distance now rather than flat per zone, so it is
+ * captioned with the distance it was set from. Without that a rider sees two
+ * different numbers on two jobs and no reason for either.
  */
 export function OfferCard({ offer, busy, onAccept }: Props) {
   const colors = useThemeColors();
-  const cod = isCodOrder(offer);
   const pickup = stopLatLng(offer.pickup);
   const dropoff = stopLatLng(offer.dropoff);
   const { route, loading: routeLoading } = useRoute({ from: pickup, to: dropoff });
@@ -41,17 +43,7 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
   return (
     <View className="gg-card gap-4">
       <View className="gap-1">
-        <View className="flex-row items-start justify-between gap-3">
-          <Text className="min-w-0 flex-1 text-h3 text-text-primary">{offer.title}</Text>
-          {cod ? (
-            <View className="flex-row items-center gap-1.5 rounded-pill border border-warning px-3 py-1">
-              <Banknote size={13} color={colors.warning} strokeWidth={2} />
-              <Text className="text-caption text-warning">Cash on delivery</Text>
-            </View>
-          ) : (
-            <StatusChip tone="neutral" label="Already paid" icon="circle-check" />
-          )}
-        </View>
+        <Text className="text-h3 text-text-primary">{offer.title}</Text>
         <Text className="text-caption text-text-muted">
           {offer.size} · {offer.material} · {offer.quantity} pcs
         </Text>
@@ -62,6 +54,11 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
         <View className="gap-0.5">
           <Text className="text-overline text-text-muted">YOU EARN</Text>
           <Text className="text-h1 text-text-primary">{formatPhp(offer.deliveryFeeMinor)}</Text>
+          {feeDistanceLabel(offer.deliveryDistanceMeters) ? (
+            <Text className="text-caption text-text-muted">
+              {feeDistanceLabel(offer.deliveryDistanceMeters)}
+            </Text>
+          ) : null}
         </View>
         <View className="shrink flex-row items-center gap-2 pb-1">
           <Route size={16} color={colors.textMuted} strokeWidth={2} />
@@ -87,12 +84,6 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
       ) : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={dropoffLabel(offer)} />
-
-      {cod ? (
-        <Text className="text-body text-text-secondary">
-          Collect {formatPhp(offer.totalMinor + offer.deliveryFeeMinor)} in cash at the door.
-        </Text>
-      ) : null}
 
       <PrimaryButton
         label={busy ? "Accepting…" : "Accept this job"}

@@ -6,8 +6,9 @@
  * supplier meet their own context in their own apps.
  *
  * The copy names things a Davao pilot rider already recognises — dispatch
- * offers, pickup at the supplier, photo proof, COD — rather than describing
- * features in the abstract.
+ * offers, the check at the supplier's counter, photo proof — rather than
+ * describing features in the abstract. No money changes hands at the door, so
+ * none of it mentions any.
  */
 
 import type { IllustrationName } from "@/components/illustrations";
@@ -36,8 +37,8 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
   {
     id: "carry",
     step: "02 / 03",
-    title: "Pick up, then deliver",
-    body: "Navigate to the supplier, collect the package, and ride it to the client. Share live location while the job is with you.",
+    title: "Check it before you carry it",
+    body: "Six checks at the supplier's counter — count, spec, defects, packaging, paperwork, sign-off. All six pass or the package stays put.",
     cta: "Next",
     art: "scooter",
   },
@@ -45,7 +46,7 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     id: "proof",
     step: "03 / 03",
     title: "Prove the handoff",
-    body: "Capture photo proof at pickup and delivery. When the job is COD, record the cash you collected before you close it out.",
+    body: "Photograph the package at the door. A delivery is not closed until GRIDGO has that photo — and no money changes hands at the door.",
     cta: "Get Started",
     art: "postman",
   },

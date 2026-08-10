@@ -39,7 +39,11 @@ type SessionState = {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  /** Create a rider account and sign in. The account arrives awaiting approval. */
+  signup: (input: api.RiderSignup) => Promise<boolean>;
   logout: () => Promise<void>;
+  /** Re-read the account so an approval decision lands without signing out. */
+  refreshUser: () => Promise<void>;
   /** Read the persisted session at launch. Safe to call more than once. */
   hydrate: () => Promise<void>;
   /**
@@ -169,6 +173,44 @@ export const useSession = create<SessionState>((set, get) => ({
         loading: false,
         error: loginErrorMessage(e),
       });
+    }
+  },
+  /*
+    Sign-up is a login that happens to create the account first.
+
+    Nothing branches on approval here: the account is real, the token is real,
+    and the rider belongs in the app straight away. What they cannot do is take
+    work — and that is the screens' job to say, not the gate's, because a rider
+    locked out at the door has nowhere to read why.
+  */
+  signup: async (input) => {
+    storedSessionSuperseded = true;
+    set({ loading: true, error: null });
+    try {
+      const { token, user } = await api.signupRider(input);
+      persist({ token, user });
+      set({ user, loading: false });
+      return true;
+    } catch (e) {
+      set({
+        loading: false,
+        error: api.apiErrorMessage(
+          e,
+          `Your account was not created. Check the details, or try again — GRIDGO is at ${api.getApiBase()}.`,
+        ),
+      });
+      return false;
+    }
+  },
+  refreshUser: async () => {
+    if (!get().user) return;
+    try {
+      const user = await api.me();
+      // A late answer must not resurrect a session that has since been ended.
+      if (get().user) set({ user });
+    } catch {
+      // A 401 already clears the session through the unauthorized handler;
+      // anything else is a bad moment on the network, not a decision.
     }
   },
   logout: async () => {

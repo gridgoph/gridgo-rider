@@ -8,25 +8,20 @@ import { radius } from "@/constants/theme";
  * reach the user, and these screens open from more than one tab anyway, so a
  * single origin label would also be a lie.
  *
- * The old fix was `headerBackButtonDisplayMode: "minimal"` — chevron, no words.
- * It kept `(tabs)` off the screen and it is what iOS does inside a single-origin
- * flow, but riders reported not finding the way back: a bare chevron on a dense
- * proof screen, in daylight, at a gate, is a 24pt glyph in a corner. "Back" is
- * two syllables of certainty and costs nothing.
+ * `minimal` draws the chevron and no words, which solves both at once: there is
+ * no label, so there is no origin title to leak. This build briefly set
+ * `headerBackTitle: "Back"` after riders reported missing the bare chevron; the
+ * captain has since overruled that and asked for the chevron alone, which is
+ * also what iOS itself does inside a flow. The protection is unchanged — with
+ * no label, `(tabs)` cannot appear — and `(tabs)` still carries a real `title`
+ * in `app/_layout.tsx` as a second line of defence for any option object that
+ * ever forgets this one.
  *
- * So the label is set explicitly rather than inherited. `headerBackTitle`
- * replaces the previous screen's title outright, which is what makes this safe:
- * the origin is never consulted, so `(tabs)` cannot leak whatever the rider
- * came from. `(tabs)` also carries a real `title` in `app/_layout.tsx` as a
- * second line of defence.
- *
- * `headerBackTitle` is iOS-only by design. Android's own convention is the
- * unlabelled arrow, which is what every other Android app there gives them, and
- * the platform draws it for us.
+ * `headerBackButtonDisplayMode` is iOS-only by design. Android's own convention
+ * is the unlabelled arrow, which the platform draws for us.
  */
 export const multiOriginPushedScreenOptions = {
-  headerBackButtonDisplayMode: "default" as const,
-  headerBackTitle: "Back",
+  headerBackButtonDisplayMode: "minimal" as const,
 };
 
 /**

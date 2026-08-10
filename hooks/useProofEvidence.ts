@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { uploadEvidence, type UploadHandle } from "@/lib/attachments";
+import {
+  uploadEvidence,
+  type EvidenceTarget,
+  type StoredEvidence,
+  type UploadHandle,
+} from "@/lib/attachments";
 import { type EvidenceUpload, type ProofEvidence, UPLOAD_IDLE } from "@/lib/proofEvidence";
 import {
   captureFailureMessage,
@@ -12,6 +17,8 @@ import {
 type Args = {
   orderId: string;
   step: CaptureStep;
+  /** Every purpose this capture must be stored under before it counts. */
+  targets: readonly EvidenceTarget[];
 };
 
 /**
@@ -30,13 +37,18 @@ type Args = {
  * `upload.phase === "stored"` is the only state that means the server has the
  * file. Nothing here ever sets it optimistically.
  */
-export function useProofEvidence({ orderId, step }: Args) {
+export function useProofEvidence({ orderId, step, targets }: Args) {
   const [evidence, setEvidence] = useState<ProofEvidence | null>(null);
   const [upload, setUpload] = useState<EvidenceUpload>(UPLOAD_IDLE);
+  const [stored, setStored] = useState<StoredEvidence>({});
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const handleRef = useRef<UploadHandle | null>(null);
   const aliveRef = useRef(true);
+  // Targets are a literal at every call site; holding the latest in a ref keeps
+  // `send` stable without asking each screen to memoise its array.
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
 
   useEffect(() => {
     aliveRef.current = true;
@@ -49,9 +61,11 @@ export function useProofEvidence({ orderId, step }: Args) {
   const send = useCallback(
     (file: ProofEvidence) => {
       handleRef.current?.cancel();
+      setStored({});
       const handle = uploadEvidence({
         orderId,
         evidence: file,
+        targets: targetsRef.current,
         onPhase: (phase) => {
           if (!aliveRef.current) return;
           setUpload(phase);
@@ -60,7 +74,11 @@ export function useProofEvidence({ orderId, step }: Args) {
       handleRef.current = handle;
       // Failures are already reported through onPhase; this only stops the
       // rejection from surfacing as an unhandled promise.
-      handle.result.catch(() => undefined);
+      handle.result
+        .then((ids) => {
+          if (aliveRef.current) setStored(ids);
+        })
+        .catch(() => undefined);
     },
     [orderId],
   );
@@ -97,12 +115,15 @@ export function useProofEvidence({ orderId, step }: Args) {
     handleRef.current = null;
     setEvidence(null);
     setUpload(UPLOAD_IDLE);
+    setStored({});
     setCaptureError(null);
   }, []);
 
   return {
     evidence,
     upload,
+    /** File ids the server confirmed, keyed by purpose. Empty until stored. */
+    stored,
     captureError,
     /** True once the camera has failed for a reason retrying will not fix. */
     cameraBlocked,

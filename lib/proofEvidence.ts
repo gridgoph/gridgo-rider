@@ -135,7 +135,7 @@ export function evidenceBlockReason(
     case "failed":
       return upload.retryable
         ? "The evidence did not reach the server. Send it again before confirming."
-        : "This evidence cannot be stored, so the delivery cannot be proven. Record a failed attempt and tell Operations.";
+        : "This evidence cannot be stored, so the delivery cannot be proven. Do not hand the package over — call Operations.";
     case "stored":
       return null;
   }

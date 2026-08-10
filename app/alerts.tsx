@@ -1,34 +1,47 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { Bell } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 
+import { AlertCard } from "@/components/AlertCard";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { AlertListSkeleton } from "@/components/SkeletonScreens";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { formatRelativeAt, unreadCount } from "@/lib/riderOrder";
 import { useNotifications } from "@/store/notifications";
 
 /**
- * What dispatch has said, newest first.
+ * What dispatch has said, newest first, and where each job stands now.
  *
  * A pushed route rather than a tab: the content is dispatch pings and trip
  * movements, both of which already live where the rider acts on them, so this
  * is a place you visit when the bell says to — not a home.
  *
- * The demo API has no way to mark an alert read, so the unread mark stays as
- * the server reports it. Nothing here pretends otherwise.
+ * The orders are loaded alongside the alerts so each card can show its job's
+ * real stage. A failure to load them is not a failure to load the alerts: the
+ * list still renders, just without the bars, because a message a rider has not
+ * read yet matters more than the diagram under it.
  */
 export default function AlertsScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const setUnread = useNotifications((s) => s.setUnread);
+
+  const adopt = useNotifications((s) => s.adopt);
+  const markRead = useNotifications((s) => s.markRead);
+  const markAllRead = useNotifications((s) => s.markAllRead);
+  const readIds = useNotifications((s) => s.readIds);
+  const hydrate = useNotifications((s) => s.hydrate);
+
   const [items, setItems] = useState<api.Notification[] | null>(null);
+  const [orders, setOrders] = useState<api.Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   const reload = useCallback(
     async (mode: "load" | "refresh" = "load") => {
@@ -36,7 +49,7 @@ export default function AlertsScreen() {
       try {
         const list = await api.listNotifications();
         setItems(list);
-        setUnread(unreadCount(list));
+        adopt(list);
         setError(null);
       } catch (e) {
         setError(
@@ -49,8 +62,14 @@ export default function AlertsScreen() {
       } finally {
         setRefreshing(false);
       }
+      // Separately, and quietly: the stage bars are an enrichment, not the list.
+      try {
+        setOrders(await api.listOrders());
+      } catch {
+        setOrders([]);
+      }
     },
-    [setUnread],
+    [adopt],
   );
 
   useFocusEffect(
@@ -58,6 +77,18 @@ export default function AlertsScreen() {
       void reload();
     }, [reload]),
   );
+
+  const byId = useMemo(
+    () => new Map(orders.map((order) => [order.id, order])),
+    [orders],
+  );
+
+  const isRead = useCallback(
+    (item: api.Notification) => item.read || readIds.includes(item.id),
+    [readIds],
+  );
+
+  const unreadOnScreen = items?.filter((item) => !isRead(item)).length ?? 0;
 
   return (
     <Screen edges={["bottom"]}>
@@ -86,54 +117,30 @@ export default function AlertsScreen() {
         {items === null ? <AlertListSkeleton /> : null}
 
         {items?.length ? (
-          <View className="gg-card-flush">
-            {items.map((item, index) => (
-              <View
-                key={item.id}
-                className={
-                  index === items.length - 1
-                    ? "flex-row gap-3 p-4"
-                    : "flex-row gap-3 border-b border-outline-subtle p-4"
-                }
-                accessibilityRole="text"
-                accessibilityLabel={`${item.read ? "" : "Unread. "}${item.title}. ${item.body}. ${formatRelativeAt(item.at)}`}
-              >
-                {/*
-                  Unread is a filled disc against an outlined one — shape, not
-                  colour, so the list still reads in greyscale.
-                */}
-                <View
-                  className={
-                    item.read
-                      ? "mt-1 h-8 w-8 items-center justify-center rounded-pill border border-outline"
-                      : "mt-1 h-8 w-8 items-center justify-center rounded-pill bg-accent"
-                  }
-                >
-                  <Bell
-                    size={15}
-                    strokeWidth={2}
-                    color={item.read ? colors.textMuted : colors.accentOn}
-                  />
-                </View>
-                <View className="min-w-0 flex-1 gap-1">
-                  <Text
-                    className={
-                      item.read
-                        ? "text-body-lg text-text-primary"
-                        : "text-body-lg font-bold text-text-primary"
-                    }
-                  >
-                    {item.title}
-                  </Text>
-                  <Text className="text-body text-text-secondary">{item.body}</Text>
-                  <Text className="text-caption text-text-muted">
-                    {formatRelativeAt(item.at)}
-                    {item.read ? "" : " · Unread"}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
+          <>
+            {unreadOnScreen > 1 ? (
+              <SecondaryButton
+                label={`Mark all ${unreadOnScreen} read`}
+                onPress={() => markAllRead(items)}
+              />
+            ) : null}
+
+            <View>
+              {items.map((item) => (
+                <AlertCard
+                  key={item.id}
+                  alert={item}
+                  order={item.orderId ? (byId.get(item.orderId) ?? null) : null}
+                  read={isRead(item)}
+                  onMarkRead={() => markRead(item.id)}
+                />
+              ))}
+            </View>
+
+            <Text className="text-caption text-text-muted">
+              Swipe an alert away to mark it read. Read marks are kept on this phone.
+            </Text>
+          </>
         ) : null}
 
         {items !== null && !items.length && !error ? (
