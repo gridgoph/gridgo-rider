@@ -11,7 +11,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, type ReactNode } from "react";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
@@ -102,7 +102,15 @@ export default function RootLayout() {
   if (!launchReady) return null;
 
   return (
-    <SafeAreaProvider>
+    /*
+      Insets synchronously, from the native module, on the very first frame.
+      Without `initialWindowMetrics` the provider reports zero until it has
+      measured, so every screen shell — and the tab bar's bottom padding —
+      lays out once at the wrong size and again a frame later. On a phone that
+      is a visible settle as content drops under the status bar. It costs
+      nothing here and a browser never showed it.
+    */
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ThemeProvider value={navigationTheme(scheme)}>
         <AuthGate>
           <Stack
@@ -120,8 +128,17 @@ export default function RootLayout() {
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-            {/* The tab shell draws its own headers per tab. */}
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/*
+              The tab shell draws its own headers per tab, so its header is
+              hidden — but it still needs a title. Screens pushed above it set
+              their own back label (`multiOriginPushedScreenOptions`); this is
+              the second line of defence, so that if one ever forgets, iOS
+              labels the back control "GRIDGO" and never `(tabs)`.
+            */}
+            <Stack.Screen
+              name="(tabs)"
+              options={{ headerShown: false, title: "GRIDGO" }}
+            />
             <Stack.Screen
               name="alerts"
               options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}

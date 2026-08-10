@@ -4,6 +4,7 @@ import { GridgoLogo, type GridgoLogoRole } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { SkeletonBlock, SkeletonCircle, SkeletonText } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import type { ColorToken } from "@/constants/theme";
@@ -341,6 +342,27 @@ export default function DesignSystemScreen() {
                 visible size.
               </Text>
             </View>
+          </View>
+
+          {/* Waiting */}
+          <View className="gap-4">
+            <SectionHead
+              title="WAITING"
+              rule="Three shapes, one highlight crossing them. Screens compose these into the layout the answer will take."
+            />
+            <View className="gg-card flex-row items-center gap-3">
+              <SkeletonCircle size={32} />
+              <View className="min-w-0 flex-1 gap-1">
+                <SkeletonText width="70%" height={20} />
+                <SkeletonText width="45%" height={16} />
+              </View>
+            </View>
+            <SkeletonBlock height={80} />
+            <Text className="text-caption text-text-muted">
+              Circle, text and block. The sweep runs at one second a pass — ambient, not a
+              response to a tap — and stops dead when the phone asks for less motion, where
+              the shapes stay and hold the same space.
+            </Text>
           </View>
         </View>
       </ScrollView>

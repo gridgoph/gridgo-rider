@@ -9,12 +9,13 @@ import {
   View,
 } from "react-native";
 
+import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { ChoiceList } from "@/components/ChoiceList";
 import { DateTimeField } from "@/components/DateTimeField";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
-import { LoadingCard } from "@/components/Skeleton";
+import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { StickyActionBar } from "@/components/StickyActionBar";
 import { SegmentedControl } from "@/components/SegmentedControl";
@@ -218,7 +219,7 @@ export default function FailedAttemptScreen() {
           contentContainerClassName="gg-page gap-8 pb-10 pt-6"
           keyboardShouldPersistTaps="handled"
         >
-          {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
+          {loading ? <ProofStepSkeleton /> : null}
 
           {loadError ? (
             <InlineNotice
@@ -367,6 +368,8 @@ export default function FailedAttemptScreen() {
           ) : null}
         </StickyActionBar>
       ) : null}
+
+      <BlockingOverlay visible={busy} label="Recording the attempt…" />
     </Screen>
   );
 }

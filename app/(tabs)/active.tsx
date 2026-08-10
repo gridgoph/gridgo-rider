@@ -7,7 +7,7 @@ import { AlertsButton } from "@/components/AlertsButton";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
-import { LoadingCard, SkeletonBar } from "@/components/Skeleton";
+import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -127,15 +127,26 @@ export default function ActiveScreen() {
 
   const reload = useCallback(
     async (mode: "load" | "refresh" = "load") => {
-      if (mode === "refresh") setRefreshing(true);
-      try {
-        await refreshTrip(user?.id ?? null, mode);
-      } finally {
-        setRefreshing(false);
-      }
+      await refreshTrip(user?.id ?? null, mode);
     },
     [refreshTrip, user?.id],
   );
+
+  /*
+    `refreshing` belongs to the pull gesture and nothing else. Driving it from
+    the focus effect spun the pull-to-refresh control every time the rider
+    tapped this tab — a spinner appearing over the title, under a thumb that
+    never pulled anything. The re-fetch on focus still happens; it just does it
+    quietly, behind the trip already on screen.
+  */
+  const pullToRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await reload("refresh");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reload]);
 
   useFocusEffect(
     useCallback(() => {
@@ -207,14 +218,20 @@ export default function ActiveScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void reload("refresh")}
+            onRefresh={() => void pullToRefresh()}
             tintColor={colors.textMuted}
           />
         }
       >
         <ScreenHeader
           title="Active trip"
-          subtitle={trip ? null : "Nothing with you right now."}
+          /*
+            Only once the answer is in. While the job is still loading there is
+            no basis for saying nothing is in hand — and saying it anyway, over
+            a skeleton of the trip that is about to appear, is the screen
+            contradicting itself.
+          */
+          subtitle={loaded && !trip ? "Nothing with you right now." : null}
           action={<AlertsButton />}
         />
 
@@ -229,12 +246,7 @@ export default function ActiveScreen() {
           />
         ) : null}
 
-        {!loaded && !trip ? (
-          <View className="gap-4">
-            <SkeletonBar width="100%" height={MAP_HEIGHT} />
-            <LoadingCard label="Loading the job in hand" rows={2} />
-          </View>
-        ) : null}
+        {!loaded && !trip ? <ActiveTripSkeleton /> : null}
 
         {loaded && !trip && !tripError ? (
           <EmptyState

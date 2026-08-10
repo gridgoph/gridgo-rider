@@ -6,7 +6,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
-import { LoadingCard } from "@/components/Skeleton";
+import { AlertListSkeleton } from "@/components/SkeletonScreens";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { formatRelativeAt, unreadCount } from "@/lib/riderOrder";
@@ -83,12 +83,7 @@ export default function AlertsScreen() {
           />
         ) : null}
 
-        {items === null ? (
-          <View className="gap-3">
-            <LoadingCard label="Loading alerts" rows={2} />
-            <LoadingCard label="Loading alerts" rows={2} />
-          </View>
-        ) : null}
+        {items === null ? <AlertListSkeleton /> : null}
 
         {items?.length ? (
           <View className="gg-card-flush">

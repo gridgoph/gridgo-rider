@@ -6,7 +6,7 @@ import { AlertsButton } from "@/components/AlertsButton";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
-import { LoadingCard } from "@/components/Skeleton";
+import { OfferListSkeleton } from "@/components/SkeletonScreens";
 import { OfferCard } from "@/components/OfferCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -37,30 +37,38 @@ export default function OffersScreen() {
 
   const hasActive = Boolean(activeTrip);
 
-  const reload = useCallback(
-    async (mode: "load" | "refresh" = "load") => {
-      if (mode === "refresh") setRefreshing(true);
-      try {
-        const [list] = await Promise.all([
-          api.listOffers(),
-          refreshTrip(user?.id ?? null, "refresh"),
-        ]);
-        setOffers(selectOffers(list));
-        setError(null);
-      } catch (e) {
-        setError(
-          api.apiErrorMessage(
-            e,
-            "Offers did not load. Check the phone's connection and pull down to try again.",
-          ),
-        );
-        setOffers((current) => current ?? []);
-      } finally {
-        setRefreshing(false);
-      }
-    },
-    [refreshTrip, user?.id],
-  );
+  const reload = useCallback(async () => {
+    try {
+      const [list] = await Promise.all([
+        api.listOffers(),
+        refreshTrip(user?.id ?? null, "refresh"),
+      ]);
+      setOffers(selectOffers(list));
+      setError(null);
+    } catch (e) {
+      setError(
+        api.apiErrorMessage(
+          e,
+          "Offers did not load. Check the phone's connection and pull down to try again.",
+        ),
+      );
+      setOffers((current) => current ?? []);
+    }
+  }, [refreshTrip, user?.id]);
+
+  /*
+    `refreshing` is the pull gesture's, and only the pull gesture's. Everything
+    else re-fetches behind the list that is already there — the placeholder
+    cards below cover the one case where there is nothing to keep.
+  */
+  const pullToRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reload]);
 
   useFocusEffect(
     useCallback(() => {
@@ -81,7 +89,7 @@ export default function OffersScreen() {
           "That job could not be accepted. Pull down to refresh and take another.",
         ),
       );
-      void reload("refresh");
+      void reload();
     } finally {
       setBusyId(null);
     }
@@ -95,7 +103,7 @@ export default function OffersScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void reload("refresh")}
+            onRefresh={() => void pullToRefresh()}
             tintColor={colors.textMuted}
           />
         }
@@ -141,12 +149,7 @@ export default function OffersScreen() {
           />
         ) : null}
 
-        {offers === null ? (
-          <View className="gap-4">
-            <LoadingCard label="Loading open offers" rows={3} />
-            <LoadingCard label="Loading open offers" rows={3} />
-          </View>
-        ) : null}
+        {offers === null ? <OfferListSkeleton /> : null}
 
         {offers?.length ? (
           <View className="gap-4">
