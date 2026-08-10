@@ -8,12 +8,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ChoiceList } from "@/components/ChoiceList";
 import { DateTimeField } from "@/components/DateTimeField";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
+import { Screen } from "@/components/Screen";
 import { LoadingCard } from "@/components/Skeleton";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { StickyActionBar } from "@/components/StickyActionBar";
@@ -208,7 +208,7 @@ export default function FailedAttemptScreen() {
   }
 
   return (
-    <SafeAreaView className="gg-screen" edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -367,6 +367,6 @@ export default function FailedAttemptScreen() {
           ) : null}
         </StickyActionBar>
       ) : null}
-    </SafeAreaView>
+    </Screen>
   );
 }

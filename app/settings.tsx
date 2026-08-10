@@ -1,9 +1,9 @@
 import { router } from "expo-router";
 import { PlayCircle } from "lucide-react-native";
 import { ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { DestinationRow } from "@/components/DestinationRow";
+import { Screen } from "@/components/Screen";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import {
   setThemePreference,
@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const preference = useThemePreference();
 
   return (
-    <SafeAreaView className="gg-screen" edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="flex-1" contentContainerClassName="gg-page gap-6 pb-10 pt-4">
         <View className="gg-card gap-3">
           <SegmentedControl
@@ -53,6 +53,6 @@ export default function SettingsScreen() {
           />
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

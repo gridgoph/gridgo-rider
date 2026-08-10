@@ -1,9 +1,9 @@
 import { useRouter } from "expo-router";
 import { Bell, Settings2 } from "lucide-react-native";
 import { ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { DestinationRow } from "@/components/DestinationRow";
+import { Screen } from "@/components/Screen";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useNotifications } from "@/store/notifications";
@@ -25,7 +25,7 @@ export default function AccountScreen() {
   const unread = useNotifications((s) => s.unread);
 
   return (
-    <SafeAreaView className="gg-screen" edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView className="flex-1" contentContainerClassName="gg-page gap-6 pb-10 pt-3">
         <ScreenHeader title="Account" />
 
@@ -63,6 +63,6 @@ export default function AccountScreen() {
 
         <SecondaryButton label="Sign out" onPress={() => void logout()} />
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAuthGate } from "@/hooks/useAuthGate";
+import { useLaunchReady } from "@/hooks/useLaunchReady";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   confirmSheetScreenOptions,
@@ -23,7 +24,8 @@ import {
 } from "@/lib/navigationHeaders";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
-SplashScreen.preventAutoHideAsync();
+// Nothing may throw out of the launch path, including this.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /** React Navigation reads plain colours, so it gets them from the token file. */
 function navigationTheme(scheme: ThemeName): Theme {
@@ -66,6 +68,7 @@ export default function RootLayout() {
   const fontsReady = useAppFonts();
   const sessionHydrated = useSession((s) => s.hydrated);
   const hydrateSession = useSession((s) => s.hydrate);
+  const launchReady = useLaunchReady({ fontsReady, sessionHydrated });
   useHydrateTheme();
 
   // Read the stored session here, not in the gate: the gate lives inside the
@@ -81,18 +84,22 @@ export default function RootLayout() {
   }, [token.canvas]);
 
   // The splash covers the session read as well as the fonts. Hiding it earlier
-  // shows a login screen to a rider who is already signed in.
+  // shows a login screen to a rider who is already signed in. `launchReady` is
+  // time-bounded, so this always fires — the splash can never be left up.
   useEffect(() => {
-    if (fontsReady && sessionHydrated) SplashScreen.hideAsync();
-  }, [fontsReady, sessionHydrated]);
+    if (launchReady) void SplashScreen.hideAsync().catch(() => {});
+  }, [launchReady]);
 
   /*
-    Nothing renders until the fonts AND the stored session are ready. A screen
-    that mounts first fires its data load with no bearer, the server answers
-    401, and the 401 handler wipes the very session that was still loading —
-    which is how a signed-in rider ended up back at login on every cold start.
+    Nothing renders until the fonts AND the stored session are ready — or until
+    the launch deadline passes, whichever comes first.
+
+    Waiting is what keeps a signed-in rider off the login screen: a screen that
+    mounts first fires its data load with no bearer, and the server answers 401.
+    Waiting *without a deadline* is what turned a stalled storage read into a
+    permanent black screen, so `useLaunchReady` gives up rather than hang.
   */
-  if (!fontsReady || !sessionHydrated) return null;
+  if (!launchReady) return null;
 
   return (
     <SafeAreaProvider>

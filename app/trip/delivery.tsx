@@ -8,12 +8,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OtpInput } from "@/components/OtpInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { LoadingCard } from "@/components/Skeleton";
 import { StickyActionBar } from "@/components/StickyActionBar";
@@ -132,7 +132,7 @@ export default function DeliveryProofScreen() {
   }
 
   return (
-    <SafeAreaView className="gg-screen" edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -272,6 +272,6 @@ export default function DeliveryProofScreen() {
           </StickyActionBar>
         ) : null}
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }

@@ -201,6 +201,21 @@ Use the NativeWind version installed in this project. Check package.json. Do not
 
 Reuse class patterns through utilities in global.css.
 
+### className only reaches components NativeWind replaces
+
+Metro aliases `react-native`'s exports to styled ones. A component from any
+other package — `SafeAreaView` above all — ignores `className` **silently**: no
+error, no warning, and web keeps working because react-native-web hands the
+class to the DOM. Losing `flex-1` that way collapsed every screen shell to its
+own insets and the app rendered a blank canvas on device while looking correct
+in a browser.
+
+So screens open with `components/Screen.tsx`, never a raw `SafeAreaView`, and
+any other third-party component gets wrapped once and styled through `style`.
+Guarded by `__tests__/screenShell.test.ts`. The wider lesson: a device-only bug
+needs a device — Expo web is not a substitute for one, and a clean web render
+proves nothing about a phone.
+
 ### Style Exception List
 
 Use StyleSheet or inline styles for:
@@ -304,6 +319,7 @@ Be concise. Explain what changed and how to test it.
 
 - **Tabs:** Offers · Active · [action] · Earnings · Account — four destinations around one raised **action**, never a fifth destination. The disc performs the job's next step; its verb, glyph and route come from `lib/riderAction.ts`, driven by `store/activeTrip` + `hooks/useRiderAction`. Alerts is a pushed route behind `components/AlertsButton` (the only place the unread count shows). Rationale for the whole set: `constants/tabs.ts`.
 - **Auth gate:** session → route is continuous in `hooks/useAuthGate` + `lib/authGate.ts`. Two guards must both hold before it navigates (`canGateNavigate`): the root navigator exists, and the stored session has been read back — otherwise `replace` throws "Attempted to navigate before mounting the Root Layout component". `app/_layout.tsx` renders nothing until fonts **and** session are ready, so no screen fires an authenticated request without a bearer.
+- **Nothing in the launch path may wait forever.** Every gate before the first frame carries a deadline (`lib/launchGate.ts`, `hooks/useLaunchReady`, `hydrate` in `store/session.ts`), and the splash is hidden off the same bounded flag — a native call that never answers must degrade to the login screen, never to a blank one. `hydrated` is load-bearing in three places (root layout, auth gate, `app/index.tsx`), so it has to flip no matter what storage does; a late answer is still adopted and the continuous gate carries the rider on. In dev the launch reports its timing and what stalled. Guarded by `__tests__/startupNeverHangs.test.tsx`.
 - **Session persists** to AsyncStorage (`lib/sessionStorage.ts`, `store/session.ts`); a rider stays signed in across launches. A 401 only clears it when the request actually carried a bearer.
 - **Tab bar geometry:** `paddingBottom = insets.bottom + TAB_DESIGN_PADDING` (stack, never `Math.max`). Content row is MD3 80dp; the action column is 56 disc + 16 label box + 8 pad = the same 80, so its label lands in the destinations' label box. Matches gridgo-client exactly — see `components/GridgoTabBar.tsx`.
 - **Trip logic:** pure helpers in `lib/riderOrder.ts` (phase ladder, COD amount/gate, offer/active selection, location window, stop labels). Screens must not re-derive these rules inline.

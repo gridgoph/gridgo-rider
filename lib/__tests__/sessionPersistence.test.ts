@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as api from "@/lib/api";
 import { canGateNavigate, resolveAuthRedirect } from "@/lib/authGate";
+import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
 import {
   parseStoredSession,
   serialiseSession,
@@ -96,6 +97,80 @@ describe("a signed-in rider stays signed in across launches", () => {
       expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).not.toBeNull();
     } finally {
       unbind();
+    }
+  });
+
+  /*
+    Storage that answers eventually — or never — must not decide whether the app
+    renders. `hydrate` stops *waiting* at `SESSION_READ_TIMEOUT_MS`; it does not
+    stop listening, because the auth gate re-evaluates continuously and will
+    carry a rider off login the moment their session turns up.
+  */
+  it("gives up waiting on a storage read that never answers", async () => {
+    jest.useFakeTimers();
+    try {
+      (AsyncStorage.getItem as jest.Mock).mockImplementationOnce(
+        () => new Promise<string | null>(() => {}),
+      );
+
+      void useSession.getState().hydrate();
+      await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS + 100);
+
+      expect(useSession.getState().hydrated).toBe(true);
+      expect(useSession.getState().user).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("still signs the rider in when the stored session arrives late", async () => {
+    jest.useFakeTimers();
+    try {
+      const raw = serialiseSession({ token: "tok_live", user: rider });
+      (AsyncStorage.getItem as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise<string | null>((resolve) => {
+            setTimeout(() => resolve(raw), SESSION_READ_TIMEOUT_MS * 3);
+          }),
+      );
+
+      void useSession.getState().hydrate();
+      await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS + 100);
+
+      // The app is already rendering by here, on the login screen.
+      expect(useSession.getState().hydrated).toBe(true);
+      expect(useSession.getState().user).toBeNull();
+
+      await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS * 3);
+
+      expect(useSession.getState().user).toEqual(rider);
+      expect(api.getToken()).toBe("tok_live");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not resurrect a stored session that a sign-out already replaced", async () => {
+    jest.useFakeTimers();
+    try {
+      const raw = serialiseSession({ token: "tok_stale", user: rider });
+      (AsyncStorage.getItem as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise<string | null>((resolve) => {
+            setTimeout(() => resolve(raw), SESSION_READ_TIMEOUT_MS * 3);
+          }),
+      );
+
+      void useSession.getState().hydrate();
+      await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS + 100);
+
+      useSession.getState().clearSession();
+      await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS * 3);
+
+      expect(useSession.getState().user).toBeNull();
+      expect(api.getToken()).toBeNull();
+    } finally {
+      jest.useRealTimers();
     }
   });
 

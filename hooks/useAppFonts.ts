@@ -13,5 +13,13 @@ import { fontAssets } from "@/constants/fonts";
  */
 export function useAppFonts(): boolean {
   const [loaded, error] = useFonts(fontAssets);
+
+  if (__DEV__ && error) {
+    // Worth saying out loud: Android renders text in an unloaded family as
+    // nothing at all, so a swallowed font error looks like a blank screen
+    // rather than like fallback type.
+    console.warn(`[GRIDGO launch] fonts failed to load: ${String(error)}`);
+  }
+
   return loaded || error !== null;
 }

@@ -8,11 +8,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
@@ -64,7 +64,7 @@ export default function LoginScreen() {
   if (user) return <Redirect href="/(tabs)/active" />;
 
   return (
-    <SafeAreaView className="gg-screen">
+    <Screen>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -146,6 +146,6 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
