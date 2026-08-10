@@ -52,8 +52,16 @@ export function LocationSharingBanner({ sharing, freshness = null }: Props) {
         .filter(Boolean)
         .join(". ")}
     >
-      <View className={`h-11 w-11 items-center justify-center rounded-pill border ${border}`}>
-        <Icon size={20} color={tint} strokeWidth={2} />
+      {/*
+        A bare icon, the same as every other notice in the app. This used to sit
+        inside a 44dp ring in the same tone as the card's border, which drew a
+        second coloured stroke around nothing and gave a non-interactive glyph
+        the size and shape of a button. In Dark the warning tone is a shade off
+        actionYellow, so on the trip screen that ring read as a second yellow
+        element an inch from the one that is actually the step.
+      */}
+      <View className="pt-0.5">
+        <Icon size={18} color={tint} strokeWidth={2} />
       </View>
       <View className="min-w-0 flex-1 gap-1">
         <Text className="text-body font-bold text-text-primary">{title}</Text>

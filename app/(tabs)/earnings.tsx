@@ -6,7 +6,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
-import { LoadingCard } from "@/components/Skeleton";
+import { EarningsSkeleton } from "@/components/SkeletonScreens";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
@@ -33,32 +33,39 @@ export default function EarningsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const reload = useCallback(
-    async (mode: "load" | "refresh" = "load") => {
-      if (mode === "refresh") setRefreshing(true);
-      try {
-        setOrders(await api.listOrders());
-        setError(null);
-      } catch (e) {
-        setError(
-          api.apiErrorMessage(
-            e,
-            "Your earnings did not load. Check the phone's connection and pull down to try again.",
-          ),
-        );
-        setOrders((current) => current ?? []);
-      } finally {
-        setRefreshing(false);
-      }
-    },
-    [],
-  );
+  const reload = useCallback(async () => {
+    try {
+      setOrders(await api.listOrders());
+      setError(null);
+    } catch (e) {
+      setError(
+        api.apiErrorMessage(
+          e,
+          "Your earnings did not load. Check the phone's connection and pull down to try again.",
+        ),
+      );
+      setOrders((current) => current ?? []);
+    }
+  }, []);
+
+  /*
+    The pull gesture owns `refreshing`. Setting it on focus spun the
+    pull-to-refresh control over the title every time the rider opened this
+    tab, with no pull behind it. The figures still re-fetch on focus — quietly,
+    under the totals already on screen.
+  */
+  const pullToRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reload]);
 
   useFocusEffect(
     useCallback(() => {
-      void reload(orders ? "refresh" : "load");
-      // Only re-run when the loader identity changes; `orders` is read, not tracked.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      void reload();
     }, [reload]),
   );
 
@@ -75,7 +82,7 @@ export default function EarningsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void reload("refresh")}
+            onRefresh={() => void pullToRefresh()}
             tintColor={colors.textMuted}
           />
         }
@@ -93,12 +100,7 @@ export default function EarningsScreen() {
           />
         ) : null}
 
-        {orders === null ? (
-          <View className="gap-4">
-            <LoadingCard label="Loading your earnings" rows={2} />
-            <LoadingCard label="Loading your deliveries" rows={3} />
-          </View>
-        ) : null}
+        {orders === null ? <EarningsSkeleton /> : null}
 
         {orders !== null ? (
           <>

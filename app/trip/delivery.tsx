@@ -9,13 +9,14 @@ import {
   View,
 } from "react-native";
 
+import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OtpInput } from "@/components/OtpInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
-import { LoadingCard } from "@/components/Skeleton";
+import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
@@ -142,7 +143,7 @@ export default function DeliveryProofScreen() {
           contentContainerClassName="gg-page gap-8 pb-8 pt-6"
           keyboardShouldPersistTaps="handled"
         >
-          {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
+          {loading ? <ProofStepSkeleton /> : null}
 
           {loadError ? (
             <InlineNotice
@@ -272,6 +273,8 @@ export default function DeliveryProofScreen() {
           </StickyActionBar>
         ) : null}
       </KeyboardAvoidingView>
+
+      <BlockingOverlay visible={busy} label="Recording the delivery…" />
     </Screen>
   );
 }

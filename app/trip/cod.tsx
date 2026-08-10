@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
-import { LoadingCard } from "@/components/Skeleton";
+import { CashStepSkeleton } from "@/components/SkeletonScreens";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StickyActionBar } from "@/components/StickyActionBar";
@@ -31,7 +31,7 @@ export default function CodScreen() {
   return (
     <Screen edges={["bottom"]}>
       <ScrollView className="flex-1" contentContainerClassName="gg-page gap-6 pb-8 pt-6">
-        {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
+        {loading ? <CashStepSkeleton /> : null}
 
         {loadError ? (
           <InlineNotice

@@ -57,6 +57,19 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.canvas },
+        /*
+          Switching destination is not a journey. The chrome is fixed, the tab
+          bar does not move, and the content is simply the other tab's — a
+          slide or a fade would animate a change of place that never happened.
+          The library already defaults to this; it is written down so it cannot
+          drift, and so nobody adds `shift` for polish later.
+
+          What riders reported as "it scrolls a bit, from the bottom it goes
+          up" was never this: it was layout settling — a placeholder shorter
+          than the content that replaced it. That is fixed in the skeletons,
+          which now hold the height the answer will take.
+        */
+        animation: "none",
       }}
     >
       {DESTINATION_TABS.map((tab) => (

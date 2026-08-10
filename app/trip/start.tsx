@@ -4,7 +4,7 @@ import { Text, View } from "react-native";
 
 import { ConfirmSheetBody } from "@/components/ConfirmSheetBody";
 import { InlineNotice } from "@/components/InlineNotice";
-import { SkeletonBar } from "@/components/Skeleton";
+import { ConfirmSheetSkeleton } from "@/components/SkeletonScreens";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { dropoffLabel } from "@/lib/riderOrder";
@@ -48,13 +48,7 @@ export default function StartDeliverySheet() {
   }
 
   if (loading) {
-    return (
-      <View className="gap-3 px-4 pt-4" accessibilityLabel="Loading the job">
-        <SkeletonBar width="70%" height={22} />
-        <SkeletonBar width="100%" height={16} />
-        <SkeletonBar width="100%" height={48} />
-      </View>
-    );
+    return <ConfirmSheetSkeleton cancelLabel="Not yet" onCancel={() => router.back()} />;
   }
 
   if (!order) {

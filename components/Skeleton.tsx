@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { View } from "react-native";
+import { useEffect, useId, useState } from "react";
+import { View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -7,92 +7,153 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { motion } from "@/constants/theme";
+import { useThemeColors } from "@/hooks/useTheme";
 
-type BarProps = {
+/**
+ * How long one highlight takes to cross a placeholder.
+ *
+ * Deliberately outside the 160–240ms interaction budget. That budget governs a
+ * response to a tap; this is ambient — it says "still working" for as long as
+ * the wait lasts, and at a second per pass it reads as considered rather than
+ * blinking. An opacity pulse at this size strobes; a highlight travelling
+ * across the shape does not, which is why the sweep is the one that shipped.
+ */
+const SWEEP_MS = 1000;
+
+const ROUND = {
+  /** Text lines. */
+  line: "rounded-sm",
+  /** Fields and buttons. */
+  field: "rounded-field",
+  /** Cards, media and blocks. */
+  block: "rounded-card",
+  /** Avatars and chips. */
+  pill: "rounded-pill",
+} as const;
+
+type Shape = keyof typeof ROUND;
+
+type PlaceholderProps = {
   /** Width as a percentage of the row, or a fixed dp value. */
   width?: number | `${number}%`;
-  height?: number;
-  /** Pill for chips and buttons, field for blocks. */
-  round?: "field" | "pill";
+  height: number;
+  shape: Shape;
 };
 
 /**
- * A single placeholder bar, sized like the text it stands in for.
+ * One placeholder, with the shimmer that crosses it.
  *
- * A skeleton is only honest if it is the shape of the answer: bars the width
- * of a title and a caption tell the rider a card is coming, where a centred
- * spinner tells them nothing except that something, somewhere, is slow.
+ * Base is `surfaceVariant`, highlight is `surfaceHigh` — white over grey in
+ * Light, a lifted charcoal over a darker one in Dark. Both are already tokens,
+ * so the shimmer needs no colour of its own and never touches the yellow
+ * budget.
  *
- * The pulse is one shared 900ms fade, well outside the 160–240ms interaction
- * budget on purpose — it is ambient, not a response — and it stops dead under
- * reduced motion, where the bars simply sit at their mid opacity.
+ * The sweep spans the placeholder's own measured width and travels twice that,
+ * so the highlight enters and leaves off the edges rather than popping. Under
+ * reduced motion the gradient is not rendered at all and the shape simply sits
+ * there — still a placeholder holding its space, just a silent one.
  */
-export function SkeletonBar({ width = "100%", height = 14, round = "field" }: BarProps) {
+function Placeholder({ width = "100%", height, shape }: PlaceholderProps) {
   const reduced = useReducedMotion();
-  const pulse = useSharedValue(0.5);
+  const colors = useThemeColors();
+  // SVG ids share a document on web, and React's generated ids carry colons
+  // that a `url(#…)` reference cannot take.
+  const gradientId = `gg-shimmer-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  const [measured, setMeasured] = useState(0);
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    if (reduced) {
-      pulse.value = 0.5;
-      return;
-    }
-    pulse.value = withRepeat(
-      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+    if (reduced || measured <= 0) return;
+    progress.value = 0;
+    progress.value = withRepeat(
+      withTiming(1, { duration: SWEEP_MS, easing: Easing.linear }),
       -1,
-      true,
+      false,
     );
-  }, [pulse, reduced]);
+  }, [progress, reduced, measured]);
 
-  const style = useAnimatedStyle(() => ({ opacity: pulse.value }));
+  const sweep = useAnimatedStyle(() => ({
+    transform: [{ translateX: -measured + progress.value * measured * 2 }],
+  }));
 
-  return (
-    <Animated.View
-      style={[{ width, height }, style]}
-      className={
-        round === "pill"
-          ? "rounded-pill bg-surface-variant"
-          : "rounded-field bg-surface-variant"
-      }
-    />
-  );
-}
+  function onLayout(event: LayoutChangeEvent) {
+    setMeasured(Math.round(event.nativeEvent.layout.width));
+  }
 
-type LoadingCardProps = {
-  /** What is loading, said plainly for screen readers and slow connections. */
-  label: string;
-  /** How many placeholder rows to draw. */
-  rows?: number;
-};
-
-/**
- * The shape of a card that has not arrived yet.
- *
- * Announced once to assistive technology; drawn as the card's own skeleton for
- * everyone else. Both matter — this is most of what a rider on a weak signal
- * outside a Davao print shop actually sees.
- */
-export function LoadingCard({ label, rows = 3 }: LoadingCardProps) {
   return (
     <View
-      className="gg-card gap-3"
-      accessibilityRole="progressbar"
-      accessibilityLabel={label}
-      accessibilityLiveRegion="polite"
+      testID="skeleton-shape"
+      onLayout={onLayout}
+      style={{ width, height, overflow: "hidden" }}
+      className={`${ROUND[shape]} bg-surface-variant`}
     >
-      <SkeletonBar width="62%" height={20} />
-      {Array.from({ length: rows }).map((_, index) => (
-        <SkeletonBar
-          key={index}
-          width={index === rows - 1 ? "45%" : "100%"}
-          height={14}
-        />
-      ))}
+      {measured > 0 && !reduced ? (
+        <Animated.View
+          testID="skeleton-sweep"
+          style={[{ position: "absolute", left: 0, top: 0, width: measured, height }, sweep]}
+          pointerEvents="none"
+        >
+          <Svg width={measured} height={height}>
+            <Defs>
+              <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor={colors.surfaceHigh} stopOpacity={0} />
+                <Stop offset="0.5" stopColor={colors.surfaceHigh} stopOpacity={1} />
+                <Stop offset="1" stopColor={colors.surfaceHigh} stopOpacity={0} />
+              </LinearGradient>
+            </Defs>
+            <Rect width={measured} height={height} fill={`url(#${gradientId})`} />
+          </Svg>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
 
-/** Duration tokens re-exported so screens never hand-roll a timing. */
-export const skeletonMotion = motion;
+/**
+ * A line of text that has not arrived.
+ *
+ * Give it the width the real line will roughly be. A skeleton is only honest if
+ * it is the shape of the answer: a title bar and a caption bar tell the rider a
+ * card is coming, where a centred spinner tells them nothing except that
+ * something, somewhere, is slow.
+ */
+export function SkeletonText({
+  width = "100%",
+  height = 14,
+}: {
+  width?: number | `${number}%`;
+  height?: number;
+}) {
+  return <Placeholder width={width} height={height} shape="line" />;
+}
+
+/** An avatar, a status disc, or any round mark. */
+export function SkeletonCircle({ size = 32 }: { size?: number }) {
+  return <Placeholder width={size} height={size} shape="pill" />;
+}
+
+/** A card, a map, an image — anything with a card's corners. */
+export function SkeletonBlock({
+  width = "100%",
+  height = 120,
+}: {
+  width?: number | `${number}%`;
+  height?: number;
+}) {
+  return <Placeholder width={width} height={height} shape="block" />;
+}
+
+/**
+ * The box a button will occupy.
+ *
+ * 56dp is `size="large"` on `PrimaryButton` (`min-h-14`); the field radius
+ * matches it too, so the control does not appear to change shape when it
+ * arrives. Pass 44 for a default-size button.
+ */
+export function SkeletonButton({ height = 56 }: { height?: number }) {
+  return <Placeholder width="100%" height={height} shape="field" />;
+}
