@@ -2,10 +2,10 @@ import { useFocusEffect } from "expo-router";
 import { Banknote } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { Screen } from "@/components/Screen";
 import { LoadingCard } from "@/components/Skeleton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -68,7 +68,7 @@ export default function EarningsScreen() {
   );
 
   return (
-    <SafeAreaView className="gg-screen" edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView
         className="flex-1"
         contentContainerClassName="gg-page gap-6 pb-10 pt-3"
@@ -191,6 +191,6 @@ export default function EarningsScreen() {
           </>
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

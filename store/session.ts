@@ -4,10 +4,12 @@ import { create } from "zustand";
 import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
+import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
 import {
   parseStoredSession,
   serialiseSession,
   SESSION_STORAGE_KEY,
+  type StoredSession,
 } from "@/lib/sessionStorage";
 
 /** Expected role for this binary — mismatched login is rejected. */
@@ -48,6 +50,31 @@ type SessionState = {
   clearError: () => void;
 };
 
+/**
+ * Set once the rider's session has been decided some other way — a login, a
+ * sign-out, or a 401. A storage read that lands after that must not resurrect
+ * the record it happened to capture before the change.
+ */
+let storedSessionSuperseded = false;
+
+/** Read the stored session back, treating anything unreadable as no session. */
+function readStoredSession(): Promise<StoredSession | null> {
+  return AsyncStorage.getItem(SESSION_STORAGE_KEY)
+    .then(parseStoredSession)
+    .catch(() => null);
+}
+
+/** Resolve with `work`, or with "timeout" if it has not answered within `ms`. */
+function raceDeadline<T>(work: Promise<T>, ms: number): Promise<T | "timeout"> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve("timeout"), ms);
+    void work.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    });
+  });
+}
+
 /** Persist or clear the stored session; never blocks the caller. */
 function persist(session: { token: string; user: User } | null): void {
   const write = session
@@ -65,25 +92,64 @@ export const useSession = create<SessionState>((set, get) => ({
   error: null,
   clearError: () => set({ error: null }),
   clearSession: () => {
+    storedSessionSuperseded = true;
     api.setToken(null);
     persist(null);
     set({ user: null, error: null, loading: false });
   },
+  /*
+    Read the stored session back — on a deadline.
+
+    `hydrated` is what the auth gate, `app/index.tsx`, and the root layout all
+    wait on, so a read that never answers used to hold the entire app on a
+    blank screen. It now gives up after `SESSION_READ_TIMEOUT_MS` and lets the
+    rider reach login, which is recoverable in a way that a black rectangle is
+    not.
+
+    Giving up on the gate is not giving up on the session: a late answer is
+    still adopted, and because the auth gate re-evaluates continuously, a rider
+    sitting on login is carried into the tab shell the moment their session
+    arrives.
+  */
   hydrate: async () => {
     if (get().hydrated) return;
-    try {
-      const stored = parseStoredSession(await AsyncStorage.getItem(SESSION_STORAGE_KEY));
-      if (stored) {
-        api.setToken(stored.token);
-        set({ user: stored.user });
+    storedSessionSuperseded = false;
+
+    const read = readStoredSession();
+
+    /** A stored session is only usable if nothing has decided otherwise since. */
+    const usable = (stored: StoredSession | null) =>
+      stored && !storedSessionSuperseded && !get().user ? stored : null;
+
+    const outcome = await raceDeadline(read, SESSION_READ_TIMEOUT_MS);
+
+    if (outcome === "timeout") {
+      if (__DEV__) {
+        console.warn(
+          `[GRIDGO launch] the stored session did not read back within ` +
+            `${SESSION_READ_TIMEOUT_MS}ms. Continuing as signed out rather than ` +
+            "holding the app on a blank screen.",
+        );
       }
-    } catch {
-      // Unreadable storage is the same as no session.
-    } finally {
+      // Stopped waiting, still listening: the gate opens now, and the auth gate
+      // carries the rider off login if this ever answers.
+      void read.then((stored) => {
+        const session = usable(stored);
+        if (!session) return;
+        api.setToken(session.token);
+        set({ user: session.user });
+      });
       set({ hydrated: true });
+      return;
     }
+
+    const session = usable(outcome);
+    if (session) api.setToken(session.token);
+    // One commit, so a signed-in rider never renders a frame as signed out.
+    set(session ? { user: session.user, hydrated: true } : { hydrated: true });
   },
   login: async (email, password) => {
+    storedSessionSuperseded = true;
     set({ loading: true, error: null });
     try {
       const { token, user } = await api.login(email, password);
@@ -106,6 +172,7 @@ export const useSession = create<SessionState>((set, get) => ({
     }
   },
   logout: async () => {
+    storedSessionSuperseded = true;
     try {
       await api.logout();
     } catch {

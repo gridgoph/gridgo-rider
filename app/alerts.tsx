@@ -2,10 +2,10 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Bell } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { Screen } from "@/components/Screen";
 import { LoadingCard } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
@@ -60,7 +60,7 @@ export default function AlertsScreen() {
   );
 
   return (
-    <SafeAreaView className="gg-screen" edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView
         className="flex-1"
         contentContainerClassName="gg-page gap-4 pb-10 pt-4"
@@ -152,6 +152,6 @@ export default function AlertsScreen() {
           />
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

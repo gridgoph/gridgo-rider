@@ -2,11 +2,11 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AlertsButton } from "@/components/AlertsButton";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { Screen } from "@/components/Screen";
 import { LoadingCard, SkeletonBar } from "@/components/Skeleton";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
@@ -200,7 +200,7 @@ export default function ActiveScreen() {
         : "Hand the package to the client";
 
   return (
-    <SafeAreaView className="gg-screen" edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView
         className="flex-1"
         contentContainerClassName="gg-page gap-6 pb-8 pt-3"
@@ -391,6 +391,6 @@ export default function ActiveScreen() {
         ) : null}
       </ScrollView>
 
-    </SafeAreaView>
+    </Screen>
   );
 }

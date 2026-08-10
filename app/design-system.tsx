@@ -1,8 +1,8 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { GridgoLogo, type GridgoLogoRole } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
@@ -177,10 +177,9 @@ function ThemeSwitch() {
 
 export default function DesignSystemScreen() {
   const scheme = useThemeName();
-  const colors = useThemeColors();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView className="gg-screen" showsVerticalScrollIndicator={false}>
         <View className="gg-page gap-10 pb-16 pt-6">
           {/* Masthead — the job ticket for the system itself. */}
@@ -345,6 +344,6 @@ export default function DesignSystemScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

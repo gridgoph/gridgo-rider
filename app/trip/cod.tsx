@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { InlineNotice } from "@/components/InlineNotice";
+import { Screen } from "@/components/Screen";
 import { LoadingCard } from "@/components/Skeleton";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -29,7 +29,7 @@ export default function CodScreen() {
   const amount = order ? api.formatPhp(codAmountDueMinor(order)) : "";
 
   return (
-    <SafeAreaView className="gg-screen" edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="flex-1" contentContainerClassName="gg-page gap-6 pb-8 pt-6">
         {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
 
@@ -83,6 +83,6 @@ export default function CodScreen() {
           <SecondaryButton label="Not yet — go back" onPress={() => router.back()} />
         </StickyActionBar>
       ) : null}
-    </SafeAreaView>
+    </Screen>
   );
 }

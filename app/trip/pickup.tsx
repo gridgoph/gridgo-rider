@@ -1,12 +1,12 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OtpInput } from "@/components/OtpInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { Screen } from "@/components/Screen";
 import { LoadingCard } from "@/components/Skeleton";
 import { StickyActionBar } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
@@ -90,7 +90,7 @@ export default function PickupProofScreen() {
   }
 
   return (
-    <SafeAreaView className="gg-screen" edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -172,6 +172,6 @@ export default function PickupProofScreen() {
           </StickyActionBar>
         ) : null}
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
