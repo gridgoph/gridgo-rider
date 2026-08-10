@@ -6,9 +6,12 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
   GridgoTabBar,
-  TAB_CONTENT_HEIGHT,
-  TAB_DESIGN_PADDING,
-  TAB_SURFACE_TOP_OFFSET,
+  TAB_BAR_METRICS,
+  TAB_BAR_MIN_BOTTOM_GAP,
+  TAB_LABEL_BOX,
+  tabBarActionOverhang,
+  tabBarHeight,
+  tabBarMetrics,
   tabBarPaddingBottom,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, DESTINATION_TABS, TABS } from "@/constants/tabs";
@@ -159,76 +162,145 @@ describe("GridgoTabBar", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  describe("bottom padding: the system's reservation is the breathing room", () => {
-    /** What the bar costs a screen: the 80dp column plus the padding. */
-    const layout = (inset: number) => TAB_CONTENT_HEIGHT + tabBarPaddingBottom(inset);
-    /** What the eye sees: the top 16dp is transparent for the disc to break. */
-    const painted = (inset: number) =>
-      TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET + tabBarPaddingBottom(inset);
-
-    // The four devices, by the inset each actually reports. Android is
-    // edge-to-edge, so `navigationBars` reaches JS in both navigation modes —
-    // a three-button phone reports ~48dp, not zero.
-    it("Android, three-button navigation (48dp inset)", () => {
-      expect(tabBarPaddingBottom(48)).toBe(48);
-      expect(layout(48)).toBe(128);
-      expect(painted(48)).toBe(112);
-    });
-
-    it("Android, gesture navigation (24dp inset)", () => {
-      expect(tabBarPaddingBottom(24)).toBe(24);
-      expect(layout(24)).toBe(104);
-      expect(painted(24)).toBe(88);
-    });
-
-    it("iPhone with a home indicator (34pt inset)", () => {
-      // Unchanged: UIKit is 49pt of content + the 34pt inset, with no padding
-      // of its own, and React Navigation's own bar takes `insets.bottom` flat.
+  describe("bottom padding: the platform's reservation is the breathing room", () => {
+    it("lets a platform inset be the whole breathing room", () => {
+      // Not `inset + gap`. A home-indicator iPhone's 34pt keep-out is already
+      // the bar's breathing room, and Android's ~24/~48 is already Material's.
       expect(tabBarPaddingBottom(34)).toBe(34);
-      expect(layout(34)).toBe(114);
-      expect(painted(34)).toBe(98);
+      expect(tabBarPaddingBottom(24)).toBe(24);
+      expect(tabBarPaddingBottom(48)).toBe(48);
     });
 
-    it("iPhone with a home button (no inset) falls to the design floor", () => {
-      expect(tabBarPaddingBottom(0)).toBe(TAB_DESIGN_PADDING);
-      expect(layout(0)).toBe(88);
-      expect(painted(0)).toBe(72);
+    it("stands in with the design gap where the platform reserves nothing", () => {
+      expect(tabBarPaddingBottom(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
     });
 
-    it("puts Android exactly on the MD3 navigation bar, 80dp + the inset", () => {
-      // `NavigationBar` pads by the inset *outside* an 80dp minimum height, so
-      // the spec total is 80 + inset. Adding the design pad overshot it.
-      for (const inset of [24, 48]) {
-        expect(layout(inset)).toBe(TAB_CONTENT_HEIGHT + inset);
-      }
+    it("floors at the design gap, not at zero", () => {
+      // A `> 0` test would hand a 2dp inset a 2dp gap — a bar that gets shorter
+      // as the device reserves more.
+      expect(tabBarPaddingBottom(2)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
+      expect(tabBarPaddingBottom(8)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
     });
 
-    it("is one rule, not two: the same inset gives the same padding", () => {
-      // The platform decides what the inset is, never what is done with it.
-      // A 34dp inset is a home indicator on iOS and nothing in particular on
-      // Android; the bar does not need to know which, and must not ask.
-      expect(tabBarPaddingBottom(34)).toBe(tabBarPaddingBottom(34));
-      expect(tabBarPaddingBottom).toHaveLength(1);
-    });
-
-    it("floors deliberately — a reservation smaller than the pad still breathes", () => {
-      expect(tabBarPaddingBottom(4)).toBe(TAB_DESIGN_PADDING);
-      expect(tabBarPaddingBottom(8)).toBe(TAB_DESIGN_PADDING);
-      // The floor never eats into a real reservation: content must clear it.
-      for (const inset of [0, 4, 8, 24, 34, 48]) {
+    it("never shrinks as the platform reserves more", () => {
+      const insets = [0, 2, 8, 16, 24, 34, 48];
+      for (const inset of insets) {
         expect(tabBarPaddingBottom(inset)).toBeGreaterThanOrEqual(inset);
       }
+      const heights = insets.map((inset) => tabBarPaddingBottom(inset));
+      expect([...heights].sort((a, b) => a - b)).toEqual(heights);
     });
 
-    it("keeps the two current-generation phones within a few dp of each other", () => {
-      expect(Math.abs(painted(34) - painted(24))).toBeLessThanOrEqual(10);
+    it("is one rule: the platform never enters the formula", () => {
+      // The platform decides what the inset is, and what the row above it
+      // measures — never what is done with the inset.
+      expect(tabBarPaddingBottom).toHaveLength(1);
+    });
+  });
+
+  describe("tabBarHeight — every device case, both platforms", () => {
+    // The bar's whole height: the platform's content row plus what sits under
+    // it. Android is edge-to-edge, so `navigationBars` reaches JS in both
+    // navigation modes — a three-button phone reports ~48dp, not zero.
+    it.each([
+      ["iPhone with a home indicator", "ios", 34, 83],
+      ["iPhone with a home button", "ios", 0, 57],
+      ["Android, gesture navigation", "android", 24, 104],
+      ["Android, three-button navigation", "android", 48, 128],
+      ["Android or web, no inset", "android", 0, 88],
+    ])("%s", (_device, os, inset, expected) => {
+      expect(tabBarHeight(os, inset)).toBe(expected);
     });
 
+    it("puts a home-indicator iPhone on UIKit's own 83pt", () => {
+      // 49pt content row + the 34pt inset, which is the platform's own total —
+      // and the same number gridgo-client and gridgo-supplier land on.
+      expect(tabBarHeight("ios", 34)).toBe(49 + 34);
+      expect(tabBarMetrics("ios").columnHeight).toBe(49);
+    });
+
+    it("keeps Material's 80dp container above the system inset, not inside it", () => {
+      for (const inset of [0, 24, 48]) {
+        expect(tabBarHeight("android", inset)).toBe(80 + tabBarPaddingBottom(inset));
+      }
+      // Android's approved heights, unmoved.
+      expect(tabBarHeight("android", 48)).toBe(128);
+      expect(tabBarHeight("android", 24)).toBe(104);
+    });
+  });
+
+  describe("tabBarMetrics", () => {
+    it("gives iOS the Human Interface Guidelines 49pt row", () => {
+      const m = tabBarMetrics("ios");
+      expect(m.columnHeight).toBe(49);
+      // 4 + 24 icon + 2 + 16 label + 3 = 49, the row exactly.
+      expect(m.itemPaddingTop + 24 + m.itemGap + TAB_LABEL_BOX + m.itemPaddingBottom).toBe(49);
+    });
+
+    it("gives Android the Material 3 80dp container, with nothing moved", () => {
+      const m = tabBarMetrics("android");
+      expect(m).toEqual({
+        columnHeight: 80,
+        itemPaddingTop: 8,
+        itemGap: 4,
+        itemPaddingBottom: 8,
+        actionDiameter: 56,
+        actionRise: 16,
+      });
+      // The label box the captain approved: 56..72 in an 80dp column.
+      expect(m.columnHeight - m.itemPaddingBottom - TAB_LABEL_BOX).toBe(56);
+    });
+
+    it("keeps every labelled column on the 44dp touch floor", () => {
+      // The column is the target, and the padding sits *under* it, so no inset
+      // can shrink it.
+      for (const os of ["ios", "android"]) {
+        expect(tabBarMetrics(os).columnHeight).toBeGreaterThanOrEqual(44);
+      }
+    });
+  });
+
+  describe("the raised action on a row too short to hold it", () => {
+    it("sits flush inside Android's 80dp column, overhanging nothing", () => {
+      // 56 disc + 16 label + 8 pad is exactly 80, so the disc's top is the
+      // row's top. This is the shipped Android look and it must not move.
+      expect(tabBarActionOverhang("android")).toBe(0);
+    });
+
+    it("rises above iOS's 49pt row rather than shrinking or losing its label", () => {
+      // 44 + 16 + 3 = 63 against a 49pt row.
+      expect(tabBarActionOverhang("ios")).toBe(14);
+    });
+
+    it("does not measure the overhang into the bar's height", () => {
+      // The whole point: the disc is drawn above the row, never inside it, so
+      // iOS stays on UIKit's 83pt with the disc raised.
+      expect(tabBarHeight("ios", 34)).toBe(83);
+      expect(tabBarActionOverhang("ios")).toBeGreaterThan(0);
+    });
+
+    it("keeps the action's label on the same line as its neighbours", () => {
+      // Both column kinds bottom-align, and both reserve the same label box
+      // above the same bottom padding — which is what puts the verb on the
+      // destinations' line on either platform.
+      for (const os of ["ios", "android"]) {
+        const m = tabBarMetrics(os);
+        expect(m.columnHeight - m.itemPaddingBottom - TAB_LABEL_BOX).toBeGreaterThan(0);
+      }
+    });
+
+    it("matches gridgo-client's disc on each platform", () => {
+      expect(tabBarMetrics("ios").actionDiameter).toBe(44);
+      expect(tabBarMetrics("android").actionDiameter).toBe(56);
+    });
+  });
+
+  describe("the bar as rendered", () => {
     it.each([
       ["Android, three-button navigation", 48, 48],
       ["Android, gesture navigation", 24, 24],
       ["iPhone with a home indicator", 34, 34],
-      ["iPhone with a home button", 0, TAB_DESIGN_PADDING],
+      ["iPhone with a home button", 0, TAB_BAR_MIN_BOTTOM_GAP],
     ])("wires the reported inset through to the bar: %s", async (_device, inset, expected) => {
       // The arithmetic above is only worth anything if the bar actually reads
       // the device's inset. Web reports zero and cannot show either Android
@@ -239,24 +311,24 @@ describe("GridgoTabBar", () => {
       expect(style.paddingBottom).toBe(expected);
     });
 
-    it("leaves every labelled column its 44dp touch target", () => {
-      // The column is the target, and it is the 80dp row itself — the padding
-      // sits under it, so shrinking the padding cannot shrink the target.
-      expect(TAB_CONTENT_HEIGHT).toBeGreaterThanOrEqual(44);
-      for (const inset of [0, 24, 34, 48]) {
-        expect(layout(inset) - tabBarPaddingBottom(inset)).toBeGreaterThanOrEqual(44);
+    it("gives the action column the running platform's row height and disc", async () => {
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+      const style = StyleSheet.flatten(screen.getByTestId("tab-action-disc").props.style);
+      expect(style.height).toBe(TAB_BAR_METRICS.columnHeight);
+      expect(style.paddingBottom).toBe(TAB_BAR_METRICS.itemPaddingBottom);
+    });
+
+    it("offsets the painted surface so the disc breaks the hairline", () => {
+      // The surface starts `actionRise` below the row top; that strip stays
+      // transparent and the disc paints across it on both platforms.
+      expect(tabBarMetrics("android").actionRise).toBe(16);
+      expect(tabBarMetrics("ios").actionRise).toBe(10);
+      for (const os of ["ios", "android"]) {
+        const m = tabBarMetrics(os);
+        expect(m.actionRise).toBeGreaterThan(0);
+        expect(m.actionRise).toBeLessThan(m.columnHeight);
       }
     });
-  });
-
-  it("offsets the painted surface 16dp so the disc breaks the hairline", () => {
-    // top-4 overlay: transparent strip above the hairline; disc overhangs into it.
-    expect(TAB_SURFACE_TOP_OFFSET).toBe(16);
-    // Content height is Material Design 3 icon+label standard.
-    expect(TAB_CONTENT_HEIGHT).toBe(80);
-    expect(TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET).toBe(64);
-    // 56dp disc + 16dp label box + 8dp pad is exactly the 80dp column, which is
-    // what puts the action's label in the same box as the destinations' labels.
-    expect(56 + 16 + TAB_DESIGN_PADDING).toBe(TAB_CONTENT_HEIGHT);
   });
 });
