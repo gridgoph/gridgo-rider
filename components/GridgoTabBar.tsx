@@ -60,10 +60,11 @@ const ACTION_GLYPHS: Record<RiderActionGlyph, LucideIcon> = {
  */
 export const TAB_CONTENT_HEIGHT = 80;
 /**
- * Design padding under the icon+label row.
+ * The floor under the icon+label row, for a device that reserves nothing.
  *
- * Not a universal constant: see `tabBarPaddingBottom` for where it applies and
- * why iOS does not take it.
+ * Not an addend. See `tabBarPaddingBottom`: where the system reserves space at
+ * the bottom, that reservation *is* the row's breathing room, and this stands
+ * in only when there is none to inherit.
  */
 export const TAB_DESIGN_PADDING = 8;
 /**
@@ -73,50 +74,62 @@ export const TAB_DESIGN_PADDING = 8;
 export const TAB_SURFACE_TOP_OFFSET = 16;
 
 /**
- * The bar's bottom padding, which is genuinely not the same rule per platform.
+ * The bar's bottom padding. **One rule, both platforms:**
  *
- * Both platforms' own specs say "content row + the system inset, and nothing
- * else" — but their insets do not mean the same thing, which is why one rule
- * cannot serve both and why both a bare add and a bare `Math.max` have now been
- * reported as wrong from opposite directions.
+ * > Where the system reserves space at the bottom of the screen, that
+ * > reservation is the row's breathing room. `TAB_DESIGN_PADDING` is a floor
+ * > for a device that reserves none — never something added on top.
  *
- * **iOS.** A UIKit tab bar on a home-indicator iPhone is 49pt of content plus
- * the 34pt safe-area inset — 83pt in total, with no padding of its own.
- * React Navigation's own `BottomTabBar` does exactly this
- * (`TABBAR_HEIGHT_UIKIT + inset`, `paddingBottom: insets.bottom`). That 34pt is
- * already the bar's visual breathing room, so adding 8 on top of it is 8pt of
- * bar nobody asked for — which is the "sits too high above the safe area"
- * report. On an older iPhone the inset is 0 and there is nothing to breathe on,
- * so the design pad stands in.
+ * The rule used to fork per platform, on the belief that an Android inset means
+ * something different from an iOS one. It does not, and the fork is what put
+ * 8dp of unasked-for bar under every Android phone. Both halves of that belief
+ * were checked against the specs and both are false:
  *
- * **Android.** MD3's navigation bar is an 80dp container that sits *above* the
- * system inset (`paddingBottomSystemWindowInsets`), and the gesture inset is a
- * thin ~24dp strip the gesture handle lives in rather than a margin. GRIDGO's
- * painted content row is 64dp, 16 short of MD3's 80, so the inset alone leaves
- * the row tighter than the spec — which is the earlier "too tight" report, and
- * why `Math.max` was banned. The design pad stacks here.
+ * - **MD3's 80dp navigation bar sits above the system inset, not around it.**
+ *   `androidx.compose.material3.NavigationBar` applies
+ *   `Modifier.fillMaxWidth().windowInsetsPadding(windowInsets)
+ *   .defaultMinSize(minHeight = NavigationBarHeight)` — inset padding *outside*
+ *   the 80dp minimum, so a spec-exact MD3 bar is 80dp + inset and nothing more.
+ *   Our column is `h-20` = that same 80dp, so `padding = inset` lands on the
+ *   spec exactly, and `inset + 8` overshoots it on every Android device.
+ * - **A three-button phone does not report a zero inset.** This app is
+ *   edge-to-edge (`android.edgeToEdgeEnabled`), and under edge-to-edge
+ *   `react-native-safe-area-context` reports `navigationBars` to JS: ~24dp on
+ *   gesture navigation, ~48dp on three-button. Both were being double-counted;
+ *   three-button was simply the worse of the two, at MD3 + 8 = 136dp of bar.
  *
- * Resulting painted bar heights (64 + padding):
+ * iOS already followed this rule and is unchanged by it. UIKit's tab bar is
+ * 49pt of content plus the 34pt inset — 83pt, with no padding of its own — and
+ * React Navigation's own `BottomTabBar` is branch-free about it for exactly the
+ * reason above: `getTabBarHeight` returns `TABBAR_HEIGHT_UIKIT + inset` and the
+ * bar takes `paddingBottom: insets.bottom`, on every platform.
  *
- * | Device | Inset | Painted |
- * |---|---:|---:|
- * | iPhone with home indicator | 34 | 98 |
- * | iPhone with a home button | 0 | 72 |
- * | Android, gesture navigation | 24 | 96 |
- * | Android, three-button navigation | 48 | 120 |
+ * Resulting heights. The layout footprint — what actually pushes a screen up —
+ * is the 80dp column plus this padding; the painted slab is 16dp shorter,
+ * because the top strip is left transparent for the disc to break.
  *
- * The two current-generation cases land 2dp apart, so the three apps still read
- * as one family. Platform is a parameter rather than a read of `Platform.OS`
- * so both branches are testable without a render tree.
+ * | Device | Inset | Padding | Layout (80+) | Painted (64+) |
+ * |---|---:|---:|---:|---:|
+ * | Android, three-button navigation | 48 | 48 | 128 | 112 |
+ * | Android, gesture navigation | 24 | 24 | 104 | 88 |
+ * | iPhone with a home indicator | 34 | 34 | 114 | 98 |
+ * | iPhone with a home button | 0 | 8 | 88 | 72 |
+ *
+ * Both Android rows are now `80 + inset`, which is MD3 to the dp. iOS keeps the
+ * 80dp row rather than UIKit's 49 — that is GRIDGO's own settled choice of one
+ * bar across both platforms, and it is not what this function decides.
+ *
+ * Platform is no longer a parameter because it is no longer a term: it decides
+ * what the inset *is*, never what is done with it.
  */
-export function tabBarPaddingBottom(
-  insetBottom: number,
-  platformOS: string = Platform.OS,
-): number {
-  if (platformOS === "ios") {
-    return insetBottom > 0 ? insetBottom : TAB_DESIGN_PADDING;
-  }
-  return insetBottom + TAB_DESIGN_PADDING;
+export function tabBarPaddingBottom(insetBottom: number): number {
+  // A floor, on purpose — and yes, arithmetically this is
+  // `Math.max(insetBottom, TAB_DESIGN_PADDING)`. `Math.max` was banned back when
+  // the pad was meant to stack on top of the inset, because it silently threw
+  // the pad away. Under the rule above the pad was never meant to stack, so the
+  // floor *is* the rule. Written out rather than as `Math.max` so a reader sees
+  // a decision instead of the shape of the old mistake.
+  return insetBottom >= TAB_DESIGN_PADDING ? insetBottom : TAB_DESIGN_PADDING;
 }
 
 /**

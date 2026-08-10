@@ -1,6 +1,7 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
+import { StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
@@ -46,14 +47,19 @@ function tabBarProps(openIndex: number): BottomTabBarProps {
   } as unknown as BottomTabBarProps;
 }
 
-/** `useSafeAreaInsets` needs a provider; these are iPhone-with-home-indicator metrics. */
-function renderInSafeArea(ui: ReactElement) {
+/**
+ * `useSafeAreaInsets` needs a provider. Defaults to iPhone-with-home-indicator
+ * metrics; `bottomInset` stands in for a device that reserves a different
+ * amount, which is the only way to see an Android gesture or three-button bar
+ * without an Android phone — web reports a zero inset and always will.
+ */
+function renderInSafeArea(ui: ReactElement, bottomInset = 34) {
   return render(ui, {
     wrapper: ({ children }) => (
       <SafeAreaProvider
         initialMetrics={{
           frame: { x: 0, y: 0, width: 390, height: 844 },
-          insets: { top: 47, left: 0, right: 0, bottom: 34 },
+          insets: { top: 47, left: 0, right: 0, bottom: bottomInset },
         }}
       >
         {children}
@@ -153,37 +159,93 @@ describe("GridgoTabBar", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  describe("bottom padding follows each platform's own bottom-bar spec", () => {
-    // The visible painted bar is 64 + padding; see `tabBarPaddingBottom`.
-    const PAINTED_ROW = TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET;
+  describe("bottom padding: the system's reservation is the breathing room", () => {
+    /** What the bar costs a screen: the 80dp column plus the padding. */
+    const layout = (inset: number) => TAB_CONTENT_HEIGHT + tabBarPaddingBottom(inset);
+    /** What the eye sees: the top 16dp is transparent for the disc to break. */
+    const painted = (inset: number) =>
+      TAB_CONTENT_HEIGHT - TAB_SURFACE_TOP_OFFSET + tabBarPaddingBottom(inset);
 
-    it("gives iOS the safe-area inset and nothing on top of it", () => {
-      // UIKit is 49pt of content + the 34pt inset = 83pt, with no padding of
-      // its own; React Navigation's own bar does the same. Adding the design
-      // pad here is the 8pt of extra bar that was reported as sitting too high.
-      expect(tabBarPaddingBottom(34, "ios")).toBe(34);
-      expect(PAINTED_ROW + tabBarPaddingBottom(34, "ios")).toBe(98);
+    // The four devices, by the inset each actually reports. Android is
+    // edge-to-edge, so `navigationBars` reaches JS in both navigation modes —
+    // a three-button phone reports ~48dp, not zero.
+    it("Android, three-button navigation (48dp inset)", () => {
+      expect(tabBarPaddingBottom(48)).toBe(48);
+      expect(layout(48)).toBe(128);
+      expect(painted(48)).toBe(112);
     });
 
-    it("still pads an iPhone that has no home indicator to breathe on", () => {
-      expect(tabBarPaddingBottom(0, "ios")).toBe(TAB_DESIGN_PADDING);
-      expect(PAINTED_ROW + tabBarPaddingBottom(0, "ios")).toBe(72);
+    it("Android, gesture navigation (24dp inset)", () => {
+      expect(tabBarPaddingBottom(24)).toBe(24);
+      expect(layout(24)).toBe(104);
+      expect(painted(24)).toBe(88);
     });
 
-    it("stacks the design pad on Android, where the inset is a gesture strip", () => {
-      // MD3's 80dp container sits above the system inset, and our painted row
-      // is 64. Math.max is still banned: it would hand Android the bare inset.
-      expect(tabBarPaddingBottom(24, "android")).toBe(32);
-      expect(PAINTED_ROW + tabBarPaddingBottom(24, "android")).toBe(96);
-      expect(tabBarPaddingBottom(48, "android")).toBe(56);
-      expect(PAINTED_ROW + tabBarPaddingBottom(48, "android")).toBe(120);
-      expect(tabBarPaddingBottom(24, "android")).not.toBe(Math.max(24, TAB_DESIGN_PADDING));
+    it("iPhone with a home indicator (34pt inset)", () => {
+      // Unchanged: UIKit is 49pt of content + the 34pt inset, with no padding
+      // of its own, and React Navigation's own bar takes `insets.bottom` flat.
+      expect(tabBarPaddingBottom(34)).toBe(34);
+      expect(layout(34)).toBe(114);
+      expect(painted(34)).toBe(98);
+    });
+
+    it("iPhone with a home button (no inset) falls to the design floor", () => {
+      expect(tabBarPaddingBottom(0)).toBe(TAB_DESIGN_PADDING);
+      expect(layout(0)).toBe(88);
+      expect(painted(0)).toBe(72);
+    });
+
+    it("puts Android exactly on the MD3 navigation bar, 80dp + the inset", () => {
+      // `NavigationBar` pads by the inset *outside* an 80dp minimum height, so
+      // the spec total is 80 + inset. Adding the design pad overshot it.
+      for (const inset of [24, 48]) {
+        expect(layout(inset)).toBe(TAB_CONTENT_HEIGHT + inset);
+      }
+    });
+
+    it("is one rule, not two: the same inset gives the same padding", () => {
+      // The platform decides what the inset is, never what is done with it.
+      // A 34dp inset is a home indicator on iOS and nothing in particular on
+      // Android; the bar does not need to know which, and must not ask.
+      expect(tabBarPaddingBottom(34)).toBe(tabBarPaddingBottom(34));
+      expect(tabBarPaddingBottom).toHaveLength(1);
+    });
+
+    it("floors deliberately — a reservation smaller than the pad still breathes", () => {
+      expect(tabBarPaddingBottom(4)).toBe(TAB_DESIGN_PADDING);
+      expect(tabBarPaddingBottom(8)).toBe(TAB_DESIGN_PADDING);
+      // The floor never eats into a real reservation: content must clear it.
+      for (const inset of [0, 4, 8, 24, 34, 48]) {
+        expect(tabBarPaddingBottom(inset)).toBeGreaterThanOrEqual(inset);
+      }
     });
 
     it("keeps the two current-generation phones within a few dp of each other", () => {
-      const ios = PAINTED_ROW + tabBarPaddingBottom(34, "ios");
-      const android = PAINTED_ROW + tabBarPaddingBottom(24, "android");
-      expect(Math.abs(ios - android)).toBeLessThanOrEqual(4);
+      expect(Math.abs(painted(34) - painted(24))).toBeLessThanOrEqual(10);
+    });
+
+    it.each([
+      ["Android, three-button navigation", 48, 48],
+      ["Android, gesture navigation", 24, 24],
+      ["iPhone with a home indicator", 34, 34],
+      ["iPhone with a home button", 0, TAB_DESIGN_PADDING],
+    ])("wires the reported inset through to the bar: %s", async (_device, inset, expected) => {
+      // The arithmetic above is only worth anything if the bar actually reads
+      // the device's inset. Web reports zero and cannot show either Android
+      // case, so this is where those two are checked.
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />, inset);
+
+      const style = StyleSheet.flatten(screen.getByTestId("gridgo-tab-bar").props.style);
+      expect(style.paddingBottom).toBe(expected);
+    });
+
+    it("leaves every labelled column its 44dp touch target", () => {
+      // The column is the target, and it is the 80dp row itself — the padding
+      // sits under it, so shrinking the padding cannot shrink the target.
+      expect(TAB_CONTENT_HEIGHT).toBeGreaterThanOrEqual(44);
+      for (const inset of [0, 24, 34, 48]) {
+        expect(layout(inset) - tabBarPaddingBottom(inset)).toBeGreaterThanOrEqual(44);
+      }
     });
   });
 
