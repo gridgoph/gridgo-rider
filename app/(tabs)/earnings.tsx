@@ -117,10 +117,17 @@ export default function EarningsScreen() {
               </Text>
             </View>
 
+            {/*
+              Emphasis is the monochrome accent border, the same device the
+              cash-collection screen uses for the amount. In Dark the warning
+              token sits a shade away from actionYellow, and a yellow-edged card
+              an inch from the yellow disc would spend the screen's attention
+              budget on something that is not an action.
+            */}
             {summary.cashToHandInMinor > 0 ? (
-              <View className="gap-3 rounded-card border border-warning bg-surface p-4">
+              <View className="gap-3 rounded-card border-2 border-accent bg-surface p-4">
                 <View className="flex-row items-center gap-2">
-                  <Banknote size={16} color={colors.warning} strokeWidth={2} />
+                  <Banknote size={16} color={colors.textPrimary} strokeWidth={2} />
                   <Text className="text-overline text-text-muted">CASH TO HAND IN</Text>
                 </View>
                 <Text className="text-h1 text-text-primary">

@@ -348,7 +348,14 @@ export default function FailedAttemptScreen() {
       */}
       {order ? (
         <StickyActionBar>
-          <Text className="text-body text-text-secondary">{commit.consequence}</Text>
+          {/*
+            The consequence only earns its place once the report is complete —
+            before that the rider has not chosen an outcome, and what is
+            missing is the more useful sentence.
+          */}
+          {blocked ? null : (
+            <Text className="text-body text-text-secondary">{commit.consequence}</Text>
+          )}
           <PrimaryButton
             label={busy ? "Recording…" : commit.label}
             onPress={() => void record()}

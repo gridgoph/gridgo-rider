@@ -19,15 +19,10 @@ import { useSession } from "@/store/session";
 export function useAuthGate(): void {
   const user = useSession((s) => s.user);
   const hydrated = useSession((s) => s.hydrated);
-  const hydrate = useSession((s) => s.hydrate);
   const segments = useSegments();
   const router = useRouter();
   const rootState = useRootNavigationState();
   const rootNavigatorKey = rootState?.key;
-
-  useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
 
   useEffect(() => {
     if (!canGateNavigate({ rootNavigatorKey, sessionHydrated: hydrated })) return;

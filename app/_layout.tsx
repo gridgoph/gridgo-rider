@@ -65,7 +65,14 @@ export default function RootLayout() {
   const token = useThemeColors();
   const fontsReady = useAppFonts();
   const sessionHydrated = useSession((s) => s.hydrated);
+  const hydrateSession = useSession((s) => s.hydrate);
   useHydrateTheme();
+
+  // Read the stored session here, not in the gate: the gate lives inside the
+  // tree that this component refuses to render until hydration finishes.
+  useEffect(() => {
+    void hydrateSession();
+  }, [hydrateSession]);
 
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.
@@ -79,7 +86,13 @@ export default function RootLayout() {
     if (fontsReady && sessionHydrated) SplashScreen.hideAsync();
   }, [fontsReady, sessionHydrated]);
 
-  if (!fontsReady) return null;
+  /*
+    Nothing renders until the fonts AND the stored session are ready. A screen
+    that mounts first fires its data load with no bearer, the server answers
+    401, and the 401 handler wipes the very session that was still loading —
+    which is how a signed-in rider ended up back at login on every cold start.
+  */
+  if (!fontsReady || !sessionHydrated) return null;
 
   return (
     <SafeAreaProvider>

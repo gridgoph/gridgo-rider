@@ -243,6 +243,12 @@ export default function ActiveScreen() {
             body="Accept an offer and it appears here with the route, the stops, and every step you need to close it."
             actionLabel="Browse offers"
             onAction={() => router.push("/(tabs)/offers")}
+            /*
+              Quiet on purpose: the raised disc below already offers this exact
+              move in yellow, and the same action twice in the same colour makes
+              both of them ordinary.
+            */
+            secondaryAction
           />
         ) : null}
 

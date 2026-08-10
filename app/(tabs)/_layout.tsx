@@ -29,6 +29,7 @@ export default function TabsLayout() {
   const colors = useThemeColors();
   const refreshUnread = useNotifications((s) => s.refreshUnread);
   const userId = useSession((s) => s.user?.id ?? null);
+  const sessionReady = useSession((s) => s.hydrated);
   const refreshTrip = useActiveTrip((s) => s.refresh);
   const hydrateProof = useTripProof((s) => s.hydrate);
 
@@ -42,11 +43,12 @@ export default function TabsLayout() {
   }, [hydrateProof]);
 
   useEffect(() => {
+    if (!sessionReady || !userId) return;
     void refreshTrip(userId);
     void refreshUnread();
     const handle = setInterval(poll, TRIP_POLL_MS);
     return () => clearInterval(handle);
-  }, [poll, refreshTrip, refreshUnread, userId]);
+  }, [poll, refreshTrip, refreshUnread, sessionReady, userId]);
 
   return (
     <Tabs

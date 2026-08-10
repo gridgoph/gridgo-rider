@@ -219,6 +219,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const sentBearer = Boolean(tokenMemory);
   if (tokenMemory) headers.Authorization = `Bearer ${tokenMemory}`;
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
@@ -234,7 +235,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     // Expired/invalid bearer — wipe local auth so the routing gate leaves (tabs).
     // Login 401 is wrong password, not session death; skip that path.
-    if (shouldInvalidateSessionOnStatus(res.status, path)) {
+    //
+    // A 401 on a request that carried no bearer at all proves nothing about the
+    // stored session — it usually means the request went out before the session
+    // was read back from the phone. Treating it as expiry deleted the very
+    // session that was still loading, which signed the rider out on every cold
+    // start.
+    if (sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
       tokenMemory = null;
       unauthorizedHandler?.();
     }

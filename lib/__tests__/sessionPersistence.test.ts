@@ -7,7 +7,7 @@ import {
   serialiseSession,
   SESSION_STORAGE_KEY,
 } from "@/lib/sessionStorage";
-import { useSession } from "@/store/session";
+import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
 const rider = {
   id: "user_rider",
@@ -77,6 +77,26 @@ describe("a signed-in rider stays signed in across launches", () => {
 
     expect(useSession.getState().user).toBeNull();
     expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps the stored session when a 401 came back from a request with no bearer", async () => {
+    // The cold-start bug: a screen fired its load before hydration finished,
+    // the server answered 401, and the handler deleted the session that was
+    // still being read back.
+    await AsyncStorage.setItem(
+      SESSION_STORAGE_KEY,
+      serialiseSession({ token: "tok_live", user: rider }),
+    );
+    api.setToken(null);
+    const unbind = bindApiUnauthorizedHandler();
+    mockFetchOnce({ error: "unauthorized" }, false, 401);
+
+    try {
+      await expect(api.listOrders()).rejects.toMatchObject({ status: 401 });
+      expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).not.toBeNull();
+    } finally {
+      unbind();
+    }
   });
 
   it("forgets the session when a 401 proves the token is dead", async () => {
