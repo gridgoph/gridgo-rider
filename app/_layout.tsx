@@ -17,8 +17,11 @@ import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
-import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
-import { bindApiUnauthorizedHandler } from "@/store/session";
+import {
+  confirmSheetScreenOptions,
+  multiOriginPushedScreenOptions,
+} from "@/lib/navigationHeaders";
+import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,6 +64,7 @@ export default function RootLayout() {
   const scheme = useThemeName();
   const token = useThemeColors();
   const fontsReady = useAppFonts();
+  const sessionHydrated = useSession((s) => s.hydrated);
   useHydrateTheme();
 
   // Keeps the window behind the navigator on canvas, so theme changes and
@@ -69,9 +73,11 @@ export default function RootLayout() {
     SystemUI.setBackgroundColorAsync(token.canvas);
   }, [token.canvas]);
 
+  // The splash covers the session read as well as the fonts. Hiding it earlier
+  // shows a login screen to a rider who is already signed in.
   useEffect(() => {
-    if (fontsReady) SplashScreen.hideAsync();
-  }, [fontsReady]);
+    if (fontsReady && sessionHydrated) SplashScreen.hideAsync();
+  }, [fontsReady, sessionHydrated]);
 
   if (!fontsReady) return null;
 
@@ -96,6 +102,10 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             {/* The tab shell draws its own headers per tab. */}
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="alerts"
+              options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
+            />
             <Stack.Screen
               name="settings"
               options={{
@@ -131,6 +141,13 @@ export default function RootLayout() {
               name="trip/failed"
               options={{ title: "Failed attempt", ...multiOriginPushedScreenOptions }}
             />
+            {/*
+              Confirmations are the platform's own sheet, not a drawn overlay —
+              see `confirmSheetScreenOptions` for what that buys.
+            */}
+            <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+            <Stack.Screen name="trip/handback" options={confirmSheetScreenOptions} />
+            <Stack.Screen name="trip/cod-confirm" options={confirmSheetScreenOptions} />
           </Stack>
         </AuthGate>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />

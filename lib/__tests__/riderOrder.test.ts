@@ -5,7 +5,7 @@ import {
   activeStopKind,
   dropoffLabel,
   FAILURE_REASONS,
-  failureOutcomeConfirm,
+  failureOutcomeCommit,
   formatAttemptAt,
   formatRelativeAt,
   isActiveTripState,
@@ -302,11 +302,25 @@ describe("what usually follows each reason", () => {
     expect(suggestedOutcome("refused")).toBe("return");
   });
 
-  it("asks a specific question before a return, never a bare are-you-sure", () => {
-    const copy = failureOutcomeConfirm("return", "Bajada Print Hub");
-    expect(copy.question).toContain("Bajada Print Hub");
-    expect(copy.question).not.toMatch(/are you sure/i);
-    expect(copy.body).toMatch(/client/i);
-    expect(copy.confirmLabel).not.toBe("OK");
+  it("names the shop, not a bare confirmation, when the package goes back", () => {
+    const copy = failureOutcomeCommit("return", "Bajada Print Hub");
+    expect(copy.label).toMatch(/take the package back/i);
+    expect(copy.label).not.toMatch(/are you sure|^ok$/i);
+    expect(copy.consequence).toContain("Bajada Print Hub");
+    expect(copy.consequence).toMatch(/client/i);
+  });
+
+  it("puts the chosen time on the retry button, so the commit is specific", () => {
+    const when = new Date("2026-08-10T15:00:00+08:00");
+    const copy = failureOutcomeCommit("retry", "Bajada Print Hub", when);
+    expect(copy.label).toMatch(/try again/i);
+    // The exact rendering is locale-dependent; the day number is not.
+    expect(copy.label).toContain("10");
+    expect(copy.consequence).toMatch(/stays with you/i);
+  });
+
+  it("does not invent a time when none was chosen", () => {
+    const copy = failureOutcomeCommit("retry", "Bajada Print Hub", null);
+    expect(copy.label).toBe("Record it and try again later");
   });
 });

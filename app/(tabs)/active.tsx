@@ -1,14 +1,17 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AddressStop } from "@/components/AddressStop";
+import { AlertsButton } from "@/components/AlertsButton";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { LoadingCard, SkeletonBar } from "@/components/Skeleton";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
+import { NextStopCard } from "@/components/NextStopCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
@@ -16,6 +19,7 @@ import { TripMap } from "@/components/TripMap";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useLocationSharing } from "@/hooks/useLocationSharing";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useRiderAction } from "@/hooks/useRiderAction";
 import { useRiderLocation } from "@/hooks/useRiderLocation";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -30,49 +34,53 @@ import {
   orderStateChip,
   pickupLabel,
   primaryActionLabel,
-  selectActiveTrip,
   stopLatLng,
-  tripPhase,
   zoneLabel,
 } from "@/lib/riderOrder";
-import { exceptionSummary, useTripProof } from "@/store/tripProof";
+import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
+import { useTripProof } from "@/store/tripProof";
 
 /** How often the position age on screen is recomputed. */
 const FRESHNESS_TICK_MS = 5_000;
 
+/** Map height on the trip screen — enough to orient, not enough to bury the job. */
+const MAP_HEIGHT = 200;
+
 /**
  * The trip in hand.
  *
- * Map first, then what the job is, then where it is going, then the one thing
- * to do next. Every proof step is its own pushed screen, so this screen never
- * grows a second yellow button or asks for anything.
+ * Reading order is the order a rider needs it in: where you are going, how far,
+ * the step that gets it done, then the map, then what the job is, then its
+ * history. The step used to sit under a spec table and a pair of address
+ * cards, which put the one control that matters below the fold on every phone.
+ *
+ * Every proof step is its own pushed screen, so this screen never grows a
+ * second yellow button and never asks for anything.
  */
 export default function ActiveScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
-  const { user } = useSession();
+  const user = useSession((s) => s.user);
 
-  const [trip, setTrip] = useState<api.Order | null>(null);
-  const [loading, setLoading] = useState(true);
+  const trip = useActiveTrip((s) => s.order);
+  const loaded = useActiveTrip((s) => s.loaded);
+  const tripError = useActiveTrip((s) => s.error);
+  const refreshTrip = useActiveTrip((s) => s.refresh);
+  const setOrder = useActiveTrip((s) => s.setOrder);
+
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [focused, setFocused] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 
-  const hydrate = useTripProof((state) => state.hydrate);
-  const recordReturned = useTripProof((state) => state.recordReturned);
   const clearException = useTripProof((state) => state.clearException);
   const exceptions = useTripProof((state) => state.exceptions);
 
-  useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
-
+  const { phase } = useRiderAction();
   const exception = trip ? (exceptions[trip.id] ?? null) : null;
-  const phase = tripPhase(trip, exceptionSummary(exception));
   const pickup = stopLatLng(trip?.pickup);
   const dropoff = stopLatLng(trip?.dropoff);
   const heading = activeStopKind(phase);
@@ -120,30 +128,19 @@ export default function ActiveScreen() {
   const reload = useCallback(
     async (mode: "load" | "refresh" = "load") => {
       if (mode === "refresh") setRefreshing(true);
-      else setLoading(true);
       try {
-        const orders = await api.listOrders();
-        setTrip(user ? selectActiveTrip(orders, user.id) : null);
-        setError(null);
-      } catch (e) {
-        setError(
-          api.apiErrorMessage(
-            e,
-            "Could not load your trip. Check your connection and pull down to try again.",
-          ),
-        );
+        await refreshTrip(user?.id ?? null, mode);
       } finally {
-        setLoading(false);
         setRefreshing(false);
       }
     },
-    [user],
+    [refreshTrip, user?.id],
   );
 
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
-      void reload();
+      void reload("refresh");
       return () => setFocused(false);
     }, [reload]),
   );
@@ -156,7 +153,7 @@ export default function ActiveScreen() {
         router.push({ pathname: "/trip/pickup", params });
         return;
       case "start_delivery":
-        void startDelivery();
+        router.push({ pathname: "/trip/start", params });
         return;
       case "collect_cod":
         router.push({ pathname: "/trip/cod", params });
@@ -165,42 +162,22 @@ export default function ActiveScreen() {
         router.push({ pathname: "/trip/delivery", params });
         return;
       case "returning":
-        void confirmHandback();
+        router.push({ pathname: "/trip/handback", params });
         return;
       default:
     }
   }
 
-  async function startDelivery() {
+  async function undoReturn() {
     if (!trip) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     try {
-      setTrip(await api.transitionOrder(trip.id, "out_for_delivery"));
+      clearException(trip.id);
+      setOrder(await api.getOrder(trip.id));
     } catch (e) {
-      setError(api.apiErrorMessage(e, "Could not start the delivery. Pull down and try again."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirmHandback() {
-    if (!trip) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { proof } = await api.submitProof(trip.id, {
-        kind: "failure",
-        reason: "returned",
-        note: `Package handed back to ${pickupLabel(trip)}`,
-      });
-      recordReturned(trip.id, proof.at);
-    } catch (e) {
-      setError(
-        api.apiErrorMessage(
-          e,
-          "The handover was not recorded. Try again before you leave the shop.",
-        ),
+      setActionError(
+        api.apiErrorMessage(e, "The job did not refresh. Pull down and try again."),
       );
     } finally {
       setBusy(false);
@@ -210,12 +187,23 @@ export default function ActiveScreen() {
   const chip = trip ? orderStateChip(trip.state) : null;
   const cta = primaryActionLabel(phase);
   const lastAttempt = exception?.attempts.at(-1) ?? null;
+  const stopAddress = trip
+    ? heading === "pickup"
+      ? pickupLabel(trip)
+      : dropoffLabel(trip)
+    : "";
+  const stopHeading =
+    phase === "returning"
+      ? "Take the package back to the shop it came from"
+      : heading === "pickup"
+        ? "Collect the finished job from the counter"
+        : "Hand the package to the client";
 
   return (
     <SafeAreaView className="gg-screen" edges={["top"]}>
       <ScrollView
         className="flex-1"
-        contentContainerClassName="pb-12"
+        contentContainerClassName="gg-page gap-6 pb-8 pt-3"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -224,150 +212,70 @@ export default function ActiveScreen() {
           />
         }
       >
-        {trip ? (
-          <View className="px-4 pt-3" style={{ height: 280 }}>
-            <TripMap
-              pickup={pickup}
-              dropoff={dropoff}
-              pickupLabel={pickupLabel(trip)}
-              dropoffLabel={dropoffLabel(trip)}
-              routeCoordinates={route?.coordinates ?? []}
-              routeUnavailable={Boolean(route && !route.routed)}
-              rider={riderLocation.coords}
-            />
+        <ScreenHeader
+          title="Active trip"
+          subtitle={trip ? null : "Nothing with you right now."}
+          action={<AlertsButton />}
+        />
+
+        {tripError ? (
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="Your trip did not load"
+            body={tripError}
+            actionLabel="Try again"
+            onAction={() => void reload()}
+          />
+        ) : null}
+
+        {!loaded && !trip ? (
+          <View className="gap-4">
+            <SkeletonBar width="100%" height={MAP_HEIGHT} />
+            <LoadingCard label="Loading the job in hand" rows={2} />
           </View>
         ) : null}
 
-        <View className="gg-page gap-8 pt-6">
-          <View className="gap-2">
-            <Text className="text-h1 text-text-primary">Active trip</Text>
-            {trip && route && heading ? (
-              <Text className="text-body-lg text-text-secondary">
-                {phase === "returning"
-                  ? "Back to the shop"
-                  : heading === "pickup"
-                    ? "To the shop"
-                    : "To the client"}{" "}
-                · {routeSummaryLabel(route)}
-              </Text>
+        {loaded && !trip && !tripError ? (
+          <EmptyState
+            icon="trip"
+            title="No job in hand"
+            body="Accept an offer and it appears here with the route, the stops, and every step you need to close it."
+            actionLabel="Browse offers"
+            onAction={() => router.push("/(tabs)/offers")}
+          />
+        ) : null}
+
+        {trip ? (
+          <>
+            {heading ? (
+              <NextStopCard
+                kind={heading}
+                heading={stopHeading}
+                address={stopAddress}
+                routeSummary={route ? routeSummaryLabel(route) : "Measuring the route…"}
+                zone={zoneLabel(trip.zone)}
+              />
             ) : null}
-          </View>
 
-          {error ? (
-            <InlineNotice
-              tone="error"
-              icon="circle-x"
-              title="Your trip did not load"
-              body={error}
-              actionLabel="Try again"
-              onAction={() => void reload()}
-            />
-          ) : null}
-
-          {loading && !trip ? (
-            <View className="items-center gap-3 pt-6">
-              <ActivityIndicator color={colors.textMuted} />
-              <Text className="text-body text-text-muted">Loading your trip…</Text>
-            </View>
-          ) : null}
-
-          {!loading && !trip ? (
-            <EmptyState
-              title="No trip in hand"
-              body="Accept an offer to start earning. Each offer shows the route, the distance, and the fee before you commit."
-              actionLabel="Browse offers"
-              onAction={() => router.push("/(tabs)/offers")}
-            />
-          ) : null}
-
-          {trip ? (
-            <>
-              {route?.statusLabel ? (
-                <InlineNotice
-                  tone="neutral"
-                  icon="info"
-                  title="Routing unavailable"
-                  body={`${route.statusLabel} The addresses below are what to follow.`}
-                />
-              ) : null}
-
-              <LocationSharingBanner sharing={sharing} freshness={freshness} />
-
-              {/* The job */}
-              <View className="gap-4">
-                <View className="flex-row items-start justify-between gap-3">
-                  <Text className="min-w-0 flex-1 text-h2 text-text-primary">{trip.title}</Text>
-                  {chip ? (
-                    <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
-                  ) : null}
-                </View>
-
-                <View className="gg-card-flush px-4">
-                  <SpecRow label="Size" value={trip.size} />
-                  <SpecRow label="Material" value={trip.material} />
-                  <SpecRow label="Quantity" value={String(trip.quantity)} />
-                  <SpecRow label="Zone" value={zoneLabel(trip.zone)} />
-                  {trip.paymentMethod === "cod" ? (
-                    <SpecRow
-                      label="Cash to collect"
-                      value={api.formatPhp(codAmountDueMinor(trip))}
-                      last
-                    />
-                  ) : (
-                    <SpecRow label="Payment" value="Already paid" last />
-                  )}
-                </View>
-              </View>
-
-              {/* Where */}
-              <View className="gap-2">
-                <AddressStop
-                  kind="pickup"
-                  address={pickupLabel(trip)}
-                  detail={
-                    heading === "pickup" && phase === "returning"
-                      ? "Hand the package back here"
-                      : "Collect the finished job"
-                  }
-                  zone={zoneLabel(trip.zone)}
-                  active={heading === "pickup"}
-                />
-                <AddressStop
-                  kind="dropoff"
-                  address={dropoffLabel(trip)}
-                  zone={zoneLabel(trip.zone)}
-                  active={heading === "dropoff"}
-                />
-              </View>
-
-              {lastAttempt ? (
-                <InlineNotice
-                  tone="warning"
-                  icon="triangle-alert"
-                  title={
-                    exception && exception.attempts.length > 1
-                      ? `${exception.attempts.length} failed attempts recorded`
-                      : "Failed attempt recorded"
-                  }
-                  body={`${lastAttempt.note} · ${formatTimelineAt(lastAttempt.at)}. Kept on this phone; Operations has the report.`}
-                />
-              ) : null}
-
-              {/* The one thing to do next */}
+            {/*
+              The step sits directly under where the rider is going, above the
+              fold on every phone. It is deliberately NOT pinned above the tab
+              bar: the raised disc already carries this same action from every
+              screen, and stacking two yellows an inch apart makes both quieter.
+            */}
+            {cta ? (
               <Animated.View
                 key={phase}
                 entering={reducedMotion ? undefined : FadeIn.duration(200)}
-                className="gap-3"
+                className="gap-2"
               >
-                {cta ? (
-                  <PrimaryButton
-                    label={busy ? "Working…" : cta}
-                    onPress={openPrimary}
-                    disabled={busy}
-                    size="large"
-                  />
-                ) : null}
-
+                <PrimaryButton
+                  label={busy ? "Working…" : cta}
+                  onPress={openPrimary}
+                  disabled={busy}
+                  size="large"
+                />
                 {phase === "delivery_proof" || phase === "collect_cod" ? (
                   <SecondaryButton
                     label="Report a failed attempt"
@@ -377,46 +285,106 @@ export default function ActiveScreen() {
                     disabled={busy}
                   />
                 ) : null}
-
                 {phase === "returning" ? (
                   <SecondaryButton
                     label="The client can take it after all"
-                    onPress={() => clearException(trip.id)}
+                    onPress={() => void undoReturn()}
                     disabled={busy}
                   />
                 ) : null}
-
-                {phase === "returned" ? (
-                  <InlineNotice
-                    tone="success"
-                    icon="circle-check"
-                    title={`Package handed back to ${pickupLabel(trip)}`}
-                    body="Operations reschedules this delivery from here. You are free to take the next offer."
-                    actionLabel="Browse offers"
-                    onAction={() => router.push("/(tabs)/offers")}
-                  />
-                ) : null}
-
-                {phase === "complete" ? (
-                  <InlineNotice
-                    tone="success"
-                    icon="circle-check"
-                    title="Delivered"
-                    body="The client has 24 hours to raise an issue. Nothing else is needed from you."
-                    actionLabel="Browse offers"
-                    onAction={() => router.push("/(tabs)/offers")}
-                  />
-                ) : null}
               </Animated.View>
+            ) : null}
 
-              <View className="gap-4">
-                <Text className="text-overline text-text-muted">HISTORY</Text>
-                <TripTimeline timeline={trip.timeline} selfId={user?.id} />
+            <View style={{ height: MAP_HEIGHT }}>
+              <TripMap
+                pickup={pickup}
+                dropoff={dropoff}
+                pickupLabel={pickupLabel(trip)}
+                dropoffLabel={dropoffLabel(trip)}
+                routeCoordinates={route?.coordinates ?? []}
+                routeUnavailable={Boolean(route && !route.routed)}
+                rider={riderLocation.coords}
+              />
+            </View>
+
+            {route?.statusLabel ? (
+              <Text className="text-caption text-text-muted">
+                {route.statusLabel} Follow the addresses below.
+              </Text>
+            ) : null}
+
+            <LocationSharingBanner sharing={sharing} freshness={freshness} />
+
+            {lastAttempt ? (
+              <InlineNotice
+                tone="warning"
+                icon="triangle-alert"
+                title={
+                  exception && exception.attempts.length > 1
+                    ? `${exception.attempts.length} failed attempts recorded`
+                    : "Failed attempt recorded"
+                }
+                body={`${lastAttempt.note} · ${formatTimelineAt(lastAttempt.at)}. Kept on this phone; Operations has the report.`}
+              />
+            ) : null}
+
+            {actionError ? (
+              <InlineNotice tone="error" icon="circle-x" title="That did not go through" body={actionError} />
+            ) : null}
+
+            {phase === "returned" ? (
+              <InlineNotice
+                tone="success"
+                icon="circle-check"
+                title={`Package handed back to ${pickupLabel(trip)}`}
+                body="Operations reschedules this delivery from here. You are free to take the next offer."
+                actionLabel="Browse offers"
+                onAction={() => router.push("/(tabs)/offers")}
+              />
+            ) : null}
+
+            {phase === "complete" ? (
+              <InlineNotice
+                tone="success"
+                icon="circle-check"
+                title="Delivered"
+                body="The client has 24 hours to raise an issue. Nothing else is needed from you."
+                actionLabel="Browse offers"
+                onAction={() => router.push("/(tabs)/offers")}
+              />
+            ) : null}
+
+            {/* The job itself — reference, not the headline. */}
+            <View className="gap-3">
+              <View className="flex-row items-start justify-between gap-3">
+                <Text className="min-w-0 flex-1 text-h3 text-text-primary">{trip.title}</Text>
+                {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>
-            </>
-          ) : null}
-        </View>
+
+              <View className="gg-card-flush px-4">
+                <SpecRow label="Size" value={trip.size} />
+                <SpecRow label="Material" value={trip.material} />
+                <SpecRow label="Quantity" value={String(trip.quantity)} />
+                {trip.paymentMethod === "cod" ? (
+                  <SpecRow
+                    label="Cash to collect"
+                    value={api.formatPhp(codAmountDueMinor(trip))}
+                    last
+                  />
+                ) : (
+                  <SpecRow label="Payment" value="Already paid" last />
+                )}
+              </View>
+            </View>
+
+            <View className="gap-3">
+              <Text className="text-overline text-text-muted">HISTORY</Text>
+              <TripTimeline timeline={trip.timeline} selfId={user?.id} />
+            </View>
+          </>
+        ) : null}
       </ScrollView>
+
     </SafeAreaView>
   );
 }

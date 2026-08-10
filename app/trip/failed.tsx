@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -12,11 +11,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ChoiceList } from "@/components/ChoiceList";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimeField } from "@/components/DateTimeField";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
+import { LoadingCard } from "@/components/Skeleton";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { StickyActionBar } from "@/components/StickyActionBar";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
@@ -30,7 +30,7 @@ import {
   FAILURE_REASONS,
   type FailureOutcome,
   type FailureReasonId,
-  failureOutcomeConfirm,
+  failureOutcomeCommit,
   pickupLabel,
   suggestedOutcome,
 } from "@/lib/riderOrder";
@@ -79,7 +79,6 @@ export default function FailedAttemptScreen() {
   const [contact, setContact] = useState<ContactId>("not_called");
   const [note, setNote] = useState("");
   const [nextAttemptAt, setNextAttemptAt] = useState<Date>(defaultNextAttempt);
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
@@ -144,9 +143,14 @@ export default function FailedAttemptScreen() {
       ? "Photograph the door, the gate, or the wrong address before recording this."
       : null;
 
-  const confirmCopy = useMemo(
-    () => failureOutcomeConfirm(outcome, order ? pickupLabel(order) : "the supplier"),
-    [outcome, order],
+  const commit = useMemo(
+    () =>
+      failureOutcomeCommit(
+        outcome,
+        order ? pickupLabel(order) : "the supplier",
+        outcome === "retry" ? nextAttemptAt : null,
+      ),
+    [outcome, order, nextAttemptAt],
   );
 
   async function record() {
@@ -190,10 +194,8 @@ export default function FailedAttemptScreen() {
         evidenceKind: photoStored ? (evidence.evidence?.kind ?? null) : null,
       });
       clearDraft(order.id, "failed");
-      setConfirming(false);
       router.back();
     } catch (e) {
-      setConfirming(false);
       setSubmitError(
         api.apiErrorMessage(
           e,
@@ -216,12 +218,7 @@ export default function FailedAttemptScreen() {
           contentContainerClassName="gg-page gap-8 pb-10 pt-6"
           keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
-            <View className="items-center gap-3 pt-10">
-              <ActivityIndicator color={colors.textMuted} />
-              <Text className="text-body text-text-muted">Loading the job…</Text>
-            </View>
-          ) : null}
+          {loading ? <LoadingCard label="Loading the job" rows={3} /> : null}
 
           {loadError ? (
             <InlineNotice
@@ -330,14 +327,7 @@ export default function FailedAttemptScreen() {
                   }}
                   disabled={busy}
                 />
-              ) : (
-                <InlineNotice
-                  tone="info"
-                  icon="info"
-                  title={`Take it back to ${pickupLabel(order)}`}
-                  body="Operations reschedules the delivery once the supplier has the package again."
-                />
-              )}
+              ) : null}
 
               {submitError ? (
                 <InlineNotice
@@ -347,33 +337,29 @@ export default function FailedAttemptScreen() {
                   body={submitError}
                 />
               ) : null}
-
-              <View className="gap-3">
-                <PrimaryButton
-                  label="Record this attempt"
-                  onPress={() => setConfirming(true)}
-                  disabled={busy || Boolean(blocked)}
-                  size="large"
-                />
-                {blocked ? (
-                  <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-                ) : null}
-              </View>
             </>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <ConfirmDialog
-        visible={confirming}
-        question={confirmCopy.question}
-        body={confirmCopy.body}
-        confirmLabel={confirmCopy.confirmLabel}
-        cancelLabel={confirmCopy.cancelLabel}
-        busy={busy}
-        onConfirm={() => void record()}
-        onCancel={() => setConfirming(false)}
-      />
+      {/*
+        No confirmation dialog: the consequence is stated here and the button
+        names the exact outcome. See `failureOutcomeCommit`.
+      */}
+      {order ? (
+        <StickyActionBar>
+          <Text className="text-body text-text-secondary">{commit.consequence}</Text>
+          <PrimaryButton
+            label={busy ? "Recording…" : commit.label}
+            onPress={() => void record()}
+            disabled={busy || Boolean(blocked)}
+            size="large"
+          />
+          {blocked ? (
+            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+          ) : null}
+        </StickyActionBar>
+      ) : null}
     </SafeAreaView>
   );
 }
