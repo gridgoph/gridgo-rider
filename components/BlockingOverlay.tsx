@@ -16,10 +16,10 @@ type Props = {
  *
  * A skeleton is for content that has not arrived; this is the other case — the
  * screen is complete, the rider has committed, and the answer is in flight.
- * Disabling the button alone is not enough on a proof screen: the code field,
- * the camera and the "report a failed attempt" route all stay live underneath,
- * and a rider who edits a code mid-submit is filing evidence that no longer
- * matches what was sent.
+ * Disabling the button alone is not enough on a proof screen: the six check
+ * answers, the failure note and the camera all stay live underneath, and a
+ * rider who changes a Pass to a Problem mid-submit is filing evidence that no
+ * longer matches what was sent.
  *
  * So it is a scrim with a centred indicator, exactly the shape the legacy app
  * used for the same job, and it swallows touches for as long as the commit

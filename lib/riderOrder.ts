@@ -13,68 +13,12 @@ export type ActiveTripState = (typeof ACTIVE_TRIP_STATES)[number];
 
 /** Trip phases the Active screen drives, in order. */
 export type TripPhase =
-  | "pickup"
+  | "pickup_checks"
+  | "pickup_blocked"
   | "start_delivery"
-  | "collect_cod"
   | "delivery_proof"
-  | "returning"
-  | "returned"
   | "complete"
   | "idle";
-
-/**
- * Failure reasons the rider can record.
- *
- * The id is what the API stores; the label is what the rider reads. `retryable`
- * seeds the follow-up choice — nobody home is worth a second attempt, a wrong
- * address is not — but the rider always makes the final call.
- */
-export const FAILURE_REASONS = [
-  {
-    id: "unavailable",
-    label: "Nobody at the address",
-    helper: "You arrived, nobody came to the door or answered the phone.",
-    retryable: true,
-  },
-  {
-    id: "wrong_address",
-    label: "Address is wrong or incomplete",
-    helper: "The address does not exist, or it is missing a unit or landmark.",
-    retryable: false,
-  },
-  {
-    id: "refused",
-    label: "Client refused the package",
-    helper: "Someone was there and would not take it.",
-    retryable: false,
-  },
-  {
-    id: "access",
-    label: "Could not get in",
-    helper: "A gate, guard, or closed building stopped you reaching the door.",
-    retryable: true,
-  },
-  {
-    id: "other",
-    label: "Something else",
-    helper: "Anything the four reasons above do not cover. Add a note.",
-    retryable: true,
-  },
-] as const;
-
-export type FailureReasonId = (typeof FAILURE_REASONS)[number]["id"];
-
-export function failureReason(id: FailureReasonId) {
-  return FAILURE_REASONS.find((r) => r.id === id) ?? FAILURE_REASONS[4];
-}
-
-/** What the rider does with the package after a failed attempt. */
-export type FailureOutcome = "retry" | "return";
-
-/** Outcome the reason suggests. The rider can still choose the other one. */
-export function suggestedOutcome(id: FailureReasonId): FailureOutcome {
-  return failureReason(id).retryable ? "retry" : "return";
-}
 
 const ZONE_LABELS: Record<string, string> = {
   davao_central: "Davao Central",
@@ -103,33 +47,49 @@ export function orderStateLabel(state: string): string {
       return "Delivery complete";
     case "completed":
       return "Closed";
+    case "payout_released":
+      return "Settled";
     default:
       return "In progress";
   }
 }
 
-/** Status chip presentation for an order state. Always icon + label + tone. */
-export function orderStateChip(state: string): {
+/**
+ * Status chip for the job in hand. Always icon + label + tone.
+ *
+ * Reads the checklist as well as the state, because a blocked pickup and a
+ * pickup about to happen are the same server state and could not be more
+ * different to the rider standing there.
+ */
+export function orderStateChip(order: Pick<Order, "state" | "pickupChecklist">): {
   label: string;
   tone: "success" | "warning" | "error" | "info" | "neutral";
   icon: "circle-check" | "triangle-alert" | "circle-x" | "clock" | "square-pen";
 } {
-  switch (state) {
+  if (order.state === "rider_assigned" && isTransportBlocked(order)) {
+    return { label: "Do not transport", tone: "error", icon: "circle-x" };
+  }
+  if (order.state === "rider_assigned" && order.pickupChecklist?.status === "escalation_resolved") {
+    return { label: "Check it again", tone: "warning", icon: "triangle-alert" };
+  }
+
+  switch (order.state) {
     case "ready_for_dispatch":
       return { label: "Ready for pickup", tone: "info", icon: "clock" };
     case "rider_assigned":
       // Heading to the shop is the normal next step, not a risk. A warning tone
       // here would spend an alarm on a job going exactly to plan.
-      return { label: "Head to pickup", tone: "info", icon: "clock" };
+      return { label: "Check before you carry", tone: "info", icon: "clock" };
     case "picked_up":
       return { label: "Package with you", tone: "info", icon: "circle-check" };
     case "out_for_delivery":
       return { label: "Out for delivery", tone: "info", icon: "clock" };
     case "issue_window_open":
     case "delivered":
+    case "completed":
       return { label: "Delivery complete", tone: "success", icon: "circle-check" };
     default:
-      return { label: orderStateLabel(state), tone: "neutral", icon: "clock" };
+      return { label: orderStateLabel(order.state), tone: "neutral", icon: "clock" };
   }
 }
 
@@ -139,25 +99,28 @@ export function zoneLabel(zone: string): string {
   return ZONE_LABELS[zone] ?? zone.replaceAll("_", " ");
 }
 
-/** Cash the rider must collect: order total + delivery fee, in centavos. */
-export function codAmountDueMinor(order: Pick<Order, "totalMinor" | "deliveryFeeMinor">): number {
-  return order.totalMinor + order.deliveryFeeMinor;
-}
-
-/** Whether this order requires COD collection before delivery can complete. */
-export function isCodOrder(order: Pick<Order, "paymentMethod">): boolean {
-  return order.paymentMethod === "cod";
-}
-
 /**
- * COD is recorded when paymentStatus is collected/reconciled, or when a cod
- * proof has already been posted this session.
+ * Whether the client's final 25% has been confirmed by Operations.
+ *
+ * The server refuses to record a delivery until it has, so the rider is told
+ * before they knock rather than after they have handed the package over. The
+ * amount is deliberately not part of this: no money changes hands at the door
+ * any more, so a peso figure here would only invite a rider to ask for it.
  */
-export function isCodCollected(
-  order: Pick<Order, "paymentMethod" | "paymentStatus">,
-): boolean {
-  if (!isCodOrder(order)) return true;
-  return order.paymentStatus === "collected" || order.paymentStatus === "reconciled";
+export function isBalanceConfirmed(order: Pick<Order, "payments">): boolean {
+  const status = order.payments?.balance?.status;
+  return status === "confirmed" || status === "legacy_confirmed";
+}
+
+/** True once the six checks have passed and the package may be carried. */
+export function isPickupCleared(order: Pick<Order, "pickupChecklist">): boolean {
+  const status = order.pickupChecklist?.status;
+  return status === "passed" || status === "legacy_passed";
+}
+
+/** True while a failed check is with Operations and nothing may move. */
+export function isTransportBlocked(order: Pick<Order, "pickupChecklist">): boolean {
+  return order.pickupChecklist?.status === "failed_escalated";
 }
 
 /**
@@ -191,46 +154,32 @@ export function selectOffers(orders: Order[]): Order[] {
 }
 
 /**
- * What the rider recorded on this device after a failed attempt.
- *
- * The demo API stores a failure proof but exposes no state for it, so the
- * follow-up the rider chose lives here. Screens must label it as recorded on
- * this phone rather than presenting it as the job's server state.
- */
-export type TripExceptionSummary = {
-  attemptCount: number;
-  outcome: FailureOutcome | null;
-  /** ISO time the rider recorded handing the package back, if they did. */
-  returnedAt: string | null;
-};
-
-/**
  * Derive the next action phase for the Active trip screen.
  *
- * COD is a hard gate: a COD order cannot complete delivery proof until cash
- * collection is recorded. A recorded return outranks both — a package on its
- * way back to the shop is not a delivery waiting to be confirmed.
+ * The pickup checklist is the hard gate at the top of the ladder: while a
+ * failed check is open with Operations the job has no next step at all, and
+ * offering one would be the app inviting a rider to carry a package the
+ * business has just refused.
+ *
+ * The verbal sign-off is deliberately not a phase. It is something the rider
+ * says to the supplier and nothing on the server records it, so a phase waiting
+ * on it would be a step only this phone could ever clear. It is surfaced
+ * instead as standing instruction for exactly as long as it is owed — from the
+ * checks passing until the rider leaves the shop — see `owesSignOff`.
  */
-export function tripPhase(
-  order: Order | null,
-  exception?: TripExceptionSummary | null,
-): TripPhase {
+export function tripPhase(order: Order | null): TripPhase {
   if (!order) return "idle";
 
   switch (order.state) {
     case "rider_assigned":
-      return "pickup";
+      return isTransportBlocked(order) ? "pickup_blocked" : "pickup_checks";
     case "picked_up":
       return "start_delivery";
     case "out_for_delivery":
-      if (exception?.returnedAt) return "returned";
-      if (exception?.outcome === "return") return "returning";
-      if (isCodOrder(order) && !isCodCollected(order)) {
-        return "collect_cod";
-      }
       return "delivery_proof";
     case "issue_window_open":
     case "delivered":
+    case "completed":
       return "complete";
     default:
       return "idle";
@@ -240,16 +189,14 @@ export function tripPhase(
 /** Primary CTA copy for the current phase — verb says what will happen. */
 export function primaryActionLabel(phase: TripPhase): string | null {
   switch (phase) {
-    case "pickup":
-      return "Confirm pickup";
+    case "pickup_checks":
+      return "Run the six pickup checks";
+    case "pickup_blocked":
+      return null;
     case "start_delivery":
       return "Start delivery";
-    case "collect_cod":
-      return "Record cash collection";
     case "delivery_proof":
       return "Confirm delivery";
-    case "returning":
-      return "Confirm handover to supplier";
     default:
       return null;
   }
@@ -258,18 +205,56 @@ export function primaryActionLabel(phase: TripPhase): string | null {
 /** The stop the rider is heading to right now. Drives the map and the labels. */
 export function activeStopKind(phase: TripPhase): "pickup" | "dropoff" | null {
   switch (phase) {
-    case "pickup":
+    case "pickup_checks":
+    case "pickup_blocked":
       return "pickup";
     case "start_delivery":
-    case "collect_cod":
     case "delivery_proof":
       return "dropoff";
-    case "returning":
-      // Back to the shop the job came from.
-      return "pickup";
     default:
       return null;
   }
+}
+
+/**
+ * Whether the rider still owes the supplier the spoken sign-off.
+ *
+ * True from the checks passing until the package leaves the shop. Once the
+ * rider is out for delivery the moment has gone, and a card still asking for it
+ * would be the app nagging about something it cannot know either way.
+ */
+export function owesSignOff(order: Pick<Order, "state" | "pickupChecklist">): boolean {
+  return order.state === "picked_up" && order.pickupChecklist?.status === "passed";
+}
+
+/** The trained line, from the server's own record. Never hard-coded here. */
+export function signOffPrompt(order: Pick<Order, "pickupChecklist">): string | null {
+  return order.pickupChecklist?.signOffPrompt?.trim() || null;
+}
+
+/**
+ * The distance the delivery fee was banded from, in words.
+ *
+ * The fee is no longer a flat zone rate, so "₱25" on its own now looks
+ * arbitrary. Saying what it was measured over is what makes it read as a rate
+ * rather than a number someone picked. This is the API's straight-line figure,
+ * not the road distance the map draws — so it is labelled as the distance the
+ * fee is set from, and never presented as how far the rider will ride.
+ */
+export function feeDistanceLabel(metres: number | null | undefined): string | null {
+  if (metres == null || !Number.isFinite(metres) || metres < 0) return null;
+  if (metres < 1000) return `${Math.round(metres / 100) * 100} m apart`;
+  return `${(metres / 1000).toFixed(1)} km apart`;
+}
+
+/** How long the client has to raise an issue, said the way a rider reads it. */
+export function issueWindowLabel(hours: number | null | undefined): string {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return "a short while";
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    return days === 1 ? "24 hours" : `${days} days`;
+  }
+  return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
 /** Actor label for timeline rows. Never show raw user ids. */
@@ -296,7 +281,29 @@ export function formatTimelineAt(iso: string): string {
   });
 }
 
-/** Relative time for alert lists. */
+/**
+ * Date and time for an alert, e.g. "10 Aug 2026 · 3:24 PM".
+ *
+ * Alerts get the absolute stamp rather than "2h ago". A rider reading back
+ * through them is usually settling when something happened — which shift, which
+ * drop — and a relative age cannot answer that once the day has moved on.
+ */
+export function formatAlertAt(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const date = at.toLocaleDateString("en-PH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const time = at.toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} · ${time}`;
+}
+
+/** Relative time for compact lists. */
 export function formatRelativeAt(iso: string, nowMs: number = Date.now()): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return "";
@@ -315,92 +322,6 @@ export function unreadCount(
   items: { read: boolean }[],
 ): number {
   return items.reduce((n, item) => n + (item.read ? 0 : 1), 0);
-}
-
-export type FailureReport = {
-  reasonId: FailureReasonId;
-  outcome: FailureOutcome;
-  /** Optional free text — the one field here that genuinely is free text. */
-  note?: string;
-  /** Chosen with a date/time picker, only when the outcome is another attempt. */
-  nextAttemptAt?: Date | null;
-  /** Whether the rider reached the client by phone before giving up. */
-  contacted?: boolean;
-};
-
-/** Local short form for a planned next attempt, e.g. "10 Aug, 3:00 PM". */
-export function formatAttemptAt(date: Date): string {
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("en-PH", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-/**
- * Build the failure note body sent to the API.
- *
- * The API stores one `note` string per proof, so everything needed to settle a
- * dispute later — what happened, whether the client was reached, what the rider
- * did with the package, when they will try again — is folded into plain
- * language here. No ids, no snake_case: a person reads this.
- */
-export function buildFailureNote(report: FailureReport): string {
-  const parts: string[] = [failureReason(report.reasonId).label];
-
-  if (report.contacted === true) parts.push("Client reached by phone");
-  if (report.contacted === false) parts.push("Client did not answer the phone");
-
-  if (report.outcome === "return") {
-    parts.push("Package returned to the supplier");
-  } else if (report.nextAttemptAt && !Number.isNaN(report.nextAttemptAt.getTime())) {
-    parts.push(`Trying again ${formatAttemptAt(report.nextAttemptAt)}`);
-  } else {
-    parts.push("Rider is trying again");
-  }
-
-  const trimmed = (report.note ?? "").trim();
-  if (trimmed) parts.push(trimmed);
-
-  return `${parts.join(". ")}`.replace(/\.\.$/, ".");
-}
-
-/**
- * What the rider is committing to, said on the button and above it.
- *
- * There is no confirmation dialog behind this on purpose. The rider has just
- * chosen a reason, taken a photo and picked what happens to the package; a
- * modal asking the same question again is a step, not a safeguard. Instead the
- * button names the exact outcome and the line above it names the consequence,
- * which is the same information without the interruption. Nothing here is
- * irreversible either way — Active offers "the client can take it after all"
- * for as long as the package is with the rider.
- */
-export function failureOutcomeCommit(
-  outcome: FailureOutcome,
-  supplierLabel: string,
-  nextAttemptAt?: Date | null,
-): { label: string; consequence: string } {
-  if (outcome === "return") {
-    return {
-      label: "Record it and take the package back",
-      consequence: `The client does not get it today. Operations reschedules the delivery once ${supplierLabel} has the package again.`,
-    };
-  }
-
-  const when =
-    nextAttemptAt && !Number.isNaN(nextAttemptAt.getTime())
-      ? formatAttemptAt(nextAttemptAt)
-      : null;
-
-  return {
-    label: when ? `Record it and try again ${when}` : "Record it and try again later",
-    consequence: when
-      ? `The job stays with you. The client and Operations see this attempt and that you are coming back ${when}.`
-      : "The job stays with you. The client and Operations see this attempt.",
-  };
 }
 
 /** Interval between live location pings while a package is in transit. */

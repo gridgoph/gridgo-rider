@@ -26,7 +26,7 @@ type Props = {
   onTakePhoto: () => void;
   onRetry: () => void;
   onClear: () => void;
-  /** Signature is the delivery fallback; pickup and failed attempts are photo only. */
+  /** Signature is the delivery fallback; a failed pickup check is photo only. */
   onSignature?: (uri: string) => void;
   disabled?: boolean;
 };

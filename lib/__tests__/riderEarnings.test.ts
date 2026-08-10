@@ -24,11 +24,13 @@ function order(patch: Partial<Order>): Order {
     deadline: null,
     address: "Matina Crossing, Davao City",
     zone: "davao_south",
-    totalMinor: 50_000,
+    subtotalMinor: 50_000,
+    totalMinor: 60_000,
+    downpaymentMinor: 45_000,
+    balanceMinor: 15_000,
     deliveryFeeMinor: 10_000,
-    paymentMethod: "pilot_credit",
-    paymentStatus: "authorized",
-    codEligible: false,
+    paymentMethod: "qr_manual",
+    paymentStatus: "paid",
     promisedDate: null,
     artworkName: null,
     createdAt: "2026-08-10T01:00:00+08:00",
@@ -84,50 +86,26 @@ describe("what a shift is worth", () => {
     expect(summary.entries.map((e) => e.orderId)).toEqual(["today", "yesterday"]);
   });
 
-  it("never adds the client's cash to the rider's fees", () => {
+  it("counts the delivery fee and nothing else", () => {
+    // Cash on delivery is gone, so there is no second number here any more —
+    // the client's total is visible to this role but is not the rider's money
+    // and never was. Only the fee reaches the summary.
     const summary = summariseEarnings(
-      [
-        order({
-          id: "cod",
-          paymentMethod: "cod",
-          paymentStatus: "collected",
-          totalMinor: 45_000,
-          deliveryFeeMinor: 10_000,
-        }),
-      ],
+      [order({ id: "job", totalMinor: 45_000, deliveryFeeMinor: 2_500 })],
       "user_rider",
       NOW,
     );
 
-    // The fee is the rider's; the ₱550 is GRIDGO's money in their pocket.
-    expect(summary.todayMinor).toBe(10_000);
-    expect(summary.cashToHandInMinor).toBe(55_000);
-    expect(summary.entries[0].cashCollectedMinor).toBe(55_000);
-    expect(summary.entries[0].cashOutstanding).toBe(true);
-  });
-
-  it("stops counting cash once Operations has reconciled it", () => {
-    const summary = summariseEarnings(
-      [
-        order({
-          paymentMethod: "cod",
-          paymentStatus: "reconciled",
-          totalMinor: 45_000,
-        }),
-      ],
-      "user_rider",
-      NOW,
-    );
-
-    expect(summary.cashToHandInMinor).toBe(0);
-    expect(summary.entries[0].cashOutstanding).toBe(false);
+    expect(summary.todayMinor).toBe(2_500);
+    expect(summary.allTimeMinor).toBe(2_500);
+    expect(summary.entries[0].feeMinor).toBe(2_500);
   });
 
   it("is empty, not broken, when the rider has no id yet", () => {
     const summary = summariseEarnings([order({})], null, NOW);
     expect(summary.entries).toEqual([]);
     expect(summary.todayMinor).toBe(0);
-    expect(summary.cashToHandInMinor).toBe(0);
+    expect(summary.allTimeMinor).toBe(0);
   });
 
   it("dates a delivery from the timeline, not from a later edit", () => {

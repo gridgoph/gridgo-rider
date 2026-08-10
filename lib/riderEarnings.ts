@@ -1,15 +1,12 @@
 import type { Order } from "@/lib/api";
-import { codAmountDueMinor, isCodOrder } from "@/lib/riderOrder";
 
 /**
- * What a shift is worth, and what of GRIDGO's money is in the rider's pocket.
+ * What a shift is worth.
  *
- * Two numbers, and they are not the same kind of thing:
- *
- * - **Earned** is the rider's delivery fee on jobs they finished. It is theirs.
- * - **Cash to hand in** is customer money collected on delivery that has not
- *   been reconciled yet. It is not theirs, and a rider who confuses the two
- *   ends a day short. Nothing in this file ever adds them together.
+ * Until v2 there were two numbers here and the whole file existed to keep them
+ * apart: the rider's fees, and the customer cash they were carrying. Cash on
+ * delivery is gone — the captain removed it precisely so that a rider never
+ * holds the client's money — so there is one number left, and it is theirs.
  *
  * Everything is derived from the orders the API already returns for this rider,
  * because the demo backend has no payouts endpoint. The screen says so.
@@ -23,9 +20,6 @@ export const DELIVERED_STATES = [
   "payout_released",
 ] as const;
 
-/** Payment statuses that mean the rider is still holding customer cash. */
-const CASH_IN_HAND_STATUSES = new Set(["collected"]);
-
 export type EarningsEntry = {
   orderId: string;
   title: string;
@@ -35,10 +29,6 @@ export type EarningsEntry = {
   at: string;
   /** The rider's fee for this job, in centavos. */
   feeMinor: number;
-  /** Customer cash the rider took at the door, in centavos. Zero when prepaid. */
-  cashCollectedMinor: number;
-  /** True while that cash has not been reconciled with Operations. */
-  cashOutstanding: boolean;
 };
 
 export type EarningsSummary = {
@@ -48,8 +38,6 @@ export type EarningsSummary = {
   todayCount: number;
   /** Fees for every completed delivery this account has, in centavos. */
   allTimeMinor: number;
-  /** Unreconciled customer cash the rider is carrying, in centavos. */
-  cashToHandInMinor: number;
   /** Newest first. */
   entries: EarningsEntry[];
 };
@@ -95,15 +83,12 @@ export function summariseEarnings(
     if (!riderId || order.riderId !== riderId) continue;
     if (!isDeliveredState(order.state)) continue;
 
-    const cash = isCodOrder(order) ? codAmountDueMinor(order) : 0;
     entries.push({
       orderId: order.id,
       title: order.title,
       dropoff: order.dropoff?.label?.trim() || order.address || "Client address",
       at: deliveredAt(order),
       feeMinor: order.deliveryFeeMinor,
-      cashCollectedMinor: cash,
-      cashOutstanding: cash > 0 && CASH_IN_HAND_STATUSES.has(order.paymentStatus),
     });
   }
 
@@ -115,10 +100,6 @@ export function summariseEarnings(
     todayMinor: today.reduce((sum, entry) => sum + entry.feeMinor, 0),
     todayCount: today.length,
     allTimeMinor: entries.reduce((sum, entry) => sum + entry.feeMinor, 0),
-    cashToHandInMinor: entries.reduce(
-      (sum, entry) => sum + (entry.cashOutstanding ? entry.cashCollectedMinor : 0),
-      0,
-    ),
     entries,
   };
 }

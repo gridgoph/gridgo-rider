@@ -16,9 +16,9 @@ export type TabDefinition = {
  *
  * - **Offers** — where is my next job?
  * - **Active** — where am I going with the one I have?
- * - **Earnings** — what has today paid, and how much of GRIDGO's cash am I
- *   carrying? (COD makes the second question a real one — a rider needs to
- *   know what they owe before they finish for the day.)
+ * - **Earnings** — what has today paid? One number now that cash on delivery
+ *   is gone: everything on that screen is the rider's own money, which is why
+ *   it no longer needs a second card keeping GRIDGO's apart from it.
  * - **Account** — who is this phone signed in as, and where is everything else.
  *
  * Alerts is deliberately **not** a destination. Its content is dispatch pings
@@ -45,7 +45,7 @@ export const TABS: readonly TabDefinition[] = [
  * unfinished: a raised disc promises "do the thing", and delivering a screen
  * instead breaks that promise. What the disc does now is the one thing that
  * moves the rider's job forward from wherever they are standing in the app:
- * collect the package, leave for the client, take the cash, capture the proof.
+ * check the package, leave for the client, capture the proof.
  * Its verb changes with the job, so it is labelled — see `riderAction`.
  */
 export const ACTION_TAB: TabName = "action";

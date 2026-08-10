@@ -1,30 +1,49 @@
 import {
   ACTIVE_TRIP_STATES,
-  buildFailureNote,
-  codAmountDueMinor,
   activeStopKind,
   dropoffLabel,
-  FAILURE_REASONS,
-  failureOutcomeCommit,
-  formatAttemptAt,
+  feeDistanceLabel,
   formatRelativeAt,
   isActiveTripState,
-  isCodCollected,
-  isCodOrder,
+  isBalanceConfirmed,
+  isPickupCleared,
+  isTransportBlocked,
+  issueWindowLabel,
+  orderStateChip,
   orderStateLabel,
+  owesSignOff,
   pickupLabel,
   primaryActionLabel,
   selectActiveTrip,
   selectOffers,
   shouldShareLocation,
+  signOffPrompt,
   stopLatLng,
-  suggestedOutcome,
   timelineActorLabel,
   tripPhase,
   unreadCount,
   zoneLabel,
 } from "@/lib/riderOrder";
-import type { Order } from "@/lib/api";
+import type { Order, PickupChecklistRecord, PickupChecklistStatus } from "@/lib/api";
+import { PICKUP_CHECK_CODES } from "@/lib/pickupChecklist";
+
+const SIGN_OFF = "GRIDGO partner! Quality check, done! Salamat po!";
+
+function checklist(
+  status: PickupChecklistStatus,
+  failed: string[] = [],
+): PickupChecklistRecord {
+  return {
+    status,
+    checks: PICKUP_CHECK_CODES.map((code) => ({ code, passed: !failed.includes(code) })),
+    evidenceFileIds: [],
+    failureNote: null,
+    completedAt: null,
+    completedBy: null,
+    escalationId: null,
+    signOffPrompt: SIGN_OFF,
+  };
+}
 
 function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
   return {
@@ -39,11 +58,14 @@ function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
     deadline: null,
     address: "Matina Crossing, Davao City",
     zone: "davao_south",
-    totalMinor: 85000,
-    deliveryFeeMinor: 10000,
-    paymentMethod: "pilot_credit",
+    subtotalMinor: 77000,
+    deliveryFeeMinor: 2500,
+    deliveryDistanceMeters: 3101,
+    totalMinor: 79500,
+    downpaymentMinor: 59625,
+    balanceMinor: 19875,
+    paymentMethod: "qr_manual",
     paymentStatus: "authorized",
-    codEligible: true,
     promisedDate: null,
     artworkName: null,
     createdAt: "2026-08-01T00:00:00.000Z",
@@ -77,53 +99,14 @@ describe("zoneLabel", () => {
   });
 });
 
-describe("COD money and eligibility", () => {
-  it("adds total and delivery fee for the amount due", () => {
-    expect(codAmountDueMinor({ totalMinor: 85000, deliveryFeeMinor: 10000 })).toBe(95000);
-  });
-
-  it("treats only paymentMethod=cod as a cash job", () => {
-    expect(isCodOrder({ paymentMethod: "cod" })).toBe(true);
-    expect(isCodOrder({ paymentMethod: "pilot_credit" })).toBe(false);
-    expect(isCodOrder({ paymentMethod: null })).toBe(false);
-  });
-
-  it("requires collection before a COD delivery can complete", () => {
-    const unpaid = order({
-      id: "1",
-      state: "out_for_delivery",
-      paymentMethod: "cod",
-      paymentStatus: "unpaid",
-    });
-    expect(isCodCollected(unpaid)).toBe(false);
-    expect(tripPhase(unpaid)).toBe("collect_cod");
-    expect(primaryActionLabel(tripPhase(unpaid))).toBe("Record cash collection");
-
-    const paid = order({
-      id: "1",
-      state: "out_for_delivery",
-      paymentMethod: "cod",
-      paymentStatus: "collected",
-    });
-    expect(isCodCollected(paid)).toBe(true);
-    expect(tripPhase(paid)).toBe("delivery_proof");
-  });
-
-  it("skips the COD gate for pilot credit", () => {
-    const credit = order({
-      id: "1",
-      state: "out_for_delivery",
-      paymentMethod: "pilot_credit",
-      paymentStatus: "authorized",
-    });
-    expect(tripPhase(credit)).toBe("delivery_proof");
-  });
-});
-
 describe("tripPhase ladder", () => {
-  it("walks pickup → start delivery → delivery proof", () => {
-    expect(tripPhase(order({ id: "a", state: "rider_assigned", riderId: "r1" }))).toBe("pickup");
-    expect(tripPhase(order({ id: "a", state: "picked_up", riderId: "r1" }))).toBe("start_delivery");
+  it("walks pickup checks → start delivery → delivery proof → complete", () => {
+    expect(tripPhase(order({ id: "a", state: "rider_assigned", riderId: "r1" }))).toBe(
+      "pickup_checks",
+    );
+    expect(tripPhase(order({ id: "a", state: "picked_up", riderId: "r1" }))).toBe(
+      "start_delivery",
+    );
     expect(tripPhase(order({ id: "a", state: "out_for_delivery", riderId: "r1" }))).toBe(
       "delivery_proof",
     );
@@ -132,11 +115,142 @@ describe("tripPhase ladder", () => {
     );
     expect(tripPhase(null)).toBe("idle");
   });
+
+  it("offers no next step at all while a failed check is with Operations", () => {
+    const blocked = order({
+      id: "a",
+      state: "rider_assigned",
+      riderId: "r1",
+      pickupChecklist: checklist("failed_escalated", ["visible_defects"]),
+    });
+    expect(isTransportBlocked(blocked)).toBe(true);
+    expect(tripPhase(blocked)).toBe("pickup_blocked");
+    // The one phase with no primary action: a yellow button here would offer a
+    // move the business has just refused.
+    expect(primaryActionLabel("pickup_blocked")).toBeNull();
+  });
+
+  it("puts the rider back through all six once Operations has answered", () => {
+    const resolved = order({
+      id: "a",
+      state: "rider_assigned",
+      riderId: "r1",
+      pickupChecklist: checklist("escalation_resolved", ["visible_defects"]),
+    });
+    expect(isTransportBlocked(resolved)).toBe(false);
+    expect(tripPhase(resolved)).toBe("pickup_checks");
+  });
+
+  it("keeps the rider at the shop's end of the map until they set off", () => {
+    expect(activeStopKind("pickup_checks")).toBe("pickup");
+    expect(activeStopKind("pickup_blocked")).toBe("pickup");
+    expect(activeStopKind("start_delivery")).toBe("dropoff");
+    expect(activeStopKind("delivery_proof")).toBe("dropoff");
+    expect(activeStopKind("complete")).toBeNull();
+  });
+});
+
+describe("pickup clearance", () => {
+  it("treats a passed and a legacy-passed checklist as cleared", () => {
+    expect(isPickupCleared({ pickupChecklist: checklist("passed") })).toBe(true);
+    expect(isPickupCleared({ pickupChecklist: checklist("legacy_passed") })).toBe(true);
+    expect(isPickupCleared({ pickupChecklist: checklist("not_started") })).toBe(false);
+    expect(isPickupCleared({ pickupChecklist: null })).toBe(false);
+  });
+});
+
+describe("the spoken sign-off", () => {
+  it("is owed from the checks passing until the rider leaves the shop", () => {
+    const atShop = order({
+      id: "a",
+      state: "picked_up",
+      pickupChecklist: checklist("passed"),
+    });
+    expect(owesSignOff(atShop)).toBe(true);
+    expect(signOffPrompt(atShop)).toBe(SIGN_OFF);
+
+    // Gone once the wheels turn: nothing records that it was said, so a card
+    // still asking would nag about something the app cannot know either way.
+    expect(owesSignOff({ ...atShop, state: "out_for_delivery" })).toBe(false);
+    // And never before the checks pass.
+    expect(
+      owesSignOff({ ...atShop, pickupChecklist: checklist("failed_escalated") }),
+    ).toBe(false);
+  });
+
+  it("takes the words from the server rather than hard-coding them", () => {
+    expect(signOffPrompt({ pickupChecklist: null })).toBeNull();
+    expect(
+      signOffPrompt({ pickupChecklist: { ...checklist("passed"), signOffPrompt: "  " } }),
+    ).toBeNull();
+  });
+});
+
+describe("the client's digital balance gates delivery", () => {
+  it("is confirmed only when Operations says so", () => {
+    const installment = {
+      amountMinor: 19875,
+      method: "qr_manual",
+      submittedAt: null,
+      confirmedAt: null,
+      confirmationSource: null,
+    };
+    expect(
+      isBalanceConfirmed({
+        payments: { balance: { ...installment, status: "confirmed" } },
+      }),
+    ).toBe(true);
+    // Migrated orders carry their own confirmed marker and must not be blocked.
+    expect(
+      isBalanceConfirmed({
+        payments: { balance: { ...installment, status: "legacy_confirmed" } },
+      }),
+    ).toBe(true);
+    expect(
+      isBalanceConfirmed({
+        payments: { balance: { ...installment, status: "pending_confirmation" } },
+      }),
+    ).toBe(false);
+    expect(isBalanceConfirmed({ payments: null })).toBe(false);
+  });
+});
+
+describe("orderStateChip", () => {
+  it("says do-not-transport rather than head-to-pickup on a blocked job", () => {
+    const chip = orderStateChip({
+      state: "rider_assigned",
+      pickupChecklist: checklist("failed_escalated", ["visible_defects"]),
+    });
+    expect(chip.label).toBe("Do not transport");
+    expect(chip.tone).toBe("error");
+    // Icon + label as well as colour: the chip has to read in greyscale.
+    expect(chip.icon).toBe("circle-x");
+  });
+
+  it("never puts a raw state string on screen", () => {
+    for (const state of [
+      "ready_for_dispatch",
+      "rider_assigned",
+      "picked_up",
+      "out_for_delivery",
+      "issue_window_open",
+      "completed",
+      "payout_released",
+      "some_future_state",
+    ]) {
+      expect(orderStateChip({ state, pickupChecklist: null }).label).not.toMatch(/_/);
+    }
+  });
 });
 
 describe("selectOffers / selectActiveTrip", () => {
   const pool = [
-    order({ id: "offer", state: "ready_for_dispatch", riderId: null, updatedAt: "2026-08-02T00:00:00Z" }),
+    order({
+      id: "offer",
+      state: "ready_for_dispatch",
+      riderId: null,
+      updatedAt: "2026-08-02T00:00:00Z",
+    }),
     order({
       id: "mine",
       state: "picked_up",
@@ -170,6 +284,24 @@ describe("location sharing window", () => {
   });
 });
 
+describe("distance band and issue window copy", () => {
+  it("says what the fee was measured over, without pretending it is the ride", () => {
+    expect(feeDistanceLabel(3101)).toBe("3.1 km apart");
+    expect(feeDistanceLabel(420)).toBe("400 m apart");
+    expect(feeDistanceLabel(null)).toBeNull();
+    expect(feeDistanceLabel(undefined)).toBeNull();
+  });
+
+  it("reads the global issue window back in plain words", () => {
+    expect(issueWindowLabel(24)).toBe("24 hours");
+    expect(issueWindowLabel(48)).toBe("2 days");
+    expect(issueWindowLabel(1)).toBe("1 hour");
+    expect(issueWindowLabel(36)).toBe("36 hours");
+    // Unknown is a real state — the setting is fetched, so it can fail.
+    expect(issueWindowLabel(null)).toBe("a short while");
+  });
+});
+
 describe("timeline and alerts helpers", () => {
   it("names the current rider You", () => {
     expect(timelineActorLabel("user_rider", "user_rider")).toBe("You");
@@ -186,34 +318,6 @@ describe("timeline and alerts helpers", () => {
     expect(formatRelativeAt("2026-08-08T11:59:30.000Z", now)).toBe("Just now");
     expect(formatRelativeAt("2026-08-08T11:45:00.000Z", now)).toBe("15 min ago");
     expect(formatRelativeAt("2026-08-08T10:00:00.000Z", now)).toBe("2h ago");
-  });
-
-  it("folds a failed attempt into one plain-language note", () => {
-    expect(
-      buildFailureNote({
-        reasonId: "unavailable",
-        outcome: "retry",
-        contacted: false,
-        nextAttemptAt: new Date("2026-08-10T07:00:00.000Z"),
-        note: "  Guard says they are back at three  ",
-      }),
-    ).toBe(
-      "Nobody at the address. Client did not answer the phone. Trying again " +
-        formatAttemptAt(new Date("2026-08-10T07:00:00.000Z")) +
-        ". Guard says they are back at three",
-    );
-
-    expect(buildFailureNote({ reasonId: "refused", outcome: "return" })).toBe(
-      "Client refused the package. Package returned to the supplier",
-    );
-  });
-
-  it("never leaks a reason id into the note", () => {
-    for (const reason of FAILURE_REASONS) {
-      const note = buildFailureNote({ reasonId: reason.id, outcome: "retry" });
-      expect(note).not.toMatch(/_/);
-      expect(note).toContain(reason.label);
-    }
   });
 });
 
@@ -248,79 +352,5 @@ describe("stop coordinates and labels", () => {
     expect(pickupLabel(order({ id: "2", state: "ready_for_dispatch" }))).toBe(
       "Supplier print shop",
     );
-  });
-});
-
-describe("a failed delivery outranks the delivery ladder", () => {
-  const outForDelivery = order({ id: "a", state: "out_for_delivery", riderId: "r1" });
-
-  it("routes back to the shop once a return is chosen", () => {
-    expect(
-      tripPhase(outForDelivery, { attemptCount: 1, outcome: "return", returnedAt: null }),
-    ).toBe("returning");
-    expect(primaryActionLabel("returning")).toBe("Confirm handover to supplier");
-    expect(activeStopKind("returning")).toBe("pickup");
-  });
-
-  it("closes out once the package is back with the supplier", () => {
-    expect(
-      tripPhase(outForDelivery, {
-        attemptCount: 1,
-        outcome: "return",
-        returnedAt: "2026-08-10T03:00:00.000Z",
-      }),
-    ).toBe("returned");
-    expect(primaryActionLabel("returned")).toBeNull();
-  });
-
-  it("leaves the ladder alone when the rider is trying again", () => {
-    expect(
-      tripPhase(outForDelivery, { attemptCount: 2, outcome: "retry", returnedAt: null }),
-    ).toBe("delivery_proof");
-    expect(activeStopKind("delivery_proof")).toBe("dropoff");
-  });
-
-  it("outranks an uncollected cash gate — a returned package collects nothing", () => {
-    const cod = order({
-      id: "a",
-      state: "out_for_delivery",
-      paymentMethod: "cod",
-      paymentStatus: "authorized",
-    });
-    expect(tripPhase(cod)).toBe("collect_cod");
-    expect(tripPhase(cod, { attemptCount: 1, outcome: "return", returnedAt: null })).toBe(
-      "returning",
-    );
-  });
-});
-
-describe("what usually follows each reason", () => {
-  it("suggests another attempt only where one makes sense", () => {
-    expect(suggestedOutcome("unavailable")).toBe("retry");
-    expect(suggestedOutcome("access")).toBe("retry");
-    expect(suggestedOutcome("wrong_address")).toBe("return");
-    expect(suggestedOutcome("refused")).toBe("return");
-  });
-
-  it("names the shop, not a bare confirmation, when the package goes back", () => {
-    const copy = failureOutcomeCommit("return", "Bajada Print Hub");
-    expect(copy.label).toMatch(/take the package back/i);
-    expect(copy.label).not.toMatch(/are you sure|^ok$/i);
-    expect(copy.consequence).toContain("Bajada Print Hub");
-    expect(copy.consequence).toMatch(/client/i);
-  });
-
-  it("puts the chosen time on the retry button, so the commit is specific", () => {
-    const when = new Date("2026-08-10T15:00:00+08:00");
-    const copy = failureOutcomeCommit("retry", "Bajada Print Hub", when);
-    expect(copy.label).toMatch(/try again/i);
-    // The exact rendering is locale-dependent; the day number is not.
-    expect(copy.label).toContain("10");
-    expect(copy.consequence).toMatch(/stays with you/i);
-  });
-
-  it("does not invent a time when none was chosen", () => {
-    const copy = failureOutcomeCommit("retry", "Bajada Print Hub", null);
-    expect(copy.label).toBe("Record it and try again later");
   });
 });

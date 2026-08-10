@@ -6,6 +6,8 @@ import { DestinationRow } from "@/components/DestinationRow";
 import { Screen } from "@/components/Screen";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { StatusChip } from "@/components/StatusChip";
+import { approvalPresentation } from "@/lib/riderApproval";
 import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
 
@@ -23,6 +25,7 @@ export default function AccountScreen() {
   const user = useSession((s) => s.user);
   const logout = useSession((s) => s.logout);
   const unread = useNotifications((s) => s.unread);
+  const approval = approvalPresentation(user);
 
   return (
     <Screen edges={["top"]}>
@@ -42,6 +45,38 @@ export default function AccountScreen() {
             </Text>
             <Text className="text-caption text-text-muted">GRIDGO rider</Text>
           </View>
+        </View>
+
+        {/*
+          Accreditation is the one thing about a rider account that changes
+          without them doing anything, and the one thing that decides whether
+          the rest of the app works. It belongs on the identity screen — with
+          Operations' own words when they left any.
+        */}
+        <View className="gg-card gap-2">
+          <View className="flex-row items-center justify-between gap-3">
+            <Text className="text-overline text-text-muted">ACCREDITATION</Text>
+            <StatusChip
+              tone={
+                approval.tone === "success"
+                  ? "success"
+                  : approval.tone === "error"
+                    ? "error"
+                    : approval.tone === "warning"
+                      ? "warning"
+                      : "info"
+              }
+              label={approval.chip}
+              icon={approval.icon}
+            />
+          </View>
+          <Text className="text-body text-text-secondary">{approval.body}</Text>
+          {user?.riderProfile ? (
+            <Text className="text-caption text-text-muted">
+              {user.riderProfile.vehicleType} · {user.riderProfile.vehiclePlate} · licence{" "}
+              {user.riderProfile.licenseNumber}
+            </Text>
+          ) : null}
         </View>
 
         <View className="gg-card-flush">

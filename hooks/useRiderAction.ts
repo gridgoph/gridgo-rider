@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 
 import { riderAction, type RiderAction } from "@/lib/riderAction";
+import { approvalPresentation } from "@/lib/riderApproval";
 import { tripPhase, type TripPhase } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
-import { exceptionSummary, useTripProof } from "@/store/tripProof";
+import { useSession } from "@/store/session";
 
 export type RiderActionState = {
   action: RiderAction;
@@ -19,15 +20,15 @@ export type RiderActionState = {
  */
 export function useRiderAction(): RiderActionState {
   const order = useActiveTrip((s) => s.order);
-  const exceptions = useTripProof((s) => s.exceptions);
+  const user = useSession((s) => s.user);
 
   return useMemo(() => {
-    const exception = order ? (exceptions[order.id] ?? null) : null;
-    const phase = tripPhase(order, exceptionSummary(exception));
+    const phase = tripPhase(order);
+    const { canWork } = approvalPresentation(user);
     return {
       phase,
       orderId: order?.id ?? null,
-      action: riderAction(phase, order?.id ?? null),
+      action: riderAction(phase, order?.id ?? null, canWork),
     };
-  }, [order, exceptions]);
+  }, [order, user]);
 }

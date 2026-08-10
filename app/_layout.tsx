@@ -11,6 +11,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, type ReactNode } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
 import { colors, type ThemeName, typography } from "@/constants/theme";
@@ -110,8 +111,16 @@ export default function RootLayout() {
       is a visible settle as content drops under the status bar. It costs
       nothing here and a browser never showed it.
     */
-    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <ThemeProvider value={navigationTheme(scheme)}>
+    /*
+      Swipe gestures inside a screen — the Alerts list clears an alert by
+      swiping it away — need a gesture root above them. Android does not fall
+      back gracefully without one: the gesture simply never fires, which is a
+      dead control rather than an error, and exactly the kind of thing a browser
+      would never show.
+    */
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <ThemeProvider value={navigationTheme(scheme)}>
         <AuthGate>
           <Stack
             screenOptions={{
@@ -127,6 +136,11 @@ export default function RootLayout() {
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+            {/*
+              Sign-up is pushed above login and keeps its own labelled way back
+              in the body, so it needs no header of its own.
+            */}
+            <Stack.Screen name="(auth)/signup" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             {/*
               The tab shell draws its own headers per tab, so its header is
@@ -164,31 +178,26 @@ export default function RootLayout() {
             */}
             <Stack.Screen
               name="trip/pickup"
-              options={{ title: "Pickup proof", ...multiOriginPushedScreenOptions }}
+              options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="trip/sign-off"
+              options={{ title: "Quality checkpoint", ...multiOriginPushedScreenOptions }}
             />
             <Stack.Screen
               name="trip/delivery"
               options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="trip/cod"
-              options={{ title: "Cash on delivery", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="trip/failed"
-              options={{ title: "Failed attempt", ...multiOriginPushedScreenOptions }}
             />
             {/*
               Confirmations are the platform's own sheet, not a drawn overlay —
               see `confirmSheetScreenOptions` for what that buys.
             */}
             <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
-            <Stack.Screen name="trip/handback" options={confirmSheetScreenOptions} />
-            <Stack.Screen name="trip/cod-confirm" options={confirmSheetScreenOptions} />
           </Stack>
         </AuthGate>
-        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      </ThemeProvider>
-    </SafeAreaProvider>
+          <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

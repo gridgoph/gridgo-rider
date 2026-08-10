@@ -11,20 +11,21 @@ import { join } from "path";
  *
  * Two shapes are allowed above the tab shell:
  *
- *  - a pushed screen carrying `multiOriginPushedScreenOptions`, which sets the
- *    back control's label to "Back" (iOS; Android draws its own arrow);
+ *  - a pushed screen carrying `multiOriginPushedScreenOptions`, which draws the
+ *    platform back control (iOS chevron, Android arrow) and — the part that
+ *    matters — never lets the `(tabs)` route group become its label;
  *  - a `confirmSheetScreenOptions` sheet, which has no header and therefore
  *    has to carry a labelled cancel in its own body, in every state.
  *
- * Everything else is a root of the app — the launch redirect, login, and
- * onboarding — where there is nothing behind to go back to, and each provides
- * its own explicit exit.
+ * Everything else is a root of the app — the launch redirect, login, sign-up,
+ * and onboarding — where there is nothing behind to go back to, and each
+ * provides its own explicit exit.
  */
 
 const APP = join(__dirname, "..", "app");
 
 /** Routes that are the first screen in their own right. */
-const ROOTS = new Set(["index", "(auth)/login", "onboarding", "(tabs)"]);
+const ROOTS = new Set(["index", "(auth)/login", "(auth)/signup", "onboarding", "(tabs)"]);
 
 function routeFiles(dir: string, prefix = ""): string[] {
   return readdirSync(dir).flatMap((entry) => {

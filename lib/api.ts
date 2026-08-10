@@ -12,13 +12,36 @@ import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
 
 export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin";
 
+/**
+ * Where an account stands with Operations.
+ *
+ * Riders sign themselves up, so a brand-new account exists and can sign in
+ * while being unable to take any work at all. That gap is a state the app has
+ * to show honestly, not a loading spinner.
+ */
+export type VerificationStatus =
+  | "unverified"
+  | "pending"
+  | "approved"
+  | "suspended"
+  | "rejected";
+
+export type RiderProfile = {
+  vehicleType: string;
+  vehiclePlate: string;
+  licenseNumber: string;
+};
+
 export type User = {
   id: string;
   email: string;
   name: string;
   role: Role;
-  orgName?: string;
-  supplierName?: string;
+  phone?: string;
+  verificationStatus?: VerificationStatus;
+  /** Operations' own words on the decision. Shown as-is when present. */
+  verificationNote?: string;
+  riderProfile?: RiderProfile;
 };
 
 /** Structured stop with coordinates from the API — never geocode at runtime. */
@@ -26,6 +49,66 @@ export type OrderStop = {
   lat: number;
   lng: number;
   label: string;
+};
+
+/** The six checks, in the order the rider works through them. */
+export type PickupCheckCode =
+  | "quantity_match"
+  | "specification_match"
+  | "visible_defects"
+  | "packaging_integrity"
+  | "documentation"
+  | "supplier_sign_off";
+
+export type PickupCheckResult = { code: PickupCheckCode; passed: boolean };
+
+export type PickupChecklistStatus =
+  | "not_started"
+  | "passed"
+  | "failed_escalated"
+  | "escalation_resolved"
+  | "legacy_passed";
+
+export type PickupChecklistRecord = {
+  status: PickupChecklistStatus;
+  checks: PickupCheckResult[];
+  evidenceFileIds: string[];
+  failureNote: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
+  escalationId: string | null;
+  /** The trained line the rider says at sign-off. The server owns the words. */
+  signOffPrompt: string | null;
+};
+
+/**
+ * One half of the client's digital payment.
+ *
+ * The rider is shown the *status* and never the amount: what the client paid is
+ * not the rider's business now that no money changes hands at the door.
+ */
+export type PaymentInstallmentStatus =
+  | "not_submitted"
+  | "pending_confirmation"
+  | "confirmed"
+  | "legacy_confirmed";
+
+export type PaymentInstallment = {
+  amountMinor: number;
+  method: string;
+  status: PaymentInstallmentStatus;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  confirmationSource: string | null;
+};
+
+export type PayoutMilestoneCode = "printing" | "packaging_qc" | "delivered" | "retention";
+
+export type PayoutMilestone = {
+  code: PayoutMilestoneCode;
+  sharePercent: number;
+  status: "pending_pof" | "pof_attached" | "released";
+  pofFileIds: string[];
 };
 
 export type Order = {
@@ -39,14 +122,40 @@ export type Order = {
   quantity: number;
   size: string;
   material: string;
+  finish?: string;
   deadline: string | null;
   address: string;
   zone: string;
-  totalMinor: number;
+  /**
+   * The rider's fee for the job, banded by distance. This is the only money in
+   * this type the rider app puts on screen — the client's subtotal and total
+   * are visible to this role but say nothing a rider can act on, and showing
+   * them was only ever there to support cash collection.
+   */
   deliveryFeeMinor: number;
+  /** Straight-line metres the fee band was derived from. */
+  deliveryDistanceMeters?: number | null;
+  subtotalMinor: number;
+  totalMinor: number;
+  downpaymentMinor: number;
+  balanceMinor: number;
   paymentMethod: string | null;
   paymentStatus: string;
-  codEligible: boolean;
+  payments?: {
+    downpayment?: PaymentInstallment;
+    balance?: PaymentInstallment;
+  } | null;
+  payoutMilestones?: PayoutMilestone[];
+  payoutHold?: boolean;
+  pickupChecklist?: PickupChecklistRecord | null;
+  deliveryEvidence?: {
+    fileId: string;
+    evidenceType: "photo" | "signature";
+    riderId: string;
+    recordedAt: string;
+  } | null;
+  issueWindowOpenedAt?: string | null;
+  issueWindowExpiresAt?: string | null;
   promisedDate: string | null;
   artworkName: string | null;
   createdAt: string;
@@ -65,6 +174,10 @@ export type Notification = {
   body: string;
   read: boolean;
   at: string;
+  /** Internal kind. Never rendered — it decides nothing the rider reads. */
+  type?: string;
+  /** Present when the alert is about one job, which most rider alerts are. */
+  orderId?: string;
 };
 
 let tokenMemory: string | null = null;
@@ -259,6 +372,30 @@ export async function login(email: string, password: string): Promise<{ token: s
   return result;
 }
 
+export type RiderSignup = {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  riderProfile: RiderProfile;
+};
+
+/**
+ * Create a rider account.
+ *
+ * The account exists and is signed in straight away, but it comes back
+ * `pending`: nothing dispatch-related answers until Operations approves it.
+ * The screen that calls this must say so rather than implying work is coming.
+ */
+export async function signupRider(input: RiderSignup): Promise<{ token: string; user: User }> {
+  const result = await request<{ token: string; user: User }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ role: "rider", ...input }),
+  });
+  setToken(result.token);
+  return result;
+}
+
 export async function logout(): Promise<void> {
   try {
     await request("/auth/logout", { method: "POST" });
@@ -312,39 +449,60 @@ export async function transitionOrder(
   return result.order;
 }
 
-export type ProofKind = "pickup" | "delivery" | "cod" | "failure";
-
-export type ProofPayload = {
-  kind: ProofKind;
-  otp?: string;
-  photoName?: string;
-  note?: string;
-  reason?: string;
-};
-
-export type ProofResult = {
-  proof: {
-    id: string;
-    orderId: string;
-    riderId: string;
-    kind: string;
-    otp: string | null;
-    photoName: string | null;
-    note: string;
-    at: string;
-  };
+export type PickupChecklistResult = {
   order: Order;
+  /** Present only when all six passed. The line the rider says out loud. */
+  signOffPrompt?: string;
+  /** Present only when a check failed and transport is now blocked. */
+  escalation?: { id: string; status: string };
 };
 
 /**
- * Submit pickup, delivery, COD, or failure proof.
- * Callers pass only the fields they collected — no silent defaults for OTP.
+ * Submit all six pickup checks.
+ *
+ * All passing moves the job to "package with you" and returns the sign-off
+ * line. Any failure needs the note and at least one already-attached photo, and
+ * leaves the job where it is with an escalation open — the rider does not
+ * transport.
  */
-export async function submitProof(orderId: string, payload: ProofPayload): Promise<ProofResult> {
-  return request(`/dispatch/${orderId}/proof`, {
+export async function submitPickupChecklist(
+  orderId: string,
+  checks: PickupCheckResult[],
+  failure?: { failureNote: string; evidenceFileIds: string[] },
+): Promise<PickupChecklistResult> {
+  return request(`/dispatch/${orderId}/pickup-checklist`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ checks, ...(failure ?? {}) }),
   });
+}
+
+/**
+ * Record the delivery against evidence the server already holds.
+ *
+ * The file must be attached to the order first — see `lib/attachments.ts`.
+ * Success moves the job to delivered and opens the issue window in one step.
+ */
+export async function recordDelivery(
+  orderId: string,
+  evidence: { evidenceFileId: string; evidenceType: "photo" | "signature" },
+): Promise<Order> {
+  const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {
+    method: "POST",
+    body: JSON.stringify(evidence),
+  });
+  return result.order;
+}
+
+export type OperationalSettings = {
+  /** How long a client has to raise an issue after delivery. One global value. */
+  issueWindowHours: number;
+  deliveryFeeBands: { maxDistanceMeters: number | null; feeMinor: number }[];
+};
+
+/** The platform's operational settings. Read-only for a rider. */
+export async function getSettings(): Promise<OperationalSettings> {
+  const result = await request<{ settings: OperationalSettings }>("/settings");
+  return result.settings;
 }
 
 export type LocationPing = {
@@ -376,10 +534,6 @@ export async function postLocation(
 export async function listNotifications(): Promise<Notification[]> {
   const result = await request<{ notifications: Notification[] }>("/notifications");
   return result.notifications;
-}
-
-export async function creditBalance(): Promise<{ balanceMinor: number }> {
-  return request("/credits/balance");
 }
 
 export type Health = {
@@ -451,6 +605,38 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "minio_unavailable":
       case "storage_initializing":
         return "Photo storage is offline, so nothing can be proven yet. Tell Operations.";
+      case "rider_not_approved":
+        return "Operations has not approved this rider account yet, so no work can be taken on it.";
+      case "pickup_escalation_open":
+        return "Do not transport this package. Operations is still handling the failed check — wait for their instruction, then run all six checks again.";
+      case "pickup_checklist_not_available":
+        return "The checks only run before you leave the shop. Pull down to refresh the trip and see where it is now.";
+      case "invalid_pickup_checklist":
+        return "Answer all six checks before submitting them.";
+      case "checklist_evidence_required":
+        return "Photograph the problem and describe it before the escalation can be filed.";
+      case "invalid_checklist_evidence":
+        return "The photo did not reach the job. Take it again and send it before escalating.";
+      case "balance_not_confirmed":
+        return "Operations has not confirmed the client's final payment yet, so this delivery cannot be closed. Call Operations before handing the package over.";
+      case "pof_required":
+        return "The proof of fulfilment did not reach the server. Take the photo again and wait for it to save.";
+      case "delivery_not_available":
+        return "Delivery opens once you have passed the pickup checks and left the shop. Pull down to refresh the trip.";
+      case "delivery_evidence_required":
+      case "invalid_delivery_evidence_type":
+        return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
+      case "email_already_registered":
+        return "That email already has a GRIDGO account. Sign in instead, or use another address.";
+      case "invalid_password":
+        return "Use a password with at least 8 characters.";
+      case "invalid_email":
+        return "Enter a complete email address.";
+      case "invalid_rider_profile":
+        return "Fill in your vehicle, plate number and licence number.";
+      case "dispatch_proof_route_retired":
+      case "payment_route_retired":
+        return "This app is out of date for the current GRIDGO process. Update it before taking more work.";
       default:
         break;
     }

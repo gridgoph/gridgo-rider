@@ -6,6 +6,7 @@ import {
   SkeletonBlock,
   SkeletonButton,
   SkeletonCircle,
+  SkeletonPill,
   SkeletonText,
 } from "@/components/Skeleton";
 
@@ -133,25 +134,37 @@ export function ActiveTripSkeleton() {
   );
 }
 
-/** Dispatch alerts: a disc and three lines per row, as the real list draws. */
-export function AlertListSkeleton({ count = 4 }: { count?: number }) {
+/**
+ * Dispatch alerts, in the shape `AlertCard` draws: an unread marker, three
+ * lines, then the four-step stage bar under a divider. The bar is most of the
+ * card's height, so a skeleton without it would let the list jump by ~70dp per
+ * row the moment the orders land.
+ */
+export function AlertListSkeleton({ count = 3 }: { count?: number }) {
   return (
     <Loading label="Loading alerts">
-      <View className="gg-card-flush">
+      <View className="gap-2">
         {Array.from({ length: count }).map((_, index) => (
           <View
             key={index}
-            className={
-              index === count - 1
-                ? "flex-row gap-3 p-4"
-                : "flex-row gap-3 border-b border-outline-subtle p-4"
-            }
+            className="gap-4 rounded-card border border-outline bg-surface p-4"
           >
-            <SkeletonCircle size={32} />
-            <View className="min-w-0 flex-1 gap-1">
-              <SkeletonText width="70%" height={24} />
-              <SkeletonText width="100%" height={20} />
-              <SkeletonText width="35%" height={16} />
+            <View className="flex-row gap-3">
+              <SkeletonCircle size={10} />
+              <View className="min-w-0 flex-1 gap-1">
+                <SkeletonText width="70%" height={24} />
+                <SkeletonText width="100%" height={20} />
+                <SkeletonText width="45%" height={16} />
+              </View>
+            </View>
+            <View className="flex-row gap-2 border-t border-outline-subtle pt-4">
+              {Array.from({ length: 4 }).map((__, step) => (
+                <View key={step} className="flex-1 items-center gap-2">
+                  {/* 42dp halo box, then the 16dp caption row. */}
+                  <SkeletonCircle size={42} />
+                  <SkeletonText width="70%" height={16} />
+                </View>
+              ))}
             </View>
           </View>
         ))}
@@ -196,34 +209,28 @@ export function EarningsSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
+/** The two-line header every pushed trip step opens with. */
+function TripStepHeaderSkeleton() {
+  return (
+    <View className="gap-1">
+      <SkeletonText width={110} height={16} />
+      <SkeletonText width="80%" height={30} />
+      <SkeletonText width="60%" height={24} />
+    </View>
+  );
+}
+
 /**
  * A pushed proof step while its job loads.
  *
  * These screens re-fetch the order rather than trusting a snapshot, so there is
- * always a wait here — and the real content is a header, a code field and an
- * evidence card, not the three lines the old placeholder drew.
+ * always a wait here — and the real content is a header, an explanatory line
+ * and an evidence card.
  */
 export function ProofStepSkeleton() {
   return (
     <Loading label="Loading the job">
-      <View className="gap-1">
-        <SkeletonText width={110} height={16} />
-        <SkeletonText width="80%" height={30} />
-        <SkeletonText width="60%" height={24} />
-      </View>
-
-      <View className="gap-2">
-        <SkeletonText width={100} height={16} />
-        {/* Four equal cells at `OtpInput`'s own h-16. */}
-        <View className="flex-row gap-3">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <View key={index} className="flex-1">
-              <SkeletonBlock height={64} />
-            </View>
-          ))}
-        </View>
-        <SkeletonText width="70%" height={16} />
-      </View>
+      <TripStepHeaderSkeleton />
 
       <View className="gg-card gap-3">
         <SkeletonText width={160} height={20} />
@@ -236,32 +243,73 @@ export function ProofStepSkeleton() {
 }
 
 /**
- * The cash screen while its job loads.
+ * The six-point checklist while its job loads.
  *
- * Its own shape rather than the proof one: there is no code field and no
- * camera here, just the header and the bordered card the amount lands in. The
- * amount is the largest thing on the finished screen, so the block that stands
- * in for it is the largest thing here too.
+ * The tallest screen in the app, and the one a rider opens standing at a
+ * counter with the supplier watching. Six rows at the height they really take —
+ * two lines of text over a pair of 44dp answer pills — so the list does not
+ * grow out from under a thumb already moving toward the first Pass.
  */
-export function CashStepSkeleton() {
+export function PickupChecklistSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <Loading label="Loading the job">
+    <Loading label="Loading the pickup checks">
+      <TripStepHeaderSkeleton />
+
       <View className="gap-1">
-        <SkeletonText width={110} height={16} />
-        <SkeletonText width="80%" height={30} />
-        <SkeletonText width="60%" height={24} />
+        <SkeletonText width="100%" height={24} />
+        <SkeletonText width="85%" height={24} />
+      </View>
+
+      <View className="gg-card-flush">
+        {Array.from({ length: rows }).map((_, index) => (
+          <View key={index} className="gap-3 border-b border-outline-subtle p-4">
+            <View className="flex-row gap-3">
+              <SkeletonText width={10} height={20} />
+              <View className="min-w-0 flex-1 gap-0.5">
+                <SkeletonText width="60%" height={24} />
+                <SkeletonText width="95%" height={16} />
+              </View>
+            </View>
+            <View className="flex-row gap-2">
+              <View className="flex-1">
+                <SkeletonPill />
+              </View>
+              <View className="flex-1">
+                <SkeletonPill />
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+    </Loading>
+  );
+}
+
+/**
+ * The quality checkpoint while its job loads.
+ *
+ * The spoken line is the largest thing on the finished screen, so the block
+ * standing in for it is the largest thing here.
+ */
+export function SignOffSkeleton() {
+  return (
+    <Loading label="Loading the checkpoint">
+      <TripStepHeaderSkeleton />
+
+      <View className="gg-card gap-2">
+        <SkeletonText width="55%" height={24} />
+        <SkeletonText width="90%" height={20} />
       </View>
 
       <View className="gap-3 rounded-card border-2 border-outline bg-surface p-6">
-        <SkeletonText width={130} height={16} />
-        <SkeletonText width="55%" height={38} />
-        <SkeletonText width="100%" height={24} />
-        <SkeletonText width="70%" height={24} />
+        <SkeletonText width={180} height={16} />
+        <SkeletonText width="95%" height={34} />
+        <SkeletonText width="60%" height={34} />
       </View>
 
       <View className="gap-1">
         <SkeletonText width="100%" height={20} />
-        <SkeletonText width="80%" height={20} />
+        <SkeletonText width="75%" height={20} />
       </View>
     </Loading>
   );

@@ -20,7 +20,7 @@ const TRIP_POLL_MS = 30_000;
  * `lib/riderAction.ts` for what it does at each point in a job.
  *
  * The shell owns the trip poll because the disc's verb depends on it: a rider
- * sitting on Earnings still needs the disc to say "Take cash" the moment the
+ * sitting on Earnings still needs the disc to say "Hand over" the moment the
  * job reaches that step.
  *
  * The bar is drawn from tokens on every platform — see `GridgoTabBar`.
@@ -32,23 +32,35 @@ export default function TabsLayout() {
   const sessionReady = useSession((s) => s.hydrated);
   const refreshTrip = useActiveTrip((s) => s.refresh);
   const hydrateProof = useTripProof((s) => s.hydrate);
+  const hydrateAlerts = useNotifications((s) => s.hydrate);
+  const refreshUser = useSession((s) => s.refreshUser);
 
+  /*
+    The account is polled with the trip, because accreditation is the one thing
+    about a rider that changes while they are sitting in the app doing nothing.
+    Without this, an Operations decision — approved, or suspended mid-shift —
+    only reached the phone on the next sign-in, so the "awaiting approval"
+    screen the rider was staring at could never resolve itself.
+  */
   const poll = useCallback(() => {
     void refreshTrip(userId, "refresh");
     void refreshUnread();
-  }, [refreshTrip, refreshUnread, userId]);
+    void refreshUser();
+  }, [refreshTrip, refreshUnread, refreshUser, userId]);
 
   useEffect(() => {
     void hydrateProof();
-  }, [hydrateProof]);
+    void hydrateAlerts();
+  }, [hydrateProof, hydrateAlerts]);
 
   useEffect(() => {
     if (!sessionReady || !userId) return;
     void refreshTrip(userId);
     void refreshUnread();
+    void refreshUser();
     const handle = setInterval(poll, TRIP_POLL_MS);
     return () => clearInterval(handle);
-  }, [poll, refreshTrip, refreshUnread, sessionReady, userId]);
+  }, [poll, refreshTrip, refreshUnread, refreshUser, sessionReady, userId]);
 
   return (
     <Tabs

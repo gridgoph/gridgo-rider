@@ -26,7 +26,12 @@ let hydrated = false;
 const listeners = new Set<() => void>();
 
 function applyPreference(next: ThemePreference) {
-  Appearance.setColorScheme(next === "system" ? null : next);
+  // `setColorScheme` is native-only: react-native-web has no writable
+  // appearance, so calling it there throws and takes the whole toggle down —
+  // which is what an in-app theme switch did on Expo web, the one target this
+  // project screenshots from. The CSS layer below is what actually repaints,
+  // so losing the native echo costs nothing on the platform that lacks it.
+  Appearance.setColorScheme?.(next === "system" ? null : next);
 
   // react-native-css keeps its own colour-scheme observable, seeded from
   // Appearance and updated by its change listener. Push the value directly so

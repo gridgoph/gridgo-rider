@@ -5,18 +5,17 @@ import {
 } from "@/lib/navigationHeaders";
 
 describe("multiOriginPushedScreenOptions", () => {
-  it("labels the back control 'Back' rather than leaving a bare chevron", () => {
-    // Riders reported not finding the way back off pushed screens. The word is
-    // set here, not inherited from the previous screen.
-    expect(multiOriginPushedScreenOptions.headerBackTitle).toBe("Back");
+  it("draws the bare chevron, with no word beside it", () => {
+    // The captain's call: the chevron alone, as iOS does inside a flow. An
+    // earlier build set headerBackTitle: "Back"; that has been overruled.
+    expect(multiOriginPushedScreenOptions.headerBackButtonDisplayMode).toBe("minimal");
   });
 
   it("never lets iOS fall back to the previous screen's title", () => {
-    // `headerBackTitle` replaces the origin title outright, so the `(tabs)`
-    // route group cannot reach the screen. "minimal" would hide the word too,
-    // which is the behaviour this replaced.
-    expect(multiOriginPushedScreenOptions.headerBackButtonDisplayMode).toBe("default");
-    expect(multiOriginPushedScreenOptions.headerBackTitle).not.toMatch(/tabs/i);
+    // This is the protection the label was also providing, and it must survive
+    // dropping the label: with no back title at all there is nothing for the
+    // `(tabs)` route group to leak into.
+    expect(multiOriginPushedScreenOptions).not.toHaveProperty("headerBackTitle");
   });
 });
 

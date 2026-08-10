@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
 import { AlertsButton } from "@/components/AlertsButton";
+import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
@@ -11,6 +12,7 @@ import { OfferCard } from "@/components/OfferCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { approvalPresentation } from "@/lib/riderApproval";
 import { selectOffers } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
@@ -36,8 +38,16 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const hasActive = Boolean(activeTrip);
+  const approval = approvalPresentation(user);
 
   const reload = useCallback(async () => {
+    // Every dispatch route answers 403 for an unapproved rider. Asking anyway
+    // would turn a state the app already knows into an error it has to explain.
+    if (!approvalPresentation(useSession.getState().user).canWork) {
+      setOffers([]);
+      setError(null);
+      return;
+    }
     try {
       const [list] = await Promise.all([
         api.listOffers(),
@@ -110,29 +120,33 @@ export default function OffersScreen() {
       >
         <ScreenHeader
           title="Offers"
-          subtitle="Jobs ready for pickup. You carry one at a time."
+          subtitle={
+            approval.canWork ? "Jobs ready for pickup. You carry one at a time." : null
+          }
           action={<AlertsButton />}
         />
+
+        {!approval.canWork ? <ApprovalNotice /> : null}
 
         {/*
           One job at a time. With a trip in hand and nothing else waiting, the
           rule is the whole answer, so it fills the screen rather than sitting
           as a notice above 600px of nothing.
         */}
-        {hasActive && offers?.length === 0 ? (
+        {approval.canWork && hasActive && offers?.length === 0 ? (
           <EmptyState
             icon="trip"
             title="You already have a job in hand"
-            body="Close it, or hand the package back, and the next offers appear here straight away."
+            body="Close it out, and the next offers appear here straight away."
             actionLabel="Open my trip"
             onAction={() => router.push("/(tabs)/active")}
           />
-        ) : hasActive ? (
+        ) : approval.canWork && hasActive ? (
           <InlineNotice
             tone="info"
             icon="info"
             title="You already have a job in hand"
-            body="Close it, or hand the package back, before taking another. These stay open for other riders in the meantime."
+            body="Close it out before taking another. These stay open for other riders in the meantime."
             actionLabel="Open my trip"
             onAction={() => router.push("/(tabs)/active")}
           />
@@ -149,9 +163,9 @@ export default function OffersScreen() {
           />
         ) : null}
 
-        {offers === null ? <OfferListSkeleton /> : null}
+        {offers === null && approval.canWork ? <OfferListSkeleton /> : null}
 
-        {offers?.length ? (
+        {offers?.length && approval.canWork ? (
           <View className="gap-4">
             {offers.map((job) => (
               <OfferCard
@@ -169,7 +183,7 @@ export default function OffersScreen() {
           and offers the next step, so an empty state repeating it would be a
           second invitation to the same place.
         */}
-        {offers !== null && !offers.length && !error && !hasActive ? (
+        {approval.canWork && offers !== null && !offers.length && !error && !hasActive ? (
           <EmptyState
             icon="offers"
             title="No open offers"
