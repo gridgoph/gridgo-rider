@@ -2,7 +2,11 @@ import {
   ACTIVE_TRIP_STATES,
   buildFailureNote,
   codAmountDueMinor,
+  activeStopKind,
   dropoffLabel,
+  FAILURE_REASONS,
+  failureOutcomeConfirm,
+  formatAttemptAt,
   formatRelativeAt,
   isActiveTripState,
   isCodCollected,
@@ -14,6 +18,7 @@ import {
   selectOffers,
   shouldShareLocation,
   stopLatLng,
+  suggestedOutcome,
   timelineActorLabel,
   tripPhase,
   unreadCount,
@@ -183,11 +188,32 @@ describe("timeline and alerts helpers", () => {
     expect(formatRelativeAt("2026-08-08T10:00:00.000Z", now)).toBe("2h ago");
   });
 
-  it("folds failure reason into a plain note", () => {
-    expect(buildFailureNote("unavailable", "  No one answered  ")).toBe(
-      "Client not available. No one answered",
+  it("folds a failed attempt into one plain-language note", () => {
+    expect(
+      buildFailureNote({
+        reasonId: "unavailable",
+        outcome: "retry",
+        contacted: false,
+        nextAttemptAt: new Date("2026-08-10T07:00:00.000Z"),
+        note: "  Guard says they are back at three  ",
+      }),
+    ).toBe(
+      "Nobody at the address. Client did not answer the phone. Trying again " +
+        formatAttemptAt(new Date("2026-08-10T07:00:00.000Z")) +
+        ". Guard says they are back at three",
     );
-    expect(buildFailureNote("refused", "")).toBe("Client refused the package");
+
+    expect(buildFailureNote({ reasonId: "refused", outcome: "return" })).toBe(
+      "Client refused the package. Package returned to the supplier",
+    );
+  });
+
+  it("never leaks a reason id into the note", () => {
+    for (const reason of FAILURE_REASONS) {
+      const note = buildFailureNote({ reasonId: reason.id, outcome: "retry" });
+      expect(note).not.toMatch(/_/);
+      expect(note).toContain(reason.label);
+    }
   });
 });
 
@@ -222,5 +248,65 @@ describe("stop coordinates and labels", () => {
     expect(pickupLabel(order({ id: "2", state: "ready_for_dispatch" }))).toBe(
       "Supplier print shop",
     );
+  });
+});
+
+describe("a failed delivery outranks the delivery ladder", () => {
+  const outForDelivery = order({ id: "a", state: "out_for_delivery", riderId: "r1" });
+
+  it("routes back to the shop once a return is chosen", () => {
+    expect(
+      tripPhase(outForDelivery, { attemptCount: 1, outcome: "return", returnedAt: null }),
+    ).toBe("returning");
+    expect(primaryActionLabel("returning")).toBe("Confirm handover to supplier");
+    expect(activeStopKind("returning")).toBe("pickup");
+  });
+
+  it("closes out once the package is back with the supplier", () => {
+    expect(
+      tripPhase(outForDelivery, {
+        attemptCount: 1,
+        outcome: "return",
+        returnedAt: "2026-08-10T03:00:00.000Z",
+      }),
+    ).toBe("returned");
+    expect(primaryActionLabel("returned")).toBeNull();
+  });
+
+  it("leaves the ladder alone when the rider is trying again", () => {
+    expect(
+      tripPhase(outForDelivery, { attemptCount: 2, outcome: "retry", returnedAt: null }),
+    ).toBe("delivery_proof");
+    expect(activeStopKind("delivery_proof")).toBe("dropoff");
+  });
+
+  it("outranks an uncollected cash gate — a returned package collects nothing", () => {
+    const cod = order({
+      id: "a",
+      state: "out_for_delivery",
+      paymentMethod: "cod",
+      paymentStatus: "authorized",
+    });
+    expect(tripPhase(cod)).toBe("collect_cod");
+    expect(tripPhase(cod, { attemptCount: 1, outcome: "return", returnedAt: null })).toBe(
+      "returning",
+    );
+  });
+});
+
+describe("what usually follows each reason", () => {
+  it("suggests another attempt only where one makes sense", () => {
+    expect(suggestedOutcome("unavailable")).toBe("retry");
+    expect(suggestedOutcome("access")).toBe("retry");
+    expect(suggestedOutcome("wrong_address")).toBe("return");
+    expect(suggestedOutcome("refused")).toBe("return");
+  });
+
+  it("asks a specific question before a return, never a bare are-you-sure", () => {
+    const copy = failureOutcomeConfirm("return", "Bajada Print Hub");
+    expect(copy.question).toContain("Bajada Print Hub");
+    expect(copy.question).not.toMatch(/are you sure/i);
+    expect(copy.body).toMatch(/client/i);
+    expect(copy.confirmLabel).not.toBe("OK");
   });
 });

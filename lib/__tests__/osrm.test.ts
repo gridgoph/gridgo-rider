@@ -64,9 +64,13 @@ describe("fallbackRoute", () => {
 });
 
 describe("routeSummaryLabel", () => {
-  it("marks estimates when not road-routed", () => {
+  it("never invents a travel time when routing failed", () => {
     const fallback = fallbackRoute(pickup, dropoff);
-    expect(routeSummaryLabel(fallback)).toMatch(/est\./);
+    expect(fallback.durationSeconds).toBeNull();
+    const label = routeSummaryLabel(fallback);
+    expect(label).toMatch(/direct/);
+    expect(label).toMatch(/travel time unavailable/);
+    expect(label).not.toMatch(/min|h\b/);
     expect(routeSummaryLabel(null)).toBe("Distance unknown");
   });
 

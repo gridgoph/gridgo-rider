@@ -19,14 +19,17 @@ type Props = {
  * PrimaryButton, every other action on it is a SecondaryButton.
  */
 export function PrimaryButton({ label, onPress, disabled, size = "default" }: Props) {
-  const box =
-    size === "large"
-      ? disabled
-        ? "min-h-14 flex-row items-center justify-center rounded-field bg-action-yellow px-4 gg-disabled"
-        : "min-h-14 flex-row items-center justify-center rounded-field bg-action-yellow px-4"
-      : disabled
-        ? "gg-btn-primary gg-disabled"
-        : "gg-btn-primary";
+  /*
+    A disabled CTA gives its yellow back. Fading the fill instead leaves a pale
+    slab with grey-on-cream text that fails contrast and still spends the
+    screen's one loud element on something the rider cannot press.
+  */
+  const large = size === "large";
+  const box = disabled
+    ? `${large ? "min-h-14" : "h-11 min-w-11"} flex-row items-center justify-center rounded-field border border-outline bg-surface-variant px-4`
+    : large
+      ? "min-h-14 flex-row items-center justify-center rounded-field bg-action-yellow px-4"
+      : "gg-btn-primary";
 
   return (
     <Pressable
@@ -39,11 +42,10 @@ export function PrimaryButton({ label, onPress, disabled, size = "default" }: Pr
       {({ pressed }) => (
         <>
           <Text
-            className={
-              size === "large"
-                ? "text-body-lg font-bold text-action-yellow-on"
-                : "text-button text-action-yellow-on"
-            }
+            className={[
+              large ? "text-body-lg font-bold" : "text-button",
+              disabled ? "text-text-muted" : "text-action-yellow-on",
+            ].join(" ")}
           >
             {label}
           </Text>

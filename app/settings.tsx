@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { SegmentedControl } from "@/components/SegmentedControl";
 import {
   setThemePreference,
   useThemeColors,
@@ -10,10 +11,10 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
+  { id: "system", label: "System" },
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
 ];
 
 /**
@@ -30,40 +31,15 @@ export default function SettingsScreen() {
     <SafeAreaView className="gg-screen" edges={["bottom"]}>
       <View className="gg-page flex-1 gap-6 pt-4">
         <View className="gg-card gap-3">
-          <Text className="text-overline text-text-muted">THEME</Text>
-          <Text className="text-body text-text-secondary">
-            Light and Dark are the same product. Your choice is saved on this device.
+          <SegmentedControl
+            label="Theme"
+            segments={THEME_OPTIONS}
+            value={preference}
+            onChange={setThemePreference}
+          />
+          <Text className="text-caption text-text-muted">
+            Light and Dark are the same product. Your choice is saved on this phone.
           </Text>
-          <View className="flex-row gap-2">
-            {THEME_OPTIONS.map((option) => {
-              const selected = option.value === preference;
-              return (
-                <Pressable
-                  key={option.value}
-                  onPress={() => setThemePreference(option.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`${option.label} theme`}
-                  className={
-                    selected
-                      ? "gg-chip gg-touch border-accent bg-accent px-4"
-                      : "gg-chip gg-touch bg-surface-variant px-4"
-                  }
-                  style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-                >
-                  <Text
-                    className={
-                      selected
-                        ? "text-caption text-accent-on"
-                        : "text-caption text-text-primary"
-                    }
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
         </View>
 
         <Pressable

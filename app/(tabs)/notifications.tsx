@@ -1,15 +1,10 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
+import { InlineNotice } from "@/components/InlineNotice";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
@@ -17,6 +12,7 @@ import { formatRelativeAt, unreadCount } from "@/lib/riderOrder";
 import { useNotifications } from "@/store/notifications";
 
 export default function NotificationsScreen() {
+  const router = useRouter();
   const colors = useThemeColors();
   const setUnread = useNotifications((s) => s.setUnread);
   const [items, setItems] = useState<api.Notification[]>([]);
@@ -24,26 +20,24 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async (mode: "load" | "refresh" = "load") => {
-    if (mode === "refresh") setRefreshing(true);
-    else setLoading(true);
-    try {
-      const list = await api.listNotifications();
-      setItems(list);
-      setUnread(unreadCount(list));
-      setError(null);
-    } catch (e) {
-      setError(
-        api.apiErrorMessage(
-          e,
-          "Could not load alerts. Pull down to try again.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [setUnread]);
+  const reload = useCallback(
+    async (mode: "load" | "refresh" = "load") => {
+      if (mode === "refresh") setRefreshing(true);
+      else setLoading(true);
+      try {
+        const list = await api.listNotifications();
+        setItems(list);
+        setUnread(unreadCount(list));
+        setError(null);
+      } catch (e) {
+        setError(api.apiErrorMessage(e, "Could not load alerts. Pull down to try again."));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [setUnread],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -51,13 +45,11 @@ export default function NotificationsScreen() {
     }, [reload]),
   );
 
-  const unread = unreadCount(items);
-
   return (
     <SafeAreaView className="gg-screen" edges={["top"]}>
       <ScrollView
         className="flex-1"
-        contentContainerClassName="gg-page pb-8 pt-4"
+        contentContainerClassName="gg-page gap-6 pb-10 pt-6"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -66,62 +58,67 @@ export default function NotificationsScreen() {
           />
         }
       >
-        <View className="flex-row items-center justify-between gap-3">
+        {/*
+          No unread count here: the Alerts tab already carries that badge, and
+          a number repeated two inches away is a structural device saying
+          nothing new.
+        */}
+        <View className="gap-2">
           <Text className="text-h1 text-text-primary">Alerts</Text>
-          {unread > 0 ? (
-            <StatusChip
-              tone="info"
-              label={`${unread} unread`}
-              icon="triangle-alert"
-            />
-          ) : null}
+          <Text className="text-body-lg text-text-secondary">
+            Dispatch and trip updates for this account.
+          </Text>
         </View>
-        <Text className="mt-1 text-body text-text-secondary">
-          Dispatch and trip updates for this account.
-        </Text>
 
         {error ? (
-          <View className="mt-4 rounded-card border border-error bg-surface p-4">
-            <Text className="text-body text-error">{error}</Text>
-          </View>
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="Alerts did not load"
+            body={error}
+            actionLabel="Try again"
+            onAction={() => void reload()}
+          />
         ) : null}
 
         {loading && !items.length ? (
-          <View className="mt-10 items-center">
+          <View className="items-center gap-3 pt-6">
             <ActivityIndicator color={colors.textMuted} />
+            <Text className="text-body text-text-muted">Loading alerts…</Text>
           </View>
         ) : null}
 
-        <View className="mt-6 gap-3">
-          {items.map((n) => (
-            <View
-              key={n.id}
-              className={
-                n.read
-                  ? "rounded-card border border-outline bg-surface p-4"
-                  : "rounded-card border border-accent bg-surface p-4"
-              }
-            >
-              <View className="flex-row items-start justify-between gap-3">
-                <Text className="min-w-0 flex-1 text-body-lg text-text-primary">
-                  {n.title}
-                </Text>
-                {!n.read ? (
-                  <StatusChip tone="info" label="New" icon="triangle-alert" />
-                ) : null}
+        {items.length ? (
+          <View className="gap-3">
+            {items.map((item) => (
+              <View
+                key={item.id}
+                className={
+                  item.read
+                    ? "gg-card gap-2"
+                    : "gap-2 rounded-card border-2 border-accent bg-surface p-4"
+                }
+              >
+                <View className="flex-row items-start justify-between gap-3">
+                  <Text className="min-w-0 flex-1 text-body-lg font-bold text-text-primary">
+                    {item.title}
+                  </Text>
+                  {item.read ? null : <StatusChip tone="info" label="Unread" icon="bell" />}
+                </View>
+                <Text className="text-body text-text-secondary">{item.body}</Text>
+                <Text className="text-caption text-text-muted">{formatRelativeAt(item.at)}</Text>
               </View>
-              <Text className="mt-1 text-body text-text-secondary">{n.body}</Text>
-              <Text className="mt-2 text-caption text-text-muted">
-                {formatRelativeAt(n.at)}
-              </Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : null}
 
         {!loading && !items.length && !error ? (
           <EmptyState
             title="No alerts yet"
-            body="When a job is ready for dispatch or your trip moves, it lands here."
+            body="When a job is ready for dispatch or your trip moves, it lands here. Until then, the open offers are the place to look."
+            actionLabel="Browse offers"
+            onAction={() => router.push("/(tabs)/offers")}
+            secondaryAction
           />
         ) : null}
       </ScrollView>

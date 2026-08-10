@@ -11,19 +11,18 @@ import { useSession } from "@/store/session";
 export default function AccountScreen() {
   const { user, logout } = useSession();
   const colors = useThemeColors();
-  const apiBase = getApiBase();
 
   return (
     <SafeAreaView className="gg-screen" edges={["top"]}>
-      <View className="gg-page flex-1 gap-6 pt-4">
-        <View>
+      <View className="gg-page flex-1 gap-6 pt-6">
+        <View className="gap-2">
           <Text className="text-h1 text-text-primary">Account</Text>
-          <Text className="mt-1 text-body text-text-secondary">
-            Identity and backend for this device.
+          <Text className="text-body-lg text-text-secondary">
+            Who this phone is signed in as.
           </Text>
         </View>
 
-        <View className="gg-card gap-2">
+        <View className="gg-card gap-1">
           <Text className="text-overline text-text-muted">SIGNED IN</Text>
           <Text className="text-h3 text-text-primary">{user?.name ?? "—"}</Text>
           <Text className="text-body text-text-secondary">{user?.email ?? "—"}</Text>
@@ -42,17 +41,19 @@ export default function AccountScreen() {
           <ChevronRight size={20} color={colors.textMuted} accessibilityElementsHidden />
         </Pressable>
 
-        <View className="gg-card gap-2">
-          <Text className="text-overline text-text-muted">BACKEND</Text>
-          <Text className="text-body text-text-primary" selectable>
-            {apiBase}
-          </Text>
-          <Text className="text-caption text-text-muted">
-            Resolved from EXPO_PUBLIC_API_URL or the Expo dev host. Demo API only.
+        <SecondaryButton label="Sign out" onPress={() => void logout()} />
+
+        {/*
+          Kept, but demoted to a footnote: the rider cannot act on it, and it
+          only earns its place because this build talks to a demo server that
+          moves between machines.
+        */}
+        <View className="mt-auto gap-1 pb-6">
+          <Text className="text-caption text-text-muted">Connected to</Text>
+          <Text className="text-caption text-text-secondary" selectable>
+            {getApiBase()}
           </Text>
         </View>
-
-        <SecondaryButton label="Sign out" onPress={() => void logout()} />
       </View>
     </SafeAreaView>
   );

@@ -182,7 +182,7 @@ export default function DesignSystemScreen() {
               <SpecRow label="Base grid" value="4 px" />
               <SpecRow label="Page padding" value="16 px" />
               <SpecRow label="Touch target" value="44 × 44 px" />
-              <SpecRow label="Theme" value={scheme === "dark" ? "Dark" : "Light"} />
+              <SpecRow label="Theme" value={scheme === "dark" ? "Dark" : "Light"} last />
             </View>
 
             <ThemeSwitch />

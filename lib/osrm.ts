@@ -25,7 +25,12 @@ export type RouteResult = {
   /** True when OSRM returned a road route; false for straight-line fallback. */
   routed: boolean;
   distanceMetres: number;
-  durationSeconds: number;
+  /**
+   * Null whenever routing failed. There is no honest way to turn a
+   * straight-line distance into a travel time through Davao traffic, so the
+   * app says the time is unavailable rather than inventing one.
+   */
+  durationSeconds: number | null;
   /** GeoJSON LineString coordinates as [lon, lat][]. */
   coordinates: LonLat[];
   /** Plain-language status for the rider when routing is unavailable. */
@@ -69,17 +74,20 @@ export function parseOsrmResponse(
   };
 }
 
-/** Straight-line fallback when OSRM is down, rate-limited, or malformed. */
+/**
+ * Straight-line fallback when OSRM is down, rate-limited, or malformed.
+ *
+ * The distance is real — it is just the wrong kind of distance, and the label
+ * says so. No travel time is produced: an ETA the app guessed is worse than no
+ * ETA, because the rider would plan around it.
+ */
 export function fallbackRoute(from: LatLng, to: LatLng): RouteResult {
-  const distanceMetres = haversineMetres(from, to);
-  // Rough urban bike estimate: ~18 km/h → 5 m/s.
-  const durationSeconds = distanceMetres / 5;
   return {
     routed: false,
-    distanceMetres,
-    durationSeconds,
+    distanceMetres: haversineMetres(from, to),
+    durationSeconds: null,
     coordinates: straightLineGeometry(from, to).coordinates,
-    statusLabel: "Route unavailable — straight line shown",
+    statusLabel: "Routing is unavailable. The line is direct, not a road route.",
   };
 }
 
@@ -96,9 +104,9 @@ export async function fetchRoute(
     return {
       routed: false,
       distanceMetres: 0,
-      durationSeconds: 0,
+      durationSeconds: null,
       coordinates: [],
-      statusLabel: "Route unavailable — coordinates missing",
+      statusLabel: "This job has no map coordinates. Use the addresses below.",
     };
   }
 
@@ -131,11 +139,18 @@ export async function fetchRoute(
   }
 }
 
-/** Compact label pair for offer cards and trip headers. */
+/**
+ * Compact label for offer cards and trip headers.
+ *
+ * A road route reads "4.2 km · 14 min". A failed route never borrows that
+ * shape — it says the distance is direct and that there is no travel time.
+ */
 export function routeSummaryLabel(route: RouteResult | null): string {
   if (!route) return "Distance unknown";
   const dist = formatDistanceMetres(route.distanceMetres);
-  const dur = formatDurationSeconds(route.durationSeconds);
-  if (!route.routed) return `${dist} · ${dur} (est.)`;
-  return `${dist} · ${dur}`;
+  if (!route.routed || route.durationSeconds == null) {
+    if (route.distanceMetres <= 0) return "Distance unknown";
+    return `${dist} direct · travel time unavailable`;
+  }
+  return `${dist} · ${formatDurationSeconds(route.durationSeconds)}`;
 }
