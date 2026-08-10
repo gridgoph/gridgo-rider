@@ -33,11 +33,21 @@ describe("gridgoLogoMetrics", () => {
     }
   });
 
-  it("keeps the role type subordinate but never below the 12px floor", () => {
-    const m = gridgoLogoMetrics(20);
-    expect(m.roleSize).toBe(12);
-    expect(m.roleSize / m.wordmarkSize).toBeGreaterThanOrEqual(0.55);
-    expect(m.roleSize / m.wordmarkSize).toBeLessThanOrEqual(0.6);
+  // Every Satoshi cut shares a cap height per em, so the role's cap-height
+  // ratio against GRIDGO is exactly its type-size ratio. The reference sheet
+  // measures 0.78 — noticeably smaller, but part of the lockup, not a footnote.
+  it("sets the role type to the reference's 0.78 cap ratio", () => {
+    for (const size of [16, 20, 24, 32]) {
+      const m = gridgoLogoMetrics(size);
+      expect(m.roleSize / m.wordmarkSize).toBeCloseTo(0.78, 1);
+    }
+    expect(gridgoLogoMetrics(20).roleSize).toBe(16);
+  });
+
+  it("holds the 12px type floor when the ratio would go under it", () => {
+    // 0.78 x 14 is 10.9 — the floor wins, and nothing renders below 12px.
+    expect(gridgoLogoMetrics(14).roleSize).toBe(12);
+    expect(gridgoLogoMetrics(12).roleSize).toBe(12);
   });
 
   it("gives the wordmark-only lockup its own single-line proportion", () => {

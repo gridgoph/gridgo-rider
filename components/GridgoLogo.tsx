@@ -80,10 +80,13 @@ export function gridgoLogoAccessibilityLabel(
  * is what lets the mark match it exactly on every platform, and what the unit
  * test pins.
  *
- * Ratios are read off the brand lockup reference sheet, where the mark stands
- * 2.7x the height of GRIDGO's caps and the gap to the text is a quarter of the
- * mark's width. Here that lands at a two-line mark ≈ 2x the wordmark type
- * size, role type at 0.6x, and a gap of 0.45x.
+ * Ratios are measured off the brand lockup reference sheet, where the mark
+ * stands 2.7x the height of GRIDGO's caps, the role word's caps are 0.78x
+ * GRIDGO's, and the gap to the text is a quarter of the mark's width.
+ *
+ * Every Satoshi cut shares one cap height per em, so the role's cap ratio is
+ * just its type-size ratio: 0.78 of the wordmark, not the ~0.6 an earlier read
+ * of the sheet estimated. It stays clamped to the design system's 12px floor.
  *
  * No role label in the lockup ever carries a descender ("Business",
  * "Supplier", "Rider", "Admin"), and the wordmark is all caps, so line heights
@@ -96,8 +99,13 @@ export function gridgoLogoMetrics(size: number) {
   // leading instead: it opens the gap between the two lines and drops the
   // mark's bottom edge just under the role word, as the reference does.
   const wordmarkLineHeight = Math.round(size * 1.08);
-  const roleSize = Math.round(size * 0.6);
-  const roleLineHeight = Math.round(roleSize * 1.55);
+  // Nothing essential goes below 12px — the floor wins over the ratio.
+  const roleSize = Math.max(12, Math.round(size * 0.78));
+  // Leading is what sets both the gap between the two lines and how far the
+  // mark drops below the role word, so it is tuned against the sheet, not
+  // picked: 1.3 puts the line gap at 0.59x GRIDGO's cap height and the mark at
+  // 2.7x it, which is what the reference measures.
+  const roleLineHeight = Math.round(roleSize * 1.3);
 
   return {
     /** Wordmark type size — `size` itself. */
