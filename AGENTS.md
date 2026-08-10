@@ -349,6 +349,8 @@ Be concise. Explain what changed and how to test it.
 
 - **Package versions:** install only versions from `node_modules/expo/bundledNativeModules.json` (`npx expo install …`); confirm with `npx expo install --check` before shipping.
 
+- **A dropped dependency must also leave `expo.plugins`.** Config plugins resolve by name from `node_modules` during config evaluation — `expo start` and native builds — never during bundling, so a plugin naming an uninstalled package kills launch with `PluginError` while tests pass and both bundles export. That is how a stale `@react-native-community/datetimepicker` entry outlived the v2 rebuild that removed the dependency. `__tests__/configPlugins.test.ts` is the cheap hermetic guard (every plugin module has a dependency); the real check is `npx expo config --type public`, which is worth running after any dependency removal.
+
 ## Final Reminder
 
 Before every feature:
