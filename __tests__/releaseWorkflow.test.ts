@@ -36,9 +36,23 @@ function jobBody(name: string): string {
   return (next === -1 ? rest : rest.slice(0, next)).join("\n");
 }
 
-/** A job body split into its steps: blocks opening with `- ` at step indent. */
+/**
+ * A job body split into its steps: blocks opening with `- ` at step indent.
+ *
+ * Comment lines are dropped first. A comment written above a step belongs to
+ * the *previous* step's block, and prose that quotes a command must never be
+ * what satisfies an assertion that the command runs.
+ */
 function steps(body: string): string[] {
-  return body.split(/^ {6}- /m).slice(1);
+  return body
+    .split(/^ {6}- /m)
+    .slice(1)
+    .map((step) =>
+      step
+        .split("\n")
+        .filter((line) => !/^\s*#/.test(line))
+        .join("\n"),
+    );
 }
 
 const apk = jobBody("apk");
@@ -69,10 +83,42 @@ describe("the release workflow bakes the deployed API URL into the bundle", () =
     expect(upload).toBeGreaterThan(verify);
   });
 
-  it("destroys the signing key however the job ends", () => {
+  it("destroys every credential however the job ends", () => {
     const cleanup = apkSteps.find((step) => step.includes("rm -f") && step.includes("release.jks"));
     expect(cleanup).toBeDefined();
     expect(cleanup).toMatch(/if:\s*always\(\)/);
+    expect(cleanup).toContain("deploy_key");
+  });
+});
+
+describe("the APK reaches the captain's server only from the default branch", () => {
+  const publish = apkSteps.find((step) => step.includes("upload-apk rider"));
+
+  it("uploads the built APK over the deploy key's forced command", () => {
+    expect(publish).toBeDefined();
+    // The bytes go on stdin; the forced command reads them server-side.
+    expect(publish).toMatch(/'upload-apk rider' < "\$apk"/);
+  });
+
+  it("publishes on a merge to main and on nothing else", () => {
+    // A pull request cannot reach this job at all, and a manual dispatch from
+    // a branch must not replace what the landing site serves.
+    expect(publish).toMatch(
+      /if:\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/,
+    );
+  });
+
+  it("pins the host key rather than trusting whatever answers", () => {
+    expect(publish).toContain("StrictHostKeyChecking=yes");
+    expect(publish).toContain("UserKnownHostsFile=");
+    expect(publish).toMatch(/DEPLOY_KNOWN_HOSTS:\s*\$\{\{\s*secrets\.DEPLOY_KNOWN_HOSTS\s*\}\}/);
+  });
+
+  it("publishes only an APK that passed verification", () => {
+    const verify = apkSteps.findIndex((step) => step.includes("scripts/verify-release-apk.sh"));
+    const published = apkSteps.findIndex((step) => step.includes("upload-apk rider"));
+
+    expect(published).toBeGreaterThan(verify);
   });
 });
 
