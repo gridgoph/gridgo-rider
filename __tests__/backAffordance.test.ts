@@ -30,6 +30,9 @@ const ROOTS = new Set(["index", "(auth)/login", "(auth)/signup", "onboarding", "
 function routeFiles(dir: string, prefix = ""): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
+    // Co-located tests are not routes. Skipping the directory keeps a future
+    // `app/__tests__` suite from looking like an undeclared Stack.Screen.
+    if (entry === "__tests__") return [];
     if (statSync(path).isDirectory()) return routeFiles(path, `${prefix}${entry}/`);
     if (!entry.endsWith(".tsx") || entry.startsWith("_")) return [];
     return [`${prefix}${entry.replace(/\.tsx$/, "")}`];

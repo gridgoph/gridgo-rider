@@ -1,6 +1,7 @@
 import { Redirect, useRouter } from "expo-router";
+import { Eye, EyeOff } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
 import { FormScroll } from "@/components/FormScroll";
 import { GridgoLogo } from "@/components/GridgoLogo";
@@ -11,31 +12,28 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
+import { DEV_LOGIN } from "@/lib/devLogin";
 import { useSession } from "@/store/session";
 
 type HealthState = "checking" | "reachable" | "unreachable";
 
 /**
- * The first screen of the app, and until now the only one built out of
- * utilities the design system does not define: `font-satoshi`, `text-2xl` and
- * `text-sm` are all absent from `global.css` (the default Tailwind type and
- * weight scales are reset on purpose), so every line of it rendered in the
- * system font at Tailwind's own sizes. It is on tokens now, like everything
- * else.
+ * The first screen of the app.
  *
  * The API address stays, with its reachability, because this build talks to a
  * demo server that moves between machines and "cannot reach GRIDGO" is
  * unanswerable without it. It is the one screen where that is true.
  *
- * What does *not* stay is the demo account. This screen used to arrive with
- * `rider@gridgo.local` / `demo` already typed into it and printed underneath as
- * a hint. On a laptop that was a convenience; on a hosted pilot it is a signed
- * invitation — anyone who opens the app is one tap from a rider session. Demo
- * accounts still exist in the pilot, but their passwords come from deployment
- * configuration now, so there is nothing here that could honestly be printed
- * anyway. The fields start empty and the screen keeps only what helps a real
- * rider: who the app is for, the way to create an account, and whether the
- * server is answering.
+ * Credentials never ship. In a development build the fields start filled with
+ * the rider fixture so signing in is one tap (`lib/devLogin.ts`, behind
+ * `__DEV__`). A production bundle folds that module to `null` and drops the
+ * literals; the production-export assertion proves it. On a hosted pilot the
+ * fields start empty — anything typed here is a way in for anyone who opens
+ * the app.
+ *
+ * The password field carries a show/hide control: phone keyboards mistype
+ * constantly, and without it the only recovery from a failed sign-in is to
+ * clear the field and try again blind.
  */
 export default function LoginScreen() {
   const router = useRouter();
@@ -45,8 +43,10 @@ export default function LoginScreen() {
   const error = useSession((s) => s.error);
   const colors = useThemeColors();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // Prefill only when Metro left the literals in — `__DEV__` is compile-time.
+  const [email, setEmail] = useState(() => DEV_LOGIN?.email ?? "");
+  const [password, setPassword] = useState(() => DEV_LOGIN?.password ?? "");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [apiBase] = useState(() => getApiBase());
   const [healthState, setHealthState] = useState<HealthState>("checking");
   const passwordField = useRef<TextInput>(null);
@@ -107,19 +107,46 @@ export default function LoginScreen() {
 
           <View className="gap-2">
             <Text className="text-overline text-text-muted">PASSWORD</Text>
-            <TextInput
-              ref={passwordField}
-              className="gg-field"
-              secureTextEntry
-              autoComplete="current-password"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Your password"
-              placeholderTextColor={colors.textMuted}
-              accessibilityLabel="Password"
-              onSubmitEditing={() => void login(email.trim(), password)}
-              returnKeyType="go"
-            />
+            {/*
+              The reveal control sits inside the field's right edge as a full
+              44×44 target. The input always keeps the same right padding so
+              the glyph never covers the text and the layout does not jump
+              when the icon swaps. Monochrome — yellow is reserved for Sign in.
+            */}
+            <View className="relative justify-center">
+              <TextInput
+                ref={passwordField}
+                className="gg-field"
+                style={{ paddingRight: 48 }}
+                secureTextEntry={!passwordVisible}
+                autoComplete="current-password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Your password"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Password"
+                onSubmitEditing={() => void login(email.trim(), password)}
+                returnKeyType="go"
+                // Keep the same TextInput instance when visibility toggles so
+                // focus and caret are not reset by a remount.
+                textContentType="password"
+              />
+              <Pressable
+                onPress={() => setPasswordVisible((visible) => !visible)}
+                accessibilityRole="button"
+                accessibilityLabel={passwordVisible ? "Hide password" : "Show password"}
+                accessibilityState={{ selected: passwordVisible }}
+                hitSlop={4}
+                testID="password-visibility"
+                className="absolute right-0 top-0 h-12 w-12 items-center justify-center"
+              >
+                {passwordVisible ? (
+                  <EyeOff size={20} color={colors.textSecondary} strokeWidth={2} />
+                ) : (
+                  <Eye size={20} color={colors.textSecondary} strokeWidth={2} />
+                )}
+              </Pressable>
+            </View>
           </View>
 
           {error ? (
