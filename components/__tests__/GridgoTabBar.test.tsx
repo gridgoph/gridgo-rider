@@ -1,5 +1,7 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { fireEvent, render, screen } from "@testing-library/react-native";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { ReactElement } from "react";
 import { StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -9,10 +11,12 @@ import {
   TAB_BAR_METRICS,
   TAB_BAR_MIN_BOTTOM_GAP,
   TAB_LABEL_BOX,
+  TAB_ICON_SIZE,
   tabBarActionOverhang,
   tabBarHeight,
   tabBarMetrics,
   tabBarPaddingBottom,
+  tabBarTopGap,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, DESTINATION_TABS, TABS } from "@/constants/tabs";
 import { useActiveTrip } from "@/store/activeTrip";
@@ -237,18 +241,19 @@ describe("GridgoTabBar", () => {
       expect(m.itemPaddingTop + 24 + m.itemGap + TAB_LABEL_BOX + m.itemPaddingBottom).toBe(49);
     });
 
-    it("gives Android the Material 3 80dp container, with nothing moved", () => {
+    it("gives Android the Material 3 80dp container on the fleet's item padding", () => {
       const m = tabBarMetrics("android");
       expect(m).toEqual({
         columnHeight: 80,
-        itemPaddingTop: 8,
+        // 12 and 16, which is what gridgo-client and gridgo-supplier use. This
+        // bar shipped 8 and 8; that is what sat its icons too high.
+        itemPaddingTop: 12,
         itemGap: 4,
-        itemPaddingBottom: 8,
+        itemPaddingBottom: 16,
         actionDiameter: 56,
-        actionRise: 16,
       });
-      // The label box the captain approved: 56..72 in an 80dp column.
-      expect(m.columnHeight - m.itemPaddingBottom - TAB_LABEL_BOX).toBe(56);
+      // The label box that keeps every column's label on one line: 48..64.
+      expect(m.columnHeight - m.itemPaddingBottom - TAB_LABEL_BOX).toBe(48);
     });
 
     it("keeps every labelled column on the 44dp touch floor", () => {
@@ -261,10 +266,12 @@ describe("GridgoTabBar", () => {
   });
 
   describe("the raised action on a row too short to hold it", () => {
-    it("sits flush inside Android's 80dp column, overhanging nothing", () => {
-      // 56 disc + 16 label + 8 pad is exactly 80, so the disc's top is the
-      // row's top. This is the shipped Android look and it must not move.
-      expect(tabBarActionOverhang("android")).toBe(0);
+    it("rises above Android's 80dp column too, which is what breaks the hairline", () => {
+      // 56 disc + 16 label + 16 pad = 88 against an 80dp column. On the old
+      // 8dp padding this was exactly 80 and overhung nothing, which is why a
+      // transparent strip had to be left at the top of the column to fake the
+      // break — the strip that pushed every item's icon toward the edge.
+      expect(tabBarActionOverhang("android")).toBe(8);
     });
 
     it("rises above iOS's 49pt row rather than shrinking or losing its label", () => {
@@ -295,6 +302,47 @@ describe("GridgoTabBar", () => {
     });
   });
 
+  describe("the gap above the icon, measured from the painted edge", () => {
+    // The captain's report: the items sat too close to the top edge against
+    // gridgo-supplier. These are the supplier's own numbers, and this bar must
+    // land on them exactly — the whole point of the fix.
+    it.each([
+      ["iOS", "ios", 4],
+      ["Android", "android", 20],
+    ])("matches gridgo-supplier on %s", (_platform, os, expected) => {
+      expect(tabBarTopGap(os)).toBe(expected);
+    });
+
+    it("is the room left above the content once the bottom padding is taken", () => {
+      // Spelled out, because `itemPaddingTop` looks like the term that sets
+      // this and is not: every column bottom-aligns, so the top padding is
+      // slack the layout absorbs.
+      for (const os of ["ios", "android"]) {
+        const m = tabBarMetrics(os);
+        const content = TAB_ICON_SIZE + m.itemGap + TAB_LABEL_BOX;
+        expect(tabBarTopGap(os)).toBe(m.columnHeight - m.itemPaddingBottom - content);
+      }
+    });
+
+    it("never lets an icon sit above the hairline", () => {
+      // What iOS actually did before: a 10pt strip over a 4pt gap put the
+      // icons 6pt *above* the painted edge.
+      for (const os of ["ios", "android"]) {
+        expect(tabBarTopGap(os)).toBeGreaterThan(0);
+      }
+    });
+
+    it("leaves the approved bar heights untouched", () => {
+      // Fixing the gap moved the painted edge and the bottom padding, never
+      // the totals — those are the captain's, and settled.
+      expect(tabBarHeight("ios", 34)).toBe(83);
+      expect(tabBarHeight("ios", 0)).toBe(57);
+      expect(tabBarHeight("android", 24)).toBe(104);
+      expect(tabBarHeight("android", 48)).toBe(128);
+      expect(tabBarHeight("android", 0)).toBe(88);
+    });
+  });
+
   describe("the bar as rendered", () => {
     it.each([
       ["Android, three-button navigation", 48, 48],
@@ -319,16 +367,21 @@ describe("GridgoTabBar", () => {
       expect(style.paddingBottom).toBe(TAB_BAR_METRICS.itemPaddingBottom);
     });
 
-    it("offsets the painted surface so the disc breaks the hairline", () => {
-      // The surface starts `actionRise` below the row top; that strip stays
-      // transparent and the disc paints across it on both platforms.
-      expect(tabBarMetrics("android").actionRise).toBe(16);
-      expect(tabBarMetrics("ios").actionRise).toBe(10);
-      for (const os of ["ios", "android"]) {
-        const m = tabBarMetrics(os);
-        expect(m.actionRise).toBeGreaterThan(0);
-        expect(m.actionRise).toBeLessThan(m.columnHeight);
-      }
+    it("paints the surface across the whole bar, as gridgo-supplier does", () => {
+      // No transparent strip at the top of the column any more: the painted
+      // edge and the layout edge are the same line, which is what makes the gap
+      // above the icons comparable with the supplier's at all.
+      //
+      // Read from the source rather than the rendered tree, because the class
+      // that positions it is compiled by NativeWind and never reaches the node
+      // as an inline style — a render assertion here passes on `undefined`.
+      const source = readFileSync(
+        join(__dirname, "..", "GridgoTabBar.tsx"),
+        "utf8",
+      );
+      expect(source).toContain('className="absolute inset-0 border-t border-outline bg-surface"');
+      expect(source).not.toMatch(/absolute inset-x-0 bottom-0 border-t/);
+      expect(source).not.toMatch(/\bactionRise\b\s*[,:}]/);
     });
   });
 });

@@ -1,15 +1,9 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Text, TextInput, View } from "react-native";
 
 import { ChoiceList } from "@/components/ChoiceList";
+import { FormScroll } from "@/components/FormScroll";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -102,125 +96,116 @@ export default function SignupScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="gg-page gap-8 py-8"
-          keyboardShouldPersistTaps="handled"
-        >
-          <View className="gap-6">
-            <GridgoLogo role="rider" />
-            <View className="gap-1">
-              <Text className="text-h1 text-text-primary">Ride for GRIDGO</Text>
-              <Text className="text-body-lg text-text-secondary">
-                Operations reviews every rider before any job is dispatched. You can create
-                your account now; work starts once they have accredited it.
-              </Text>
-            </View>
-          </View>
-
-          <View className="gap-4">
-            <Field
-              label="FULL NAME"
-              value={name}
-              onChange={setName}
-              placeholder="As printed on your licence"
-              autoCapitalize="words"
-              placeholderColor={colors.textMuted}
-            />
-            <Field
-              label="EMAIL"
-              value={email}
-              onChange={setEmail}
-              placeholder="you@example.com"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              placeholderColor={colors.textMuted}
-            />
-            <Field
-              label="PHONE"
-              value={phone}
-              onChange={setPhone}
-              placeholder="+63 917 000 0000"
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              placeholderColor={colors.textMuted}
-            />
-            <Field
-              label="PASSWORD"
-              value={password}
-              onChange={setPassword}
-              placeholder={`At least ${MIN_PASSWORD} characters`}
-              secureTextEntry
-              autoComplete="new-password"
-              placeholderColor={colors.textMuted}
-            />
-          </View>
-
-          <ChoiceList
-            label="What you ride"
-            choices={VEHICLES}
-            value={vehicleType}
-            onChange={setVehicleType}
-            disabled={loading}
-          />
-
-          <View className="gap-4">
-            <Field
-              label="PLATE NUMBER"
-              value={vehiclePlate}
-              onChange={setVehiclePlate}
-              placeholder="ABC 1234"
-              autoCapitalize="characters"
-              placeholderColor={colors.textMuted}
-            />
-            <Field
-              label="DRIVING LICENCE NUMBER"
-              value={licenseNumber}
-              onChange={setLicenseNumber}
-              placeholder="N01-23-456789"
-              autoCapitalize="characters"
-              placeholderColor={colors.textMuted}
-            />
-            <Text className="text-caption text-text-muted">
-              Operations checks the plate and licence against the rider you turn up as. Wrong
-              details hold up your accreditation.
+      <FormScroll contentClassName="gg-page gap-8 py-8">
+        <View className="gap-6">
+          <GridgoLogo role="rider" />
+          <View className="gap-1">
+            <Text className="text-h1 text-text-primary">Ride for GRIDGO</Text>
+            <Text className="text-body-lg text-text-secondary">
+              Operations reviews every rider before any job is dispatched. You can create
+              your account now; work starts once they have accredited it.
             </Text>
           </View>
+        </View>
 
-          {error ? (
-            <InlineNotice
-              tone="error"
-              icon="circle-x"
-              title="Account not created"
-              body={error}
-            />
+        <View className="gap-4">
+          <Field
+            label="FULL NAME"
+            value={name}
+            onChange={setName}
+            placeholder="As printed on your licence"
+            autoCapitalize="words"
+            placeholderColor={colors.textMuted}
+          />
+          <Field
+            label="EMAIL"
+            value={email}
+            onChange={setEmail}
+            placeholder="you@example.com"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            placeholderColor={colors.textMuted}
+          />
+          <Field
+            label="PHONE"
+            value={phone}
+            onChange={setPhone}
+            placeholder="+63 917 000 0000"
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            placeholderColor={colors.textMuted}
+          />
+          <Field
+            label="PASSWORD"
+            value={password}
+            onChange={setPassword}
+            placeholder={`At least ${MIN_PASSWORD} characters`}
+            secureTextEntry
+            autoComplete="new-password"
+            placeholderColor={colors.textMuted}
+          />
+        </View>
+
+        <ChoiceList
+          label="What you ride"
+          choices={VEHICLES}
+          value={vehicleType}
+          onChange={setVehicleType}
+          disabled={loading}
+        />
+
+        <View className="gap-4">
+          <Field
+            label="PLATE NUMBER"
+            value={vehiclePlate}
+            onChange={setVehiclePlate}
+            placeholder="ABC 1234"
+            autoCapitalize="characters"
+            placeholderColor={colors.textMuted}
+          />
+          <Field
+            label="DRIVING LICENCE NUMBER"
+            value={licenseNumber}
+            onChange={setLicenseNumber}
+            placeholder="N01-23-456789"
+            autoCapitalize="characters"
+            placeholderColor={colors.textMuted}
+          />
+          <Text className="text-caption text-text-muted">
+            Operations checks the plate and licence against the rider you turn up as. Wrong
+            details hold up your accreditation.
+          </Text>
+        </View>
+
+        {error ? (
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="Account not created"
+            body={error}
+          />
+        ) : null}
+
+        <View className="gap-3">
+          <PrimaryButton
+            label={loading ? "Creating your account…" : "Create my rider account"}
+            onPress={() => void create()}
+            disabled={loading || Boolean(blocked)}
+            size="large"
+          />
+          {blocked ? (
+            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
           ) : null}
-
-          <View className="gap-3">
-            <PrimaryButton
-              label={loading ? "Creating your account…" : "Create my rider account"}
-              onPress={() => void create()}
-              disabled={loading || Boolean(blocked)}
-              size="large"
-            />
-            {blocked ? (
-              <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-            ) : null}
-            <SecondaryButton
-              label="I already have an account"
-              onPress={() => {
-                clearError();
-                router.back();
-              }}
-            />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <SecondaryButton
+            label="I already have an account"
+            onPress={() => {
+              clearError();
+              router.back();
+            }}
+          />
+        </View>
+      </FormScroll>
     </Screen>
   );
 }

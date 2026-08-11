@@ -8,6 +8,14 @@ require("react-native-reanimated").setUpTests();
 // in, so a root render is a render rather than a crash.
 require("react-native-gesture-handler/jestSetup");
 
+// Keyboard handling is native too. The library ships its own harness, which
+// stands `KeyboardAwareScrollView` in as a plain `ScrollView` and
+// `KeyboardStickyView` as a `View` — so a form renders in tests, and the parts
+// only a real keyboard can prove stay honestly out of scope here.
+jest.mock("react-native-keyboard-controller", () =>
+  require("react-native-keyboard-controller/jest"),
+);
+
 // AsyncStorage is native; theme preference persistence uses an in-memory map in tests.
 jest.mock("@react-native-async-storage/async-storage", () => {
   const store = new Map();

@@ -14,6 +14,23 @@ describe("resolveApiBase", () => {
     ).toBe("https://api.example.com/v1");
   });
 
+  it("1a. a production build reaches the hosted API and never the dev host", () => {
+    // The hosted pilot points a build at its own API with EXPO_PUBLIC_API_URL
+    // and nothing else. Every later step has to stay unreachable — including
+    // the Android loopback rewrite, which is the one branch that edits a host
+    // rather than choosing one, and would silently send a shipped build to an
+    // emulator alias.
+    const hosted = "https://api.example.test";
+
+    for (const platformOS of ["ios", "android", "web"]) {
+      for (const devHostUri of [null, "localhost:8081", "127.0.0.1:8081", "192.168.1.42:8081"]) {
+        expect(resolveApiBase({ envUrl: hosted, envPort: "8787", devHostUri, platformOS })).toBe(
+          hosted,
+        );
+      }
+    }
+  });
+
   it("1b. empty EXPO_PUBLIC_API_URL is ignored", () => {
     expect(
       resolveApiBase({

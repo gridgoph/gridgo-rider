@@ -1,16 +1,10 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Text, TextInput, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
+import { FormScroll } from "@/components/FormScroll";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PickupCheckRow } from "@/components/PickupCheckRow";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -68,6 +62,9 @@ export default function PickupChecklistScreen() {
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
+  // The action bar rides above the keyboard, so the escalation note has to
+  // clear the bar as well as the keyboard to stay readable while it is typed.
+  const [actionBarHeight, setActionBarHeight] = useState(0);
 
   useEffect(() => {
     void hydrate();
@@ -144,133 +141,127 @@ export default function PickupChecklistScreen() {
 
   return (
     <Screen edges={["bottom"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <FormScroll
+        contentClassName="gg-page gap-6 pb-8 pt-6"
+        stickyActionHeight={actionBarHeight}
       >
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="gg-page gap-6 pb-8 pt-6"
-          keyboardShouldPersistTaps="handled"
-        >
-          {loading ? <PickupChecklistSkeleton /> : null}
+        {loading ? <PickupChecklistSkeleton /> : null}
 
-          {loadError ? (
-            <InlineNotice
-              tone="error"
-              icon="circle-x"
-              title="This job did not load"
-              body={loadError}
-              actionLabel="Back to the trip"
-              onAction={() => router.back()}
-            />
-          ) : null}
+        {loadError ? (
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="This job did not load"
+            body={loadError}
+            actionLabel="Back to the trip"
+            onAction={() => router.back()}
+          />
+        ) : null}
 
-          {order ? (
-            <>
-              <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
+        {order ? (
+          <>
+            <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
-              <Text className="text-body-lg text-text-secondary">
-                Check all six before the package leaves the counter. A fault that rides away
-                unlogged stops being the supplier&apos;s and becomes GRIDGO&apos;s — that is what
-                the reprint guarantee costs when nobody looks.
-              </Text>
+            <Text className="text-body-lg text-text-secondary">
+              Check all six before the package leaves the counter. A fault that rides away
+              unlogged stops being the supplier&apos;s and becomes GRIDGO&apos;s — that is what
+              the reprint guarantee costs when nobody looks.
+            </Text>
 
-              {order.pickupChecklist?.status === "escalation_resolved" ? (
-                <InlineNotice
-                  tone="info"
-                  icon="info"
-                  title="Operations has answered"
-                  body="Run all six again on the batch in front of you now, not the one you saw before."
+            {order.pickupChecklist?.status === "escalation_resolved" ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="Operations has answered"
+                body="Run all six again on the batch in front of you now, not the one you saw before."
+              />
+            ) : null}
+
+            <View className="gg-card-flush">
+              {PICKUP_CHECKS.map((check, index) => (
+                <PickupCheckRow
+                  key={check.code}
+                  index={index}
+                  check={check}
+                  answer={answers[check.code]}
+                  onAnswer={(passed) => answer(check.code, passed)}
+                  disabled={busy}
                 />
-              ) : null}
+              ))}
+            </View>
 
-              <View className="gg-card-flush">
-                {PICKUP_CHECKS.map((check, index) => (
-                  <PickupCheckRow
-                    key={check.code}
-                    index={index}
-                    check={check}
-                    answer={answers[check.code]}
-                    onAnswer={(passed) => answer(check.code, passed)}
-                    disabled={busy}
-                  />
-                ))}
-              </View>
-
-              {failing ? (
-                <>
-                  <InlineNotice
-                    tone="error"
-                    icon="circle-x"
-                    title="Do not transport this package"
-                    body="Leave it at the shop. GRIDGO records the fault against the supplier and raises it with the founder — then tells you what to do next."
-                  />
-
-                  <EvidenceCapture
-                    title="Photo of the problem"
-                    instruction="Photograph the fault itself — the misprint, the tear, the short count on the counter."
-                    evidence={evidence.evidence}
-                    upload={evidence.upload}
-                    captureError={evidence.captureError}
-                    cameraBlocked={evidence.cameraBlocked}
-                    onTakePhoto={() => void evidence.takePhoto()}
-                    onRetry={evidence.retry}
-                    onClear={evidence.clear}
-                    disabled={busy}
-                  />
-
-                  <View className="gap-2">
-                    <Text className="text-overline text-text-muted">WHAT IS WRONG</Text>
-                    <TextInput
-                      value={failureNote}
-                      onChangeText={(next) => {
-                        setFailureNote(next);
-                        if (id) saveFailureNote(id, next);
-                      }}
-                      multiline
-                      className="min-h-24 rounded-field border border-outline bg-surface px-3 py-3 text-body text-text-primary"
-                      placeholder="Colour is off across the whole batch, first 40 pieces are smudged…"
-                      placeholderTextColor={colors.textMuted}
-                      accessibilityLabel="What is wrong with this package"
-                    />
-                    <Text className="text-caption text-text-muted">
-                      Operations and the founder read this. Say what you can see, not what you
-                      think caused it.
-                    </Text>
-                  </View>
-                </>
-              ) : null}
-
-              {submitError ? (
+            {failing ? (
+              <>
                 <InlineNotice
                   tone="error"
                   icon="circle-x"
-                  title="Checks not recorded"
-                  body={submitError}
+                  title="Do not transport this package"
+                  body="Leave it at the shop. GRIDGO records the fault against the supplier and raises it with the founder — then tells you what to do next."
                 />
-              ) : null}
-            </>
-          ) : null}
-        </ScrollView>
 
-        {order ? (
-          <StickyActionBar>
-            {blocked ? null : consequence ? (
-              <Text className="text-body text-text-secondary">{consequence}</Text>
+                <EvidenceCapture
+                  title="Photo of the problem"
+                  instruction="Photograph the fault itself — the misprint, the tear, the short count on the counter."
+                  evidence={evidence.evidence}
+                  upload={evidence.upload}
+                  captureError={evidence.captureError}
+                  cameraBlocked={evidence.cameraBlocked}
+                  onTakePhoto={() => void evidence.takePhoto()}
+                  onRetry={evidence.retry}
+                  onClear={evidence.clear}
+                  disabled={busy}
+                />
+
+                <View className="gap-2">
+                  <Text className="text-overline text-text-muted">WHAT IS WRONG</Text>
+                  <TextInput
+                    value={failureNote}
+                    onChangeText={(next) => {
+                      setFailureNote(next);
+                      if (id) saveFailureNote(id, next);
+                    }}
+                    multiline
+                    className="min-h-24 rounded-field border border-outline bg-surface px-3 py-3 text-body text-text-primary"
+                    placeholder="Colour is off across the whole batch, first 40 pieces are smudged…"
+                    placeholderTextColor={colors.textMuted}
+                    accessibilityLabel="What is wrong with this package"
+                  />
+                  <Text className="text-caption text-text-muted">
+                    Operations and the founder read this. Say what you can see, not what you
+                    think caused it.
+                  </Text>
+                </View>
+              </>
             ) : null}
-            <PrimaryButton
-              label={busy ? "Recording…" : checklistActionLabel(answers)}
-              onPress={() => void submit()}
-              disabled={busy || Boolean(blocked)}
-              size="large"
-            />
-            {blocked ? (
-              <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+
+            {submitError ? (
+              <InlineNotice
+                tone="error"
+                icon="circle-x"
+                title="Checks not recorded"
+                body={submitError}
+              />
             ) : null}
-          </StickyActionBar>
+          </>
         ) : null}
-      </KeyboardAvoidingView>
+      </FormScroll>
+
+      {order ? (
+        <StickyActionBar onHeight={setActionBarHeight}>
+          {blocked ? null : consequence ? (
+            <Text className="text-body text-text-secondary">{consequence}</Text>
+          ) : null}
+          <PrimaryButton
+            label={busy ? "Recording…" : checklistActionLabel(answers)}
+            onPress={() => void submit()}
+            disabled={busy || Boolean(blocked)}
+            size="large"
+          />
+          {blocked ? (
+            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+          ) : null}
+        </StickyActionBar>
+      ) : null}
 
       <BlockingOverlay
         visible={busy}
