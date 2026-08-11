@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text } from "react-native";
+import { ScrollView, Text } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
@@ -106,92 +106,85 @@ export default function DeliveryProofScreen() {
 
   return (
     <Screen edges={["bottom"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="gg-page gap-8 pb-8 pt-6"
-          keyboardShouldPersistTaps="handled"
-        >
-          {loading ? <ProofStepSkeleton /> : null}
+      {/* No field on this screen — evidence is a camera capture or a signature
+          pad, so this is a plain scroll rather than the keyboard-aware one. */}
+      <ScrollView className="flex-1" contentContainerClassName="gg-page gap-8 pb-8 pt-6">
+        {loading ? <ProofStepSkeleton /> : null}
 
-          {loadError ? (
-            <InlineNotice
-              tone="error"
-              icon="circle-x"
-              title="This job did not load"
-              body={loadError}
-              actionLabel="Back to the trip"
-              onAction={() => router.back()}
-            />
-          ) : null}
-
-          {order ? (
-            <>
-              <TripStepHeader order={order} stopKind="dropoff" stopLabel={dropoffLabel(order)} />
-
-              {balanceHeld ? (
-                <InlineNotice
-                  tone="warning"
-                  icon="triangle-alert"
-                  title="The client's final payment is not confirmed yet"
-                  body="GRIDGO cannot close a delivery until Operations has confirmed it. Do not hand the package over — call Operations, and check again once they have."
-                  actionLabel="Check again"
-                  onAction={() => void reload()}
-                />
-              ) : null}
-
-              {storage === "unavailable" ? (
-                <InlineNotice
-                  tone="error"
-                  icon="circle-x"
-                  title="Photo storage is offline"
-                  body="Evidence cannot reach the server, so this delivery cannot be proven yet. Do not hand the package over — tell Operations."
-                />
-              ) : null}
-
-              <EvidenceCapture
-                title="Evidence at the door"
-                instruction="Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
-                evidence={evidence.evidence}
-                upload={evidence.upload}
-                captureError={evidence.captureError}
-                cameraBlocked={evidence.cameraBlocked}
-                onTakePhoto={() => void evidence.takePhoto()}
-                onRetry={evidence.retry}
-                onClear={evidence.clear}
-                onSignature={evidence.attachSignature}
-                disabled={busy || balanceHeld}
-              />
-
-              {submitError ? (
-                <InlineNotice
-                  tone="error"
-                  icon="circle-x"
-                  title="Delivery not recorded"
-                  body={submitError}
-                />
-              ) : null}
-            </>
-          ) : null}
-        </ScrollView>
+        {loadError ? (
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="This job did not load"
+            body={loadError}
+            actionLabel="Back to the trip"
+            onAction={() => router.back()}
+          />
+        ) : null}
 
         {order ? (
-          <StickyActionBar>
-            <PrimaryButton
-              label={busy ? "Recording…" : "Confirm delivery"}
-              onPress={() => void confirmDelivery()}
-              disabled={busy || Boolean(blocked)}
-              size="large"
-            />
-            {blocked ? (
-              <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+          <>
+            <TripStepHeader order={order} stopKind="dropoff" stopLabel={dropoffLabel(order)} />
+
+            {balanceHeld ? (
+              <InlineNotice
+                tone="warning"
+                icon="triangle-alert"
+                title="The client's final payment is not confirmed yet"
+                body="GRIDGO cannot close a delivery until Operations has confirmed it. Do not hand the package over — call Operations, and check again once they have."
+                actionLabel="Check again"
+                onAction={() => void reload()}
+              />
             ) : null}
-          </StickyActionBar>
+
+            {storage === "unavailable" ? (
+              <InlineNotice
+                tone="error"
+                icon="circle-x"
+                title="Photo storage is offline"
+                body="Evidence cannot reach the server, so this delivery cannot be proven yet. Do not hand the package over — tell Operations."
+              />
+            ) : null}
+
+            <EvidenceCapture
+              title="Evidence at the door"
+              instruction="Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
+              evidence={evidence.evidence}
+              upload={evidence.upload}
+              captureError={evidence.captureError}
+              cameraBlocked={evidence.cameraBlocked}
+              onTakePhoto={() => void evidence.takePhoto()}
+              onRetry={evidence.retry}
+              onClear={evidence.clear}
+              onSignature={evidence.attachSignature}
+              disabled={busy || balanceHeld}
+            />
+
+            {submitError ? (
+              <InlineNotice
+                tone="error"
+                icon="circle-x"
+                title="Delivery not recorded"
+                body={submitError}
+              />
+            ) : null}
+          </>
         ) : null}
-      </KeyboardAvoidingView>
+      </ScrollView>
+
+      {order ? (
+        <StickyActionBar>
+          <PrimaryButton
+            label={busy ? "Recording…" : "Confirm delivery"}
+            onPress={() => void confirmDelivery()}
+            disabled={busy || Boolean(blocked)}
+            size="large"
+          />
+          {blocked ? (
+            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
+          ) : null}
+        </StickyActionBar>
+      ) : null}
 
       <BlockingOverlay visible={busy} label="Recording the delivery…" />
     </Screen>

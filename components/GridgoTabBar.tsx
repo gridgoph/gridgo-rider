@@ -91,7 +91,47 @@ const ACTION_GLYPHS: Record<RiderActionGlyph, LucideIcon> = {
      Android, three-button   80 + 48 = 128dp
      Android/web, no inset   80 +  8 = 88dp
    `tabBarHeight` is that table as code, so the tests assert the totals rather
-   than re-deriving them.
+   than re-deriving them. None of those totals moved when the top gap below was
+   fixed, and none of them may move again.
+
+   **The gap above the icon is measured from the painted edge.** The captain
+   reported the items sitting too close to the top of the bar against
+   gridgo-supplier, and the cause was structural rather than a padding typo.
+
+   This bar used to paint its surface from `actionRise` down (`inset-x-0
+   bottom-0` with `top: actionRise`), leaving a transparent strip at the top of
+   the column so the raised disc could break the hairline. The supplier has no
+   disc and paints `inset-0`, so for it the painted edge and the layout edge are
+   the same line. Every column in all three apps bottom-aligns its content
+   (`justify-end` over `minHeight: columnHeight`), so what actually sets the gap
+   is `columnHeight - itemPaddingBottom - (icon + itemGap + label)` — measured
+   from the *layout* top. Subtracting the strip left the rider visibly tighter
+   against the painted edge than the supplier, and on iOS it was worse than
+   tight: the icons sat 6pt *above* the hairline they were supposed to sit under.
+
+   Keeping the strip could not be reconciled with matching the supplier. With
+   the shared Android padding below, the gap owed from the painted edge is 20dp
+   and the column has 80 - 16 - 44 = 20dp to give — all of it, leaving nothing
+   for a 16dp strip. Since `columnHeight` and the inset rule are settled, and
+   shrinking `actionRise` was ruled out, the strip itself had to go.
+
+   It turned out not to be needed. The strip existed because Android's old
+   8dp bottom padding made the disc stack 56 + 16 + 8 = exactly 80 — flush with
+   the row, overhanging nothing, so the hairline had to be moved down to fake
+   the break. On the shared 16dp padding the stack is 56 + 16 + 16 = 88 against
+   an 80dp column, so the disc genuinely rises 8dp above the row and breaks the
+   hairline on its own. iOS never needed the strip either: its stack has always
+   overhung by 14pt. So the surface now spans the full column, `inset-0`,
+   exactly as the supplier paints it, and the disc breaks a real hairline on
+   both platforms instead of a lowered one.
+
+   Resulting gap above the icon, from the painted edge — identical to the
+   supplier's on both platforms, which is the whole point:
+     iOS       49 - 3  - (24 + 2 + 16) =  4pt
+     Android   80 - 16 - (24 + 4 + 16) = 20dp
+   `tabBarTopGap` is that as code. Keep it equal to the supplier's, and keep
+   Android's 12 / 16 item padding equal to gridgo-client's and the supplier's —
+   all three apps must read as one product.
    --------------------------------------------------------------------------- */
 
 /**
@@ -108,6 +148,9 @@ export const TAB_BAR_MIN_BOTTOM_GAP = 8;
  */
 export const TAB_LABEL_BOX = 16;
 
+/** The destination glyph, one size in both states and on both platforms. */
+export const TAB_ICON_SIZE = 24;
+
 export type TabBarMetrics = {
   /** The content row, above whatever the platform reserves below it. */
   columnHeight: number;
@@ -116,13 +159,14 @@ export type TabBarMetrics = {
   itemPaddingBottom: number;
   /** The raised action disc. */
   actionDiameter: number;
-  /** How far below the row top the painted surface starts, so the disc breaks it. */
-  actionRise: number;
 };
 
 /**
  * Pure, so both platforms' geometry can be asserted in one test run rather
  * than only whichever one the suite happens to be executing on.
+ *
+ * These numbers are shared with gridgo-client and gridgo-supplier. A change
+ * here is a change in all three or it is a bug in one of them.
  */
 export function tabBarMetrics(platformOS: string): TabBarMetrics {
   if (platformOS === "ios") {
@@ -133,21 +177,38 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
       itemGap: 2,
       itemPaddingBottom: 3,
       actionDiameter: 44,
-      actionRise: 10,
     };
   }
-  // Material 3's 80dp container. These are the numbers this bar already
-  // shipped on Android — 8 above, 4 between, 8 below, a 56 disc and a 16
-  // surface offset — and the captain has approved the result, so none of them
-  // move: `justify-end` puts the label box at 56..72 in both column kinds.
+  // Material 3's 80dp container, with the item padding gridgo-client and
+  // gridgo-supplier both use: 12 above, 4 between, 16 below. This bar shipped
+  // 8 and 8, which is what left its icons 8dp higher in the column than the
+  // supplier's — and, once the painted strip above them is counted, visibly
+  // tighter still. `justify-end` puts the label box at 48..64 in both column
+  // kinds, and 16 below is also what gives the disc its 8dp overhang.
   return {
     columnHeight: 80,
-    itemPaddingTop: 8,
+    itemPaddingTop: 12,
     itemGap: 4,
-    itemPaddingBottom: 8,
+    itemPaddingBottom: 16,
     actionDiameter: 56,
-    actionRise: 16,
   };
+}
+
+/**
+ * The gap above the icon, measured from the **painted** top edge of the bar.
+ *
+ * This is the number the captain reads as "how close the items sit to the top",
+ * and the one that must equal gridgo-supplier's: 4pt on iOS, 20dp on Android.
+ *
+ * Every column bottom-aligns, so `itemPaddingTop` is slack the layout absorbs
+ * rather than the term that sets this — on Android 12 + 44 + 16 is 72 in an
+ * 80dp column, and the spare 8 lands above the icon. What sets it is the room
+ * left over the content once the bottom padding is taken, which is why fixing
+ * this meant the *bottom* padding and the painted edge, not the top padding.
+ */
+export function tabBarTopGap(platformOS: string): number {
+  const { columnHeight, itemGap, itemPaddingBottom } = tabBarMetrics(platformOS);
+  return columnHeight - itemPaddingBottom - (TAB_ICON_SIZE + itemGap + TAB_LABEL_BOX);
 }
 
 export const TAB_BAR_METRICS = tabBarMetrics(Platform.OS);
@@ -157,10 +218,16 @@ export const TAB_BAR_METRICS = tabBarMetrics(Platform.OS);
  *
  * The disc and its label are one bottom-aligned stack, and the label box is
  * pinned to the same line as every other label. On Android the stack is
- * 56 + 16 + 8 = 80 — the column exactly, so the disc's top is the row's top and
- * nothing overhangs. On iOS a 49pt row cannot hold a 44pt disc above a 16pt
- * label, so the stack is 14pt taller than the row and the disc rises that far
- * through it.
+ * 56 + 16 + 16 = 88 against an 80dp column, so the disc rises 8dp above the
+ * row. On iOS a 49pt row cannot hold a 44pt disc above a 16pt label, so the
+ * stack is 14pt taller than the row and the disc rises that far through it.
+ *
+ * This is what lets the surface paint the full column (`inset-0`, as
+ * gridgo-supplier paints it) and still have the disc break the hairline on both
+ * platforms. It was not true while Android's bottom padding was 8: the stack
+ * was then exactly 80, the disc overhung nothing, and a transparent strip had
+ * to be left at the top of the column to fake the break — which is what pushed
+ * every item's icon too close to the painted edge. See the geometry block.
  *
  * That overhang is the deliberate answer to "a 56 disc does not fit a 49 row",
  * and it is the raised action behaving like one. The alternatives were both
@@ -220,11 +287,10 @@ export function tabBarHeight(platformOS: string, insetBottom: number): number {
  * an unfinished shortcut. It now performs the next step of the job — check it,
  * set off, hand over — and says which in a word underneath.
  *
- * The disc keeps its label inside the 24dp the column already had spare below
- * a 56dp disc in an 80dp column, so it lands in exactly the same 16dp label box
- * as the destinations beside it. No geometry moves: the column is still `h-20`,
- * the disc is still 56 at the top of it, and the painted surface still starts
- * 16dp down so the disc breaks the hairline.
+ * The disc's label lands in exactly the same 16dp label box as the destinations
+ * beside it, because both column kinds bottom-align over the same bottom
+ * padding. The disc itself overhangs the row rather than fitting inside it, so
+ * it breaks the hairline of a surface that paints the full column.
  *
  * The open tab is said twice over, in colour and in weight, so the row still
  * reads in grayscale. Yellow is spent in one place: the disc.
@@ -258,11 +324,15 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
       {/*
         Drawn before the row, so the action disc paints over the top border and
         the hairline breaks around it with no cut-out to maintain. Spans the
-        full outer height including the bottom inset region.
+        whole container — the content row and the bottom inset region both —
+        exactly as gridgo-supplier paints it. It used to start `actionRise`
+        below the row top to leave the disc somewhere to break; the disc now
+        overhangs the row on both platforms and does that unaided, and the strip
+        was what left every item's icon too close to the painted edge.
       */}
       <View
-        className="absolute inset-x-0 bottom-0 border-t border-outline bg-surface"
-        style={{ top: TAB_BAR_METRICS.actionRise }}
+        testID="gridgo-tab-bar-surface"
+        className="absolute inset-0 border-t border-outline bg-surface"
       />
 
       <View className="flex-row items-end">
@@ -325,13 +395,13 @@ type ActionDiscProps = {
  * The column is the platform's own row height, so the disc's label lands in the
  * same line box as the destination labels beside it. `justify-end` pins that
  * stack to the bottom, which is what keeps the labels on one line: on Android
- * 56 + 16 + 8 is exactly the 80dp column and the disc's top *is* the row's top,
- * and on iOS the stack is 14pt taller than the 49pt row, so the disc rises that
- * far above it. See `tabBarActionOverhang` for why the overhang is the right
+ * 56 + 16 + 16 is 88 against an 80dp column, and on iOS 44 + 16 + 3 is 63
+ * against a 49pt row, so the disc rises 8dp and 14pt above the row
+ * respectively. See `tabBarActionOverhang` for why the overhang is the right
  * answer on a row too short to hold the disc.
  *
- * The surface starts `actionRise` below the row top either way, so the disc
- * breaks the hairline on both platforms.
+ * That overhang is what breaks the hairline on both platforms, so the surface
+ * can paint the full column instead of starting below it.
  *
  * Unlike the client's plus, this verb changes with the job, so it is labelled.
  * An unlabelled disc that does four different things is a guess, not an action.
@@ -412,7 +482,11 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
             opens, so the row never shifts under your thumb.
           */}
           <View className={pressed ? "opacity-60" : undefined}>
-            <Icon size={24} strokeWidth={2} color={focused ? colors.textPrimary : colors.textMuted} />
+            <Icon
+              size={TAB_ICON_SIZE}
+              strokeWidth={2}
+              color={focused ? colors.textPrimary : colors.textMuted}
+            />
           </View>
           <Text
             numberOfLines={1}

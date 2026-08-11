@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, type ReactNode } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
 import { colors, type ThemeName, typography } from "@/constants/theme";
@@ -118,7 +119,22 @@ export default function RootLayout() {
       dead control rather than an error, and exactly the kind of thing a browser
       would never show.
     */
+    /*
+      The keyboard is a native surface, and on Android under edge-to-edge the
+      window no longer resizes when it opens — `adjustResize` is what React
+      Native's own `KeyboardAvoidingView` measures, so that component sat there
+      doing nothing while the keyboard covered the field. This provider reads
+      the IME inset frame by frame instead, which is what `FormScroll` and
+      `StickyActionBar` are driven from.
+
+      No `statusBarTranslucent` / `navigationBarTranslucent` here on purpose:
+      the library detects Expo's edge-to-edge window at runtime and forces both
+      on, and passing them explicitly only earns a dev warning that they were
+      ignored. Nothing about the tab bar's geometry changes — the safe-area
+      insets it measures are unaffected.
+    */
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider value={navigationTheme(scheme)}>
         <AuthGate>
@@ -198,6 +214,7 @@ export default function RootLayout() {
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
         </ThemeProvider>
       </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
