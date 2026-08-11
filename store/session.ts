@@ -14,7 +14,6 @@ import {
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "rider" as const;
-export const DEMO_EMAIL = "rider@gridgo.local";
 
 /** Map login failures to rider-facing copy (network vs bad credentials). */
 export function loginErrorMessage(error: unknown): string {
