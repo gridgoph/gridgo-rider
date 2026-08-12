@@ -16,6 +16,34 @@ jest.mock("react-native-keyboard-controller", () =>
   require("react-native-keyboard-controller/jest"),
 );
 
+// Push is FCM through a native module, so there is nothing to exercise in Jest:
+// the module's own surface is mocked to inert, and every rule the app applies to
+// it lives in lib/push.ts and is unit-tested there directly. Permission is
+// reported undetermined, which is the state a fresh phone is in — so a screen
+// rendering PushEnableCard renders the ask, and no test accidentally asserts
+// against a granted phone it never granted.
+jest.mock("expo-notifications", () => ({
+  __esModule: true,
+  AndroidImportance: { HIGH: 4 },
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn(async () => undefined),
+  getPermissionsAsync: jest.fn(async () => ({
+    status: "undetermined",
+    granted: false,
+    canAskAgain: true,
+  })),
+  requestPermissionsAsync: jest.fn(async () => ({
+    status: "undetermined",
+    granted: false,
+    canAskAgain: true,
+  })),
+  getDevicePushTokenAsync: jest.fn(async () => ({ type: "android", data: "test-fcm-token" })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addPushTokenListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
+
 // AsyncStorage is native; theme preference persistence uses an in-memory map in tests.
 jest.mock("@react-native-async-storage/async-storage", () => {
   const store = new Map();

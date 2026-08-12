@@ -63,9 +63,12 @@ describe("buildVersion", () => {
 
 describe("app.config stamps app.json without disturbing it", () => {
   const original = process.env.GRIDGO_BUILD_NUMBER;
+  const originalFirebase = process.env.GOOGLE_SERVICES_JSON;
   afterEach(() => {
     if (original === undefined) delete process.env.GRIDGO_BUILD_NUMBER;
     else process.env.GRIDGO_BUILD_NUMBER = original;
+    if (originalFirebase === undefined) delete process.env.GOOGLE_SERVICES_JSON;
+    else process.env.GOOGLE_SERVICES_JSON = originalFirebase;
   });
 
   it("stamps the CI build number onto the real app.json", () => {

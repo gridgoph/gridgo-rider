@@ -19,6 +19,7 @@ import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   confirmSheetScreenOptions,
@@ -72,6 +73,11 @@ export default function RootLayout() {
   const hydrateSession = useSession((s) => s.hydrate);
   const launchReady = useLaunchReady({ fontsReady, sessionHydrated });
   useHydrateTheme();
+  // Must sit above the launch-ready gate: hooks cannot be skipped on the
+  // frames that still return null. It never raises the permission dialog —
+  // only `PushEnableCard` does that. Expo Go throws from the native module;
+  // the hook wraps every call so that costs push, never the first frame.
+  usePushNotifications();
 
   // Read the stored session here, not in the gate: the gate lives inside the
   // tree that this component refuses to render until hydration finishes.

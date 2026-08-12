@@ -6,6 +6,7 @@ import { AlertsButton } from "@/components/AlertsButton";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { Screen } from "@/components/Screen";
 import { OfferListSkeleton } from "@/components/SkeletonScreens";
 import { OfferCard } from "@/components/OfferCard";
@@ -127,6 +128,8 @@ export default function OffersScreen() {
         />
 
         {!approval.canWork ? <ApprovalNotice /> : null}
+
+        <PushEnableCard />
 
         {/*
           One job at a time. With a trip in hand and nothing else waiting, the
