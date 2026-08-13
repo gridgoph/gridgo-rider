@@ -7,6 +7,7 @@ import { FormScroll } from "@/components/FormScroll";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
@@ -166,6 +167,17 @@ export default function LoginScreen() {
             disabled={loading}
           />
         </View>
+
+        {/*
+          The door asks too, and it is the only surface that can. A rider that
+          installs GRIDGO and does not sign in for a week never reaches a
+          screen behind the gate, and on Android 13+ the permission can only
+          be asked while the app is open — so a door that never asks is a
+          phone GRIDGO can never tell to update. It draws only the ask, never
+          a failure or a settings link (see `pushOffer`), and its copy
+          promises only what an unclaimed phone actually receives.
+        */}
+        <PushEnableCard spacing="above" />
 
         <View className="flex-row flex-wrap items-center gap-2 pt-2">
           <Text className="text-caption text-text-muted" numberOfLines={2}>

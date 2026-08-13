@@ -11,9 +11,15 @@ import {
   SESSION_STORAGE_KEY,
   type StoredSession,
 } from "@/lib/sessionStorage";
+import { usePush } from "@/store/push";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "rider" as const;
+
+/** Whether a stored user is a signed-in session. Used by push and the auth gate. */
+export function isSignedIn(user: User | null | undefined): boolean {
+  return user != null;
+}
 
 /** Map login failures to rider-facing copy (network vs bad credentials). */
 export function loginErrorMessage(error: unknown): string {
@@ -214,8 +220,19 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   logout: async () => {
     storedSessionSuperseded = true;
+    // The device token rides along with the sign-out rather than being
+    // unregistered separately: afterwards the bearer token is dead, so a phone
+    // that signed out first could no longer authenticate the unregister and
+    // would keep waking up for the previous rider's job offers. The server
+    // accepts a sign-out with no token exactly as before, so a phone that never
+    // got one is unaffected.
+    //
+    // Afterwards the phone goes back on the unclaimed list rather than off it
+    // entirely: a rider that signs out has not uninstalled GRIDGO, and "there
+    // is a new version" still has to reach it.
+    const deviceToken = usePush.getState().token;
     try {
-      await api.logout();
+      await api.logout(deviceToken);
     } catch {
       // Server may reject an already-dead token. Local wipe still happens below.
     } finally {
@@ -224,6 +241,7 @@ export const useSession = create<SessionState>((set, get) => ({
       api.setToken(null);
       persist(null);
       set({ user: null, error: null });
+      void usePush.getState().release();
     }
   },
 }));

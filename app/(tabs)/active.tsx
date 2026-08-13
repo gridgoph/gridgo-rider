@@ -12,6 +12,7 @@ import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
@@ -225,6 +226,8 @@ export default function ActiveScreen() {
         />
 
         {!approval.canWork ? <ApprovalNotice /> : null}
+
+        <PushEnableCard />
 
         {approval.canWork ? (
           <>

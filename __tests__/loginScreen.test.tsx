@@ -12,6 +12,7 @@ jest.mock("@/lib/api", () => ({
 }));
 
 jest.mock("@/store/session", () => ({
+  isSignedIn: () => false,
   useSession: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       user: null,

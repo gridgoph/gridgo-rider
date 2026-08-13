@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { AlertCard } from "@/components/AlertCard";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { AlertListSkeleton } from "@/components/SkeletonScreens";
@@ -103,6 +104,8 @@ export default function AlertsScreen() {
           />
         }
       >
+        <PushEnableCard spacing="below" />
+
         {error ? (
           <InlineNotice
             tone="error"
