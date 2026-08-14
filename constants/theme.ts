@@ -135,6 +135,17 @@ export const spacing = {
 /** 16px page padding on mobile. */
 export const pagePadding = 16;
 
+/**
+ * Android TextInput content inset. NativeWind class padding can miss the
+ * EditText or win the merge, so field call sites apply this native style.
+ */
+export const fieldInputStyle = {
+  paddingStart: spacing.xxl,
+  paddingEnd: spacing.xxl,
+  includeFontPadding: false,
+  textAlignVertical: "center" as const,
+};
+
 /** Fields 12, cards 12–16, pills 999. Do not mix arbitrary values. */
 export const radius = {
   sm: 8,

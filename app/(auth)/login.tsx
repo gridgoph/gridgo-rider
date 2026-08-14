@@ -13,6 +13,7 @@ import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
+import { fieldInputStyle } from "@/constants/theme";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
@@ -142,6 +143,7 @@ export default function LoginScreen() {
             <Text className="text-overline text-text-muted">EMAIL</Text>
             <TextInput
               className="gg-field"
+              style={fieldInputStyle}
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"

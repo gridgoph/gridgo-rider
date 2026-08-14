@@ -1,6 +1,7 @@
 import {
   clerkPublishableKey,
   readGridgoRole,
+  resolveClerkPublishableKey,
   resolveGridgoRole,
   riderAccessError,
 } from "@/lib/clerkAuth";
@@ -45,5 +46,19 @@ describe("Clerk publishable key policy", () => {
   it("requires an explicit live key in production", () => {
     expect(clerkPublishableKey("pk_live_example", false)).toBe("pk_live_example");
     expect(() => clerkPublishableKey(undefined, false)).toThrow(/missing or invalid/i);
+  });
+
+  it("prefers the Expo extra value and falls back to the statically read env", () => {
+    const original = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_live_envFallback";
+    try {
+      expect(resolveClerkPublishableKey("pk_live_bakedExtra", false)).toBe(
+        "pk_live_bakedExtra",
+      );
+      expect(resolveClerkPublishableKey(undefined, false)).toBe("pk_live_envFallback");
+    } finally {
+      if (original === undefined) delete process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      else process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = original;
+    }
   });
 });

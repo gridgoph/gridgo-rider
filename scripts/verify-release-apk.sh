@@ -9,10 +9,10 @@
 #      points the release build type at `signingConfigs.debug`, so a plain
 #      `assembleRelease` produces a debug-signed APK that installs happily and
 #      can never be upgraded by a real release.
-#   2. It points at localhost. `EXPO_PUBLIC_*` values are inlined by Babel when
-#      the JS bundle is built, not read at runtime, so if the variable was not
-#      in the environment of the bundling command the app silently falls back
-#      to the dev-server/loopback base in `lib/api.ts`.
+#   2. It points at localhost, or Clerk is missing. `EXPO_PUBLIC_*` values are
+#      inlined by Babel when the JS bundle is built, not read at runtime. The
+#      Clerk value reaches Expo extra at prebuild and also has a static env read
+#      that Babel can inline at Gradle time.
 #
 # Neither is visible from the build log, so both are asserted here against the
 # actual artifact. Nothing this script prints contains a password, a key, or
@@ -20,7 +20,8 @@
 #
 # Usage:
 #   ANDROID_KEYSTORE_PATH=… ANDROID_KEYSTORE_PASSWORD=… ANDROID_KEY_ALIAS=… \
-#   EXPO_PUBLIC_API_URL=… scripts/verify-release-apk.sh path/to/app-release.apk
+#   EXPO_PUBLIC_API_URL=… EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=… \
+#   scripts/verify-release-apk.sh path/to/app-release.apk
 
 set -euo pipefail
 
@@ -39,6 +40,12 @@ require_env ANDROID_KEYSTORE_PATH
 require_env ANDROID_KEYSTORE_PASSWORD
 require_env ANDROID_KEY_ALIAS
 require_env EXPO_PUBLIC_API_URL
+require_env EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+case "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" in
+  pk_live_*) ;;
+  *) fail "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not a production pk_live_ key" ;;
+esac
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -87,7 +94,7 @@ key_digest="$(grep -im1 'SHA256:' "$work/keystore.txt" |
 
 echo "OK: signed by alias '$ANDROID_KEY_ALIAS' (cert SHA-256 $apk_digest)"
 
-# --- 2. the deployed API URL is baked into the bundle -----------------------
+# --- 2. deployed API and Clerk config are baked into the bundle -------------
 
 bundle="assets/index.android.bundle"
 unzip -p "$apk" "$bundle" >"$work/bundle.bin" 2>/dev/null ||
@@ -101,5 +108,8 @@ if grep -aqF -- 'EXPO_PUBLIC_API_URL' "$work/bundle.bin"; then
   fail "the variable name survives in $bundle — the value was not inlined at bundle time"
 fi
 
-echo "OK: the deployed API URL is inlined in $bundle"
+grep -aqF -- "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" "$work/bundle.bin" ||
+  fail "the production Clerk publishable key is not in $bundle"
+
+echo "OK: the deployed API URL and Clerk production key are inlined in $bundle"
 echo "OK: $(basename "$apk") is a real signed release build"
