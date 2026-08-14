@@ -140,8 +140,8 @@ export const pagePadding = 16;
  * EditText or win the merge, so field call sites apply this native style.
  */
 export const fieldInputStyle = {
-  paddingStart: spacing.xxl,
-  paddingEnd: spacing.xxl,
+  paddingStart: spacing.lg,
+  paddingEnd: spacing.lg,
   includeFontPadding: false,
   textAlignVertical: "center" as const,
 };

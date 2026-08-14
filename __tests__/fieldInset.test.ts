@@ -35,9 +35,9 @@ describe("gg-field native text inset", () => {
     }
   });
 
-  it("defines a generous Android-native inset and centered line box", () => {
-    expect(fieldInputStyle.paddingStart).toBeGreaterThanOrEqual(24);
-    expect(fieldInputStyle.paddingEnd).toBeGreaterThanOrEqual(24);
+  it("defines a 16dp Android-native inset and centered line box", () => {
+    expect(fieldInputStyle.paddingStart).toBe(16);
+    expect(fieldInputStyle.paddingEnd).toBe(16);
     expect(fieldInputStyle).toMatchObject({
       includeFontPadding: false,
       textAlignVertical: "center",

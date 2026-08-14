@@ -74,13 +74,13 @@ describe("Sign in", () => {
     await render(<LoginScreen />);
 
     expect(StyleSheet.flatten(screen.getByLabelText("Email").props.style)).toMatchObject({
-      paddingStart: 32,
-      paddingEnd: 32,
+      paddingStart: 16,
+      paddingEnd: 16,
       includeFontPadding: false,
       textAlignVertical: "center",
     });
     expect(StyleSheet.flatten(screen.getByLabelText("Password").props.style)).toMatchObject({
-      paddingStart: 32,
+      paddingStart: 16,
       paddingEnd: 56,
       includeFontPadding: false,
       textAlignVertical: "center",
