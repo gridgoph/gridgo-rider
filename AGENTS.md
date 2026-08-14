@@ -12,13 +12,13 @@ Think like a senior mobile developer.
 
 ## Project Overview
 
-This repo is **GRIDGO Rider** — the rider mobile app for a Davao City managed-printing marketplace. It covers self sign-up and accreditation, dispatch accept, navigation, the six-point pickup check, delivery evidence, and active-trip location sharing.
+This repo is **GRIDGO Rider** — the rider mobile app for a Davao City managed-printing marketplace. It covers invitation activation and accreditation, dispatch accept, navigation, the six-point pickup check, delivery evidence, and active-trip location sharing.
 
 GRIDGO ships one app per role. Client, Supplier, Operations, and Super Admin surfaces live in separate codebases. Do not put client request flows, supplier production, or Operations QA into this binary.
 
 The app includes:
 
-- Rider self sign-up, and an honest "not dispatchable until approved" state
+- Invitation-only rider activation, and an honest "not dispatchable until approved" state
 - Dispatch offer accept
 - Navigate to supplier for pickup and client for delivery
 - The six-point pickup check, its escalation, and the spoken sign-off
@@ -29,7 +29,7 @@ The app includes:
 
 **Cross-cutting**
 
-- Auth via the replaceable local demo API (`gridgo-api`). Role must be `rider`.
+- Auth via Clerk, with the replaceable local demo API login retained in `__DEV__`. Role must be `rider`.
 - Light and Dark themes with identical labels, states, and workflows.
 - Shared design tokens with the client starter (`constants/theme.ts`, `global.css`, logo assets).
 
@@ -43,8 +43,9 @@ The app includes:
 - NativeWind
 - Zustand
 - AsyncStorage
+- Clerk Expo + SecureStore for production identity sessions
 - Zustand for client session state
-- Local **custom auth + domain API** via `gridgo-api` (MVP — not Clerk/Supabase/PayMongo; replaceable later)
+- Clerk auth + the local **domain API** via `gridgo-api`
 
 Do not introduce new major libraries unless there is a strong reason. Ask before installing anything new.
 
@@ -53,16 +54,16 @@ Do not introduce new major libraries unless there is a strong reason. Ask before
 
 ## MVP stack (current phase)
 
-For this MVP we **do not** integrate Clerk, Supabase, PayMongo, or other production SaaS.
+Clerk supplies identity and session JWTs. Supabase, PayMongo, and other production SaaS are not part of this MVP.
 
 Every screen that needs network uses **`lib/api.ts`** against the shared local **`gridgo-api`**:
 
-- **Custom auth** — email/password → bearer token, plus rider self sign-up; role enforced in Zustand session (`store/session.ts`). Mismatched role is rejected (no role switcher).
+- **Clerk auth** — email/password, Google, recovery, and Operations invitation tickets. Clerk tokens use SecureStore and flow through `lib/api.ts`; `publicMetadata.gridgoRole` / `gridgo_role` must be `rider`. The `__DEV__` fixture alone may use legacy demo login.
 - **Custom domain API** — orders, dispatch, pickup checklist, delivery evidence, files, settings, notifications.
 - **Zustand** — session and feature stores (not React Context for global session).
 - **Money** — PHP minor units only, formatted at the edge. The only figure this app renders is `deliveryFeeMinor`, the rider's own fee.
 - **Contract** — `gridgo-api` `docs/OPERATIONAL_MODEL_V2_API.md` is authoritative for routes, states, transitions and role projections; `docs/STORAGE_API.md` for file bytes. Read them before changing a call site rather than inferring from the app.
-- **Replace later** — keep the same `lib/api.ts` surface when Clerk/Supabase/PayMongo land.
+- **Stable API surface** — feature call sites continue through `lib/api.ts`; auth chooses a fresh Clerk bearer or the development-only legacy bearer there.
 - **API base** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → Expo dev-server hostname from `expo-constants` + `EXPO_PUBLIC_API_PORT` (default `8787`) → Android emulator `10.0.2.2` when that host is loopback → `127.0.0.1`. Do not hardcode a LAN IP; physical Expo Go devices inherit the host they loaded the bundle from. Unit tests: `lib/__tests__/apiBase.test.ts`.
 - **Pointing a build at a hosted API is configuration, never code.** Set `EXPO_PUBLIC_API_URL` in the build environment — `EXPO_PUBLIC_API_URL=https://your-api.example npx expo export`, or an EAS build profile's `env`. It wins over every other step, on every platform, including the Android loopback rewrite (asserted for the whole matrix in `apiBase.test.ts`). `EXPO_PUBLIC_*` values are **inlined by Babel at bundle time**, not read at runtime, so the variable has to be set for the command that builds the bundle; setting it only on the server that serves it does nothing. Verify a real build rather than trusting the config: the URL appears as a literal in the exported Hermes bundle and the name `EXPO_PUBLIC_API_URL` does not. Never commit the domain to the repo.
 
@@ -306,9 +307,9 @@ Use Clerk. Do not build custom auth, and do not use Supabase Auth.
 
 One Clerk application serves every GRIDGO app, so a person holding two roles keeps one account. The platform role (`client`, `supplier`, `rider`, `ops_admin`, `super_admin`) lives in Clerk `publicMetadata`, is writable only through the Backend API, and reaches this app as a session claim — read it, never write it.
 
-This app serves `client`. Check the role once, at the door, and hand a non-client user off to their own app. That check decides what renders, nothing more: every read and write is decided server-side by Row Level Security against the Clerk user id and role claim, so removing the check would grant no access.
+This app serves `rider`. Check the role once, at the door, and hand a non-rider user off to their own app. That check decides what renders, nothing more: every read and write remains authorized by `gridgo-api` against the Clerk user id, role claim, local projection, and route policy.
 
-Clients are the only role that signs up. Supplier, rider, and admin accounts exist only by invitation from Operations, so this app never offers a path to create one.
+Clients are the only role that signs up publicly. Supplier, rider, and admin accounts exist only by invitation from Operations, so this app accepts a rider account only from Clerk's `__clerk_ticket` flow and never submits or writes a role.
 
 ---
 
@@ -324,7 +325,7 @@ Be concise. Explain what changed and how to test it.
 
 - **Tabs:** Offers · Active · [action] · Earnings · Account — four destinations around one raised **action**, never a fifth destination. The disc performs the job's next step; its verb, glyph and route come from `lib/riderAction.ts`, driven by `store/activeTrip` + `hooks/useRiderAction`. Alerts is a pushed route behind `components/AlertsButton` (the only place the unread count shows). Rationale for the whole set: `constants/tabs.ts`.
 - **Auth gate:** session → route is continuous in `hooks/useAuthGate` + `lib/authGate.ts`. Two guards must both hold before it navigates (`canGateNavigate`): the root navigator exists, and the stored session has been read back — otherwise `replace` throws "Attempted to navigate before mounting the Root Layout component". `app/_layout.tsx` renders nothing until fonts **and** session are ready, so no screen fires an authenticated request without a bearer.
-- **Nothing in the launch path may wait forever.** Every gate before the first frame carries a deadline (`lib/launchGate.ts`, `hooks/useLaunchReady`, `hydrate` in `store/session.ts`), and the splash is hidden off the same bounded flag — a native call that never answers must degrade to the login screen, never to a blank one. `hydrated` is load-bearing in three places (root layout, auth gate, `app/index.tsx`), so it has to flip no matter what storage does; a late answer is still adopted and the continuous gate carries the rider on. In dev the launch reports its timing and what stalled. Guarded by `__tests__/startupNeverHangs.test.tsx`.
+- **Nothing in the launch path may wait forever.** Every gate before the first frame carries a deadline (`lib/launchGate.ts`, `hooks/useLaunchReady`, `hydrate` in `store/session.ts`), including Clerk's SecureStore restoration. The splash is hidden off the same bounded flag — a native call that never answers must degrade to the welcome screen, never to a blank one. `hydrated` is load-bearing in three places (root layout, auth gate, `app/index.tsx`), so it has to flip no matter what storage does; a late answer is still adopted and the continuous gate carries the rider on. In dev the launch reports its timing and what stalled. Guarded by `__tests__/startupNeverHangs.test.tsx`.
 - **Session persists** to AsyncStorage (`lib/sessionStorage.ts`, `store/session.ts`); a rider stays signed in across launches. A 401 only clears it when the request actually carried a bearer.
 - **Tab bar geometry: two content rows, one rule under them.** In `components/GridgoTabBar.tsx`, `tabBarMetrics(platformOS)` gives the platform's own content row — the HIG's **49pt** on iOS, Material 3's **80dp** on Android — and `tabBarPaddingBottom` gives what sits beneath both: whatever the platform reserves *is* the breathing room, with `TAB_BAR_MIN_BOTTOM_GAP` as a floor for a device reserving less. Never `inset + gap`; `Math.max` stays banned as a *replacement* for the inset, so the floor is spelled longhand. `tabBarHeight(os, inset)` is the whole table as code (83 / 57 iOS, 128 / 104 / 88 Android), asserted per device in `components/__tests__/GridgoTabBar.test.tsx`. Two mistakes this cost the captain, both now cited in the file rather than remembered: an 80dp row on iOS is 114pt against UIKit's 83, and MD3's 80dp container sits *above* the system inset (edge-to-edge means ~48dp three-button, ~24dp gesture — never zero), so adding the gap overshot Material on every Android phone.
 - **The gap above the tab icons is measured from the *painted* edge, and equals gridgo-supplier's.** `tabBarTopGap(os)` — 4pt iOS, 20dp Android. Every column bottom-aligns (`justify-end` over `minHeight: columnHeight`), so `itemPaddingTop` is slack the layout absorbs and never the term that sets this: it is `columnHeight − itemPaddingBottom − (icon + gap + label)`. The bar therefore paints `absolute inset-0`, as the supplier does. It used to paint from `actionRise` down, leaving a transparent strip for the disc to break — which subtracted from that gap and on iOS put the icons **6pt above** their own hairline. The strip is gone because it stopped being needed, not because it was shrunk: see the disc entry. Android's item padding is **12 / 16**, identical to gridgo-client and gridgo-supplier — all three must match or one of them is wrong.
@@ -345,7 +346,7 @@ Be concise. Explain what changed and how to test it.
 - **Tab scenes never animate:** `animation: "none"` is set explicitly in `app/(tabs)/_layout.tsx`. The library defaults to it; writing it down stops it drifting.
 - **Onboarding:** full-height horizontal pager over a non-interactive art layer (parallax 0.4× + cross-fade). Exit is explicit via `lib/onboardingExit.ts` — Settings replay uses `?from=settings` and returns to `/settings`; do not rely on `canGoBack()` alone. Copy and art in `data/onboarding.ts` + `components/illustrations/` (rider beats only).
 - **Logo lockup:** `components/GridgoLogo.tsx` — mark left, wordmark and typed `role` stacked right, the mark spanning the **whole** text block. Every role renders as plain type; there is no rider pill, so all product lockups are one family. `size` is the **wordmark type size**, not the mark edge — the mark follows from `gridgoLogoMetrics`, which is why the two cannot be sized apart. Yellow appears exactly twice (the lit dot, and `GO` on `brand`). Rider always uses `role="rider"`. Identity screens only (login, onboarding, design-system masthead); do not decorate every header. Do not recolour or redraw the mark.
-- **Nothing published is a way in.** A production login screen never prefills credentials. Development builds prefill the rider fixture via `lib/devLogin.ts` behind `__DEV__` (Metro strips the dead branch, so the address and password do not exist in a release bundle — proved by `__tests__/productionBundleNoCredentials.test.ts`). Do not reintroduce a runtime flag or a top-level constant for those strings; both still ship. The password field has a show/hide control (44dp target, accessible label that flips with state). Keep on login only what helps a real rider — who the app is for, the way to create an account, and the API base with its reachability chip.
+- **Nothing published is a way in.** A production login screen never prefills credentials. Development builds prefill the rider fixture via `lib/devLogin.ts` behind `__DEV__` (Metro strips the dead branch, so the address and password do not exist in a release bundle — proved by `__tests__/productionBundleNoCredentials.test.ts`). Do not reintroduce a runtime flag or a top-level constant for those strings; both still ship. The password field has a show/hide control (44dp target, accessible label that flips with state). Rider creation is invitation-only (`app/(auth)/accept-invitation.tsx`); Google authenticates identity but never supplies role metadata. Keep the API base with its reachability chip on login.
 - **Settings:** pushed route `app/settings.tsx` (theme + View onboarding). Account keeps identity, the way into Alerts and Settings, and Sign out — and nothing diagnostic: the API base belongs on login (with its reachability chip), not on a rider's account screen.
 - **Illustrations:** source SVGs in `assets/illustrations/` (provenance in `NOTICE.md`); RN components collapse fills onto the five-step ramp in `palette.ts` — no yellow in art. Do not hand-edit generated `*Illustration.tsx`; re-convert from the SVG.
 - **Nothing on screen names an internal:** `apiErrorMessage` in `lib/api.ts` maps known API codes to recovery copy and swaps anything code-shaped (`isInternalCode`) for the caller's own sentence, so a raw `not_offerable` or `HTTP 500` can never reach a rider.

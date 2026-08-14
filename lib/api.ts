@@ -16,8 +16,8 @@ export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin"
 /**
  * Where an account stands with Operations.
  *
- * Riders sign themselves up, so a brand-new account exists and can sign in
- * while being unable to take any work at all. That gap is a state the app has
+ * Operations invites riders, so a newly activated account can sign in while
+ * still being unable to take any work at all. That gap is a state the app has
  * to show honestly, not a loading spinner.
  */
 export type VerificationStatus =
@@ -198,6 +198,7 @@ export type Device = {
 };
 
 let tokenMemory: string | null = null;
+let tokenProvider: (() => Promise<string | null>) | null = null;
 
 /** Fired when a request proves the bearer is invalid (401, not login). */
 let unauthorizedHandler: (() => void) | null = null;
@@ -325,6 +326,16 @@ export function setToken(token: string | null): void {
   tokenMemory = token;
 }
 
+/** Install Clerk's fresh-token reader without changing any domain call site. */
+export function setTokenProvider(
+  provider: (() => Promise<string | null>) | null,
+): () => void {
+  tokenProvider = provider;
+  return () => {
+    if (tokenProvider === provider) tokenProvider = null;
+  };
+}
+
 export function getToken(): string | null {
   return tokenMemory;
 }
@@ -349,8 +360,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  const sentBearer = Boolean(tokenMemory);
-  if (tokenMemory) headers.Authorization = `Bearer ${tokenMemory}`;
+  const bearer = tokenProvider ? await tokenProvider() : tokenMemory;
+  const sentBearer = Boolean(bearer);
+  if (bearer) headers.Authorization = `Bearer ${bearer}`;
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
   const text = await res.text();
@@ -384,30 +396,6 @@ export async function login(email: string, password: string): Promise<{ token: s
   const result = await request<{ token: string; user: User }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
-  });
-  setToken(result.token);
-  return result;
-}
-
-export type RiderSignup = {
-  name: string;
-  email: string;
-  phone: string;
-  password: string;
-  riderProfile: RiderProfile;
-};
-
-/**
- * Create a rider account.
- *
- * The account exists and is signed in straight away, but it comes back
- * `pending`: nothing dispatch-related answers until Operations approves it.
- * The screen that calls this must say so rather than implying work is coming.
- */
-export async function signupRider(input: RiderSignup): Promise<{ token: string; user: User }> {
-  const result = await request<{ token: string; user: User }>("/auth/signup", {
-    method: "POST",
-    body: JSON.stringify({ role: "rider", ...input }),
   });
   setToken(result.token);
   return result;
@@ -774,4 +762,3 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
-

@@ -18,12 +18,14 @@ describe("session clear + 401 wiring", () => {
     useSession.getState().clearSession();
     api.setToken(null);
     api.setUnauthorizedHandler(null);
+    api.setTokenProvider(null);
   });
 
   afterEach(() => {
     useSession.getState().clearSession();
     api.setToken(null);
     api.setUnauthorizedHandler(null);
+    api.setTokenProvider(null);
   });
 
   it("clearSession drops the user and the bearer token", () => {
@@ -31,6 +33,43 @@ describe("session clear + 401 wiring", () => {
     useSession.getState().clearSession();
     expect(useSession.getState().user).toBeNull();
     expect(api.getToken()).toBeNull();
+  });
+
+  it("reads a fresh Clerk bearer for every domain request", async () => {
+    const originalFetch = global.fetch;
+    const getToken = jest
+      .fn<Promise<string | null>, []>()
+      .mockResolvedValueOnce("clerk_first")
+      .mockResolvedValueOnce("clerk_second");
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(rider),
+    }) as unknown as typeof fetch;
+    api.setTokenProvider(getToken);
+
+    try {
+      await api.me();
+      await api.me();
+
+      expect(getToken).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        1,
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: "Bearer clerk_first" }),
+        }),
+      );
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: "Bearer clerk_second" }),
+        }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it("logout clears the user even when the API call fails (expired token)", async () => {
