@@ -27,6 +27,7 @@ const APP = join(__dirname, "..", "app");
 /** Routes that are the first screen in their own right. */
 const ROOTS = new Set([
   "index",
+  "sso-callback",
   "(auth)/welcome",
   "onboarding",
   "(tabs)",

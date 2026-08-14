@@ -1,4 +1,4 @@
-import { useSignIn } from "@clerk/expo";
+import { useAuth, useClerk, useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
 import { Redirect, useRouter, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
 import { DEV_LOGIN } from "@/lib/devLogin";
+import { completeGoogleSso } from "@/lib/googleSso";
 import { useSession } from "@/store/session";
 
 type HealthState = "checking" | "reachable" | "unreachable";
@@ -26,6 +27,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { fetchStatus, signIn } = useSignIn();
   const { startSSOFlow } = useSSO();
+  const { isSignedIn } = useAuth();
+  const { setActive } = useClerk();
   const colors = useThemeColors();
   const user = useSession((state) => state.user);
   const legacyLogin = useSession((state) => state.login);
@@ -98,9 +101,12 @@ export default function LoginScreen() {
       }
       const completed = await signIn.finalize();
       if (completed.error) throw completed.error;
-    } catch {
-      // Keep the domain API's "wrong email or password". It is the right
-      // sentence for a rider who just applied here.
+    } catch (caught) {
+      // Prefer Clerk's rider-facing explanation when the domain fallback did
+      // not already leave one. Never render a title with an empty body.
+      if (!useSession.getState().error) {
+        setClerkError(clerkErrorMessage(caught, "Wrong email or password."));
+      }
       setBusy(false);
     }
   }
@@ -111,15 +117,19 @@ export default function LoginScreen() {
     setClerkError(null);
     clearError();
     try {
-      const result = await startSSOFlow({ strategy: "oauth_google" });
-      if (!result.createdSessionId && result.authSessionResult?.type !== "cancel") {
+      const outcome = await completeGoogleSso({
+        alreadySignedIn: Boolean(isSignedIn),
+        startSSOFlow: () => startSSOFlow({ strategy: "oauth_google" }),
+        setActive: (args) => setActive(args),
+      });
+      if (outcome.status === "incomplete") {
         throw new Error("Google did not create a session.");
       }
-      if (!result.createdSessionId) setBusy(false);
     } catch (caught) {
       setClerkError(
         clerkErrorMessage(caught, "Google sign in did not go through. Try again."),
       );
+    } finally {
       setBusy(false);
     }
   }

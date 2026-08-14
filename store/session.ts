@@ -64,6 +64,8 @@ type SessionState = {
   hydrated: boolean;
   loading: boolean;
   error: string | null;
+  /** A Clerk callback failure that must be surfaced by the login screen. */
+  showErrorOnLogin: boolean;
   login: (email: string, password: string) => Promise<PasswordLoginResult>;
   signup: (fields: SignupFields) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -136,7 +138,8 @@ export const useSession = create<SessionState>((set, get) => ({
   hydrated: false,
   loading: false,
   error: null,
-  clearError: () => set({ error: null }),
+  showErrorOnLogin: false,
+  clearError: () => set({ error: null, showErrorOnLogin: false }),
   clearSession: () => {
     sessionDecisionVersion += 1;
     clerkOwnsSession = false;
@@ -144,7 +147,13 @@ export const useSession = create<SessionState>((set, get) => ({
     api.setTokenProvider(null);
     persist(null);
     const wasClerk = get().authSource === "clerk";
-    set({ user: null, authSource: null, error: null, loading: false });
+    set({
+      user: null,
+      authSource: null,
+      error: null,
+      showErrorOnLogin: false,
+      loading: false,
+    });
     if (wasClerk) void clerkSignOut?.().catch(() => {});
   },
   rejectClerkSession: (message) => {
@@ -153,7 +162,13 @@ export const useSession = create<SessionState>((set, get) => ({
     api.setToken(null);
     api.setTokenProvider(null);
     persist(null);
-    set({ user: null, authSource: null, loading: false, error: message });
+    set({
+      user: null,
+      authSource: null,
+      loading: false,
+      error: message,
+      showErrorOnLogin: true,
+    });
   },
   beginClerkSession: () => {
     sessionDecisionVersion += 1;
@@ -161,7 +176,13 @@ export const useSession = create<SessionState>((set, get) => ({
     api.setToken(null);
     api.setTokenProvider(null);
     persist(null);
-    set({ user: null, authSource: null, loading: true, error: null });
+    set({
+      user: null,
+      authSource: null,
+      loading: true,
+      error: null,
+      showErrorOnLogin: false,
+    });
   },
   /*
     Read the stored session back — on a deadline.
@@ -227,7 +248,7 @@ export const useSession = create<SessionState>((set, get) => ({
     sessionDecisionVersion += 1;
     clerkOwnsSession = false;
     api.setTokenProvider(null);
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, showErrorOnLogin: false });
     try {
       const { token, user } = await api.login(email, password);
       if (user.role !== APP_ROLE) {
@@ -255,7 +276,7 @@ export const useSession = create<SessionState>((set, get) => ({
     sessionDecisionVersion += 1;
     clerkOwnsSession = false;
     api.setTokenProvider(null);
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, showErrorOnLogin: false });
     try {
       const { token, user } = await api.signupRider(signupInput(fields));
       if (user.role !== APP_ROLE) {
@@ -283,7 +304,7 @@ export const useSession = create<SessionState>((set, get) => ({
     clerkOwnsSession = true;
     api.setToken(null);
     persist(null);
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, showErrorOnLogin: false });
     try {
       const user = await api.me();
       if (user.role !== APP_ROLE) {
@@ -292,6 +313,7 @@ export const useSession = create<SessionState>((set, get) => ({
           authSource: null,
           loading: false,
           error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
+          showErrorOnLogin: true,
         });
         return false;
       }
@@ -303,6 +325,7 @@ export const useSession = create<SessionState>((set, get) => ({
         authSource: null,
         loading: false,
         error: loginErrorMessage(error),
+        showErrorOnLogin: true,
       });
       return false;
     }
@@ -344,7 +367,12 @@ export const useSession = create<SessionState>((set, get) => ({
       const wasClerk = get().authSource === "clerk";
       if (wasClerk) await clerkSignOut?.().catch(() => {});
       clerkOwnsSession = false;
-      set({ user: null, authSource: null, error: null });
+      set({
+        user: null,
+        authSource: null,
+        error: null,
+        showErrorOnLogin: false,
+      });
       void usePush.getState().release();
     }
   },

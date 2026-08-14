@@ -163,6 +163,10 @@ function AppShell() {
             }}
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="sso-callback"
+              options={{ headerShown: false, title: "Signing in" }}
+            />
             <Stack.Screen name="(auth)/welcome" options={{ headerShown: false }} />
             <Stack.Screen
               name="(auth)/signup"
