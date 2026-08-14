@@ -3,7 +3,6 @@ import { Redirect, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
-import { AuthBackButton } from "@/components/AuthBackButton";
 import { FormScroll } from "@/components/FormScroll";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -66,9 +65,8 @@ export default function AcceptInvitationScreen() {
   }
 
   return (
-    <Screen>
-      <FormScroll contentClassName="gg-page grow gap-8 py-8">
-        <AuthBackButton />
+    <Screen edges={["bottom"]}>
+      <FormScroll contentClassName="gg-page grow gap-8 py-6">
         <View className="gap-6">
           <GridgoLogo role="rider" />
           <View className="gap-2">

@@ -5,6 +5,7 @@ import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
+import { signupInput, type SignupFields } from "@/lib/signup";
 import {
   parseStoredSession,
   serialiseSession,
@@ -21,6 +22,9 @@ export function isSignedIn(user: User | null | undefined): boolean {
   return user != null;
 }
 
+/** Outcome of a password login against the domain API. */
+export type PasswordLoginResult = "signed_in" | "invalid_credentials" | "failed";
+
 /** Map login failures to rider-facing copy (network vs bad credentials). */
 export function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -30,6 +34,21 @@ export function loginErrorMessage(error: unknown): string {
     return api.apiErrorMessage(error, "Sign in did not go through. Try again.");
   }
   // fetch() network failures (offline host, wrong base URL, CORS on web, etc.)
+  const base = api.getApiBase();
+  return `Cannot reach GRIDGO at ${base}. Check the phone's connection, then try again.`;
+}
+
+/** Map signup failures to rider-facing copy. */
+export function signupErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    return api.apiErrorMessage(
+      error,
+      "The application did not go through. Check your details and try again.",
+    );
+  }
+  if (error instanceof Error && error.message && !api.isInternalCode(error.message)) {
+    return error.message;
+  }
   const base = api.getApiBase();
   return `Cannot reach GRIDGO at ${base}. Check the phone's connection, then try again.`;
 }
@@ -45,7 +64,8 @@ type SessionState = {
   hydrated: boolean;
   loading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<PasswordLoginResult>;
+  signup: (fields: SignupFields) => Promise<boolean>;
   logout: () => Promise<void>;
   /** Re-read the account so an approval decision lands without signing out. */
   refreshUser: () => Promise<void>;
@@ -217,15 +237,45 @@ export const useSession = create<SessionState>((set, get) => ({
           loading: false,
           error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
         });
-        return;
+        return "failed";
       }
       persist({ token, user });
       set({ user, authSource: "legacy", loading: false });
+      return "signed_in";
     } catch (e) {
+      const invalid = e instanceof ApiError && e.status === 401;
       set({
         loading: false,
         error: loginErrorMessage(e),
       });
+      return invalid ? "invalid_credentials" : "failed";
+    }
+  },
+  signup: async (fields) => {
+    sessionDecisionVersion += 1;
+    clerkOwnsSession = false;
+    api.setTokenProvider(null);
+    set({ loading: true, error: null });
+    try {
+      const { token, user } = await api.signupRider(signupInput(fields));
+      if (user.role !== APP_ROLE) {
+        await api.logout();
+        set({
+          user: null,
+          loading: false,
+          error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
+        });
+        return false;
+      }
+      persist({ token, user });
+      set({ user, authSource: "legacy", loading: false });
+      return true;
+    } catch (e) {
+      set({
+        loading: false,
+        error: signupErrorMessage(e),
+      });
+      return false;
     }
   },
   adoptClerkSession: async () => {

@@ -1,11 +1,13 @@
-import * as Notifications from "expo-notifications";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useRef } from "react";
 
+import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
 import { useNotifications } from "@/store/notifications";
 import { usePush } from "@/store/push";
 import { isSignedIn, useSession } from "@/store/session";
+
+const Notifications = loadExpoNotifications();
 
 /**
  * Push, wired to the app: registration, token rotation, and opening the right
@@ -55,11 +57,13 @@ function withoutNativeModule<T>(call: () => T): T | null {
  * app. It runs only in the foreground, so a closed or backgrounded app is
  * untouched and Android draws the server's own title and body.
  */
-withoutNativeModule(() =>
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({ ...PUSH_FOREGROUND_BEHAVIOR }),
-  }),
-);
+if (Notifications) {
+  withoutNativeModule(() =>
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({ ...PUSH_FOREGROUND_BEHAVIOR }),
+    }),
+  );
+}
 
 /**
  * Make the unread badge agree with the platform.
@@ -126,6 +130,10 @@ export function usePushNotifications(): void {
       // cannot see that through a string it built at runtime.
       router.push(target as Href);
     };
+
+    if (!Notifications) {
+      return () => {};
+    }
 
     // A tap while the app is running or backgrounded.
     const tap = withoutNativeModule(() =>

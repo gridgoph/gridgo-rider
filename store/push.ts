@@ -1,8 +1,8 @@
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { loadExpoNotifications } from "@/lib/expoNotifications";
 import {
   devicePlatform,
   PUSH_CHANNEL,
@@ -10,6 +10,8 @@ import {
   readPushPermission,
   type PushPermission,
 } from "@/lib/push";
+
+const Notifications = loadExpoNotifications();
 
 /**
  * The one place `expo-notifications` is spoken to.
@@ -111,7 +113,7 @@ function isUnclaimedRouteAbsent(error: unknown): boolean {
  * notification.
  */
 async function ensureChannel(): Promise<void> {
-  if (Platform.OS !== "android") return;
+  if (!Notifications || Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
     name: PUSH_CHANNEL.name,
     description: PUSH_CHANNEL.description,
@@ -124,6 +126,7 @@ async function ensureChannel(): Promise<void> {
 
 /** The raw FCM token for this installation, or null if it cannot be had. */
 async function fetchToken(): Promise<string | null> {
+  if (!Notifications) return null;
   const { data } = await Notifications.getDevicePushTokenAsync();
   return typeof data === "string" && data ? data : null;
 }
@@ -137,7 +140,7 @@ export const usePush = create<PushState>((set, get) => ({
   error: null,
 
   syncPermission: async () => {
-    if (!get().supported) return "unknown";
+    if (!Notifications || !get().supported) return "unknown";
     try {
       await ensureChannel();
       const permission = readPushPermission(await Notifications.getPermissionsAsync());
@@ -152,7 +155,7 @@ export const usePush = create<PushState>((set, get) => ({
   },
 
   enable: async () => {
-    if (!get().supported || get().busy) return false;
+    if (!Notifications || !get().supported || get().busy) return false;
     set({ busy: true, error: null });
     try {
       await ensureChannel();
@@ -176,7 +179,7 @@ export const usePush = create<PushState>((set, get) => ({
 
   registerIfGranted: async () => {
     const state = get();
-    if (!state.supported) return;
+    if (!Notifications || !state.supported) return;
 
     const platform = devicePlatform();
     if (!platform) return;

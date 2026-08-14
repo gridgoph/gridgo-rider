@@ -3,7 +3,6 @@ import { Redirect } from "expo-router";
 import { useRef, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
-import { AuthBackButton } from "@/components/AuthBackButton";
 import { FormScroll } from "@/components/FormScroll";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
@@ -95,9 +94,8 @@ export default function ResetPasswordScreen() {
         : "Use a password you do not use for another account.";
 
   return (
-    <Screen>
-      <FormScroll contentClassName="gg-page grow gap-8 py-8">
-        <AuthBackButton />
+    <Screen edges={["bottom"]}>
+      <FormScroll contentClassName="gg-page grow gap-8 py-6">
         <View className="gap-2">
           <Text className="text-h1 text-text-primary">{title}</Text>
           <Text className="text-body-lg text-text-secondary">{body}</Text>

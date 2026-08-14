@@ -1,10 +1,9 @@
 import { useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useRouter, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
-import { AuthBackButton } from "@/components/AuthBackButton";
 import { AuthDivider } from "@/components/AuthDivider";
 import { FormScroll } from "@/components/FormScroll";
 import { GoogleButton } from "@/components/GoogleButton";
@@ -12,7 +11,6 @@ import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { PushEnableCard } from "@/components/PushEnableCard";
 import { Screen } from "@/components/Screen";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -63,23 +61,31 @@ export default function LoginScreen() {
     setClerkError(null);
     clearError();
 
-    // The replaceable demo API remains available only through the compile-time
-    // development fixture. Every other identity goes through Clerk.
-    if (
-      DEV_LOGIN &&
-      normalizedEmail === DEV_LOGIN.email &&
-      password === DEV_LOGIN.password
-    ) {
-      await legacyLogin(normalizedEmail, password);
-      return;
-    }
-
-    if (fetchStatus === "fetching" || !normalizedEmail || !password) {
+    if (!normalizedEmail || !password) {
       setClerkError("Enter your email and password.");
       return;
     }
 
     setBusy(true);
+    // Public apply lives on the domain API while AUTH_MODE is still legacy.
+    // A 401 here is "wrong password or no such user", which is also the
+    // shape of an Operations-invited Clerk account that has never been
+    // written into the demo store — so only that case falls through.
+    const result = await legacyLogin(normalizedEmail, password);
+    if (result === "signed_in") {
+      setBusy(false);
+      return;
+    }
+    if (result === "failed") {
+      setBusy(false);
+      return;
+    }
+
+    if (fetchStatus === "fetching") {
+      setBusy(false);
+      return;
+    }
+
     try {
       const attempt = await signIn.password({
         emailAddress: normalizedEmail,
@@ -91,10 +97,9 @@ export default function LoginScreen() {
       }
       const completed = await signIn.finalize();
       if (completed.error) throw completed.error;
-    } catch (caught) {
-      setClerkError(
-        clerkErrorMessage(caught, "Sign in did not go through. Check your details and try again."),
-      );
+    } catch {
+      // Keep the domain API's "wrong email or password". It is the right
+      // sentence for a rider who just applied here.
       setBusy(false);
     }
   }
@@ -122,10 +127,8 @@ export default function LoginScreen() {
   const error = clerkError ?? storeError;
 
   return (
-    <Screen>
-      <FormScroll contentClassName="gg-page grow gap-8 py-8">
-        <AuthBackButton />
-
+    <Screen edges={["bottom"]}>
+      <FormScroll contentClassName="gg-page grow gap-8 py-6">
         <View className="gap-6">
           <GridgoLogo role="rider" />
           <View className="gap-1">
@@ -187,9 +190,15 @@ export default function LoginScreen() {
 
           <AuthDivider />
           <GoogleButton onPress={() => void continueWithGoogle()} disabled={loading} />
-        </View>
 
-        <PushEnableCard spacing="above" />
+          <Pressable
+            onPress={() => router.push("/(auth)/signup" as Href)}
+            accessibilityRole="button"
+            className="min-h-11 items-center justify-center"
+          >
+            <Text className="text-button text-text-primary">Need an account? Sign up</Text>
+          </Pressable>
+        </View>
 
         <View className="flex-row flex-wrap items-center gap-2 pt-2">
           <Text className="text-caption text-text-muted" numberOfLines={2}>
