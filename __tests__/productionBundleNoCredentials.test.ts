@@ -18,7 +18,8 @@ import { join } from "node:path";
  */
 
 const ROOT = join(__dirname, "..");
-const ACCOUNT_ADDRESS = /[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)\b/g;
+const ACCOUNT_ADDRESS =
+  /[A-Za-z0-9._%+-]+@(?:gridgo\.(?:ph|local)|usep\.edu\.ph)\b/g;
 const PILOT_PASSWORD = "Ilovegridgo-0990";
 /** Retired shipped password — must not reappear either. */
 const LEGACY_DEMO = '"demo"';

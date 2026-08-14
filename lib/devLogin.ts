@@ -17,10 +17,9 @@
  * account address in this one module and asserts the guard is the build-time
  * form.
  *
- * Source of truth for the address and password: `gridgo-api`
- * `src/demo-fixtures.js` (`DEMO_USERS` rider entry + `DEMO_PASSWORD`). The
- * fixture domain is moving from `@gridgo.local` to `@gridgo.ph`; this module
- * follows the current fixtures, not memory.
+ * Source of truth: the official Clerk rider account. Password still matches
+ * `gridgo-api` `src/demo-fixtures.js` (`DEMO_PASSWORD`). Do not revert the
+ * address to a `@gridgo.ph` fixture.
  */
 
 export type DevLoginCredentials = {
@@ -35,9 +34,8 @@ export type DevLoginCredentials = {
  */
 export const DEV_LOGIN: DevLoginCredentials | null = __DEV__
   ? {
-      // gridgo-api src/demo-fixtures.js — DEMO_USERS rider + DEMO_PASSWORD
-      // (domain migration branch / fleet move to @gridgo.ph).
-      email: "rider@gridgo.ph",
+      // Official Clerk rider. Password: gridgo-api DEMO_PASSWORD.
+      email: "mddprado00290@usep.edu.ph",
       password: "Ilovegridgo-0990",
     }
   : null;
