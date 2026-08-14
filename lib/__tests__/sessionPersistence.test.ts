@@ -41,11 +41,33 @@ describe("a signed-in rider stays signed in across launches", () => {
   it("writes the token and the rider when login succeeds", async () => {
     mockFetchOnce({ token: "tok_live", user: rider });
 
-    await useSession.getState().login(rider.email, "demo");
+    await expect(useSession.getState().login(rider.email, "demo")).resolves.toBe("signed_in");
 
     expect(useSession.getState().user).toEqual(rider);
     expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).toBe(
       serialiseSession({ token: "tok_live", user: rider }),
+    );
+  });
+
+  it("writes the token and the pending rider when signup succeeds", async () => {
+    const pending = { ...rider, verificationStatus: "pending" as const };
+    mockFetchOnce({ token: "tok_signup", user: pending }, true, 201);
+
+    const ok = await useSession.getState().signup({
+      name: rider.name,
+      email: rider.email,
+      phone: "09171234567",
+      password: "at-least-8",
+      confirmation: "at-least-8",
+      vehicleType: "motorcycle",
+      vehiclePlate: "ABC 1234",
+      licenseNumber: "N01-23-456789",
+    });
+
+    expect(ok).toBe(true);
+    expect(useSession.getState().user).toEqual(pending);
+    expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).toBe(
+      serialiseSession({ token: "tok_signup", user: pending }),
     );
   });
 

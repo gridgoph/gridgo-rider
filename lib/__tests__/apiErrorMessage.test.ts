@@ -30,6 +30,12 @@ describe("no internal identifier reaches a rider's screen", () => {
     expect(
       apiErrorMessage(new ApiError(503, { error: "minio_unavailable" }), FALLBACK),
     ).toMatch(/photo storage is offline/i);
+    expect(
+      apiErrorMessage(new ApiError(403, { error: "invitation_required" }), FALLBACK),
+    ).toMatch(/invitation/i);
+    expect(
+      apiErrorMessage(new ApiError(400, { error: "invalid_rider_profile" }), FALLBACK),
+    ).toMatch(/vehicle/i);
   });
 
   it("falls back to the caller's sentence for an unmapped code", () => {

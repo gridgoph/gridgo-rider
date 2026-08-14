@@ -12,13 +12,13 @@ Think like a senior mobile developer.
 
 ## Project Overview
 
-This repo is **GRIDGO Rider** — the rider mobile app for a Davao City managed-printing marketplace. It covers invitation activation and accreditation, dispatch accept, navigation, the six-point pickup check, delivery evidence, and active-trip location sharing.
+This repo is **GRIDGO Rider** — the rider mobile app for a Davao City managed-printing marketplace. It covers public rider apply, Operations approval, dispatch accept, navigation, the six-point pickup check, delivery evidence, and active-trip location sharing.
 
 GRIDGO ships one app per role. Client, Supplier, Operations, and Super Admin surfaces live in separate codebases. Do not put client request flows, supplier production, or Operations QA into this binary.
 
 The app includes:
 
-- Invitation-only rider activation, and an honest "not dispatchable until approved" state
+- Public rider self-signup, and an honest "not dispatchable until approved" state. Clerk invitation accept remains as a secondary path.
 - Dispatch offer accept
 - Navigate to supplier for pickup and client for delivery
 - The six-point pickup check, its escalation, and the spoken sign-off
@@ -29,7 +29,7 @@ The app includes:
 
 **Cross-cutting**
 
-- Auth via Clerk, with the replaceable local demo API login retained in `__DEV__`. Role must be `rider`.
+- Auth via Clerk for Google, recovery, and invitation tickets, with password apply and sign-in through the domain API while `AUTH_MODE` is legacy. Role must be `rider`.
 - Light and Dark themes with identical labels, states, and workflows.
 - Shared design tokens with the client starter (`constants/theme.ts`, `global.css`, logo assets).
 
@@ -58,7 +58,7 @@ Clerk supplies identity and session JWTs. Supabase, PayMongo, and other producti
 
 Every screen that needs network uses **`lib/api.ts`** against the shared local **`gridgo-api`**:
 
-- **Clerk auth** — email/password, Google, recovery, and Operations invitation tickets. Clerk tokens use SecureStore and flow through `lib/api.ts`; `publicMetadata.gridgoRole` / `gridgo_role` must be `rider`. The `__DEV__` fixture alone may use legacy demo login.
+- **Clerk auth** — Google, recovery, and Operations invitation tickets. Clerk tokens use SecureStore and flow through `lib/api.ts`; `publicMetadata.gridgoRole` / `gridgo_role` must be `rider`. Password apply and sign-in use the domain API (`POST /auth/signup`, `POST /auth/login`) while `AUTH_MODE` is still `legacy`. Do not flip `AUTH_MODE` from this app.
 - **Custom domain API** — orders, dispatch, pickup checklist, delivery evidence, files, settings, notifications.
 - **Zustand** — session and feature stores (not React Context for global session).
 - **Money** — PHP minor units only, formatted at the edge. The only figure this app renders is `deliveryFeeMinor`, the rider's own fee.
@@ -309,7 +309,7 @@ One Clerk application serves every GRIDGO app, so a person holding two roles kee
 
 This app serves `rider`. Check the role once, at the door, and hand a non-rider user off to their own app. That check decides what renders, nothing more: every read and write remains authorized by `gridgo-api` against the Clerk user id, role claim, local projection, and route policy.
 
-Clients are the only role that signs up publicly. Supplier, rider, and admin accounts exist only by invitation from Operations, so this app accepts a rider account only from Clerk's `__clerk_ticket` flow and never submits or writes a role.
+Riders apply in this app (`app/(auth)/signup.tsx` → `POST /auth/signup` with `role: "rider"`). The API stores the role and starts `verificationStatus: "pending"`; this binary never writes a role. Offers stay closed until Operations approves (`lib/riderApproval.ts`, `components/ApprovalNotice.tsx`). A Clerk `__clerk_ticket` invitation remains as a secondary path. Dual/Clerk mode answers `invitation_required` — report it, do not change `AUTH_MODE`.
 
 ---
 
@@ -346,7 +346,7 @@ Be concise. Explain what changed and how to test it.
 - **Tab scenes never animate:** `animation: "none"` is set explicitly in `app/(tabs)/_layout.tsx`. The library defaults to it; writing it down stops it drifting.
 - **Onboarding:** full-height horizontal pager over a non-interactive art layer (parallax 0.4× + cross-fade). Exit is explicit via `lib/onboardingExit.ts` — Settings replay uses `?from=settings` and returns to `/settings`; do not rely on `canGoBack()` alone. Copy and art in `data/onboarding.ts` + `components/illustrations/` (rider beats only).
 - **Logo lockup:** `components/GridgoLogo.tsx` — mark left, wordmark and typed `role` stacked right, the mark spanning the **whole** text block. Every role renders as plain type; there is no rider pill, so all product lockups are one family. `size` is the **wordmark type size**, not the mark edge — the mark follows from `gridgoLogoMetrics`, which is why the two cannot be sized apart. Yellow appears exactly twice (the lit dot, and `GO` on `brand`). Rider always uses `role="rider"`. Identity screens only (login, onboarding, design-system masthead); do not decorate every header. Do not recolour or redraw the mark.
-- **Nothing published is a way in.** A production login screen never prefills credentials. Development builds prefill the rider fixture via `lib/devLogin.ts` behind `__DEV__` (Metro strips the dead branch, so the address and password do not exist in a release bundle — proved by `__tests__/productionBundleNoCredentials.test.ts`). Do not reintroduce a runtime flag or a top-level constant for those strings; both still ship. The password field has a show/hide control (44dp target, accessible label that flips with state). Rider creation is invitation-only (`app/(auth)/accept-invitation.tsx`); Google authenticates identity but never supplies role metadata. Keep the API base with its reachability chip on login.
+- **Nothing published is a way in.** A production login screen never prefills credentials. Development builds prefill the rider fixture via `lib/devLogin.ts` behind `__DEV__` (Metro strips the dead branch, so the address and password do not exist in a release bundle — proved by `__tests__/productionBundleNoCredentials.test.ts`). Do not reintroduce a runtime flag or a top-level constant for those strings; both still ship. The password field has a show/hide control (44dp target, accessible label that flips with state). Public apply is `app/(auth)/signup.tsx`. Invitation accept stays at `app/(auth)/accept-invitation.tsx`. Google authenticates identity but never supplies role metadata. Keep the API base with its reachability chip on login. Auth screens pushed off welcome use the native stack header (`multiOriginPushedScreenOptions`); do not add a custom `AuthBackButton`. Do not draw `PushEnableCard` on login. `expo-notifications` is loaded through `lib/expoNotifications.ts` — never a static import on the launch path — so Expo Go Android SDK 53 cannot white-screen the app.
 - **Settings:** pushed route `app/settings.tsx` (theme + View onboarding). Account keeps identity, the way into Alerts and Settings, and Sign out — and nothing diagnostic: the API base belongs on login (with its reachability chip), not on a rider's account screen.
 - **Illustrations:** source SVGs in `assets/illustrations/` (provenance in `NOTICE.md`); RN components collapse fills onto the five-step ramp in `palette.ts` — no yellow in art. Do not hand-edit generated `*Illustration.tsx`; re-convert from the SVG.
 - **Nothing on screen names an internal:** `apiErrorMessage` in `lib/api.ts` maps known API codes to recovery copy and swaps anything code-shaped (`isInternalCode`) for the caller's own sentence, so a raw `not_offerable` or `HTTP 500` can never reach a rider.

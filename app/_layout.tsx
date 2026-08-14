@@ -163,12 +163,22 @@ function AppShell() {
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)/welcome" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="(auth)/signup"
+              options={{ title: "Sign up", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="(auth)/login"
+              options={{ title: "Sign in", ...multiOriginPushedScreenOptions }}
+            />
             <Stack.Screen
               name="(auth)/accept-invitation"
-              options={{ headerShown: false }}
+              options={{ title: "Invitation", ...multiOriginPushedScreenOptions }}
             />
-            <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="(auth)/reset-password"
+              options={{ title: "Recover password", ...multiOriginPushedScreenOptions }}
+            />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             {/*
               The tab shell draws its own headers per tab, so its header is

@@ -16,9 +16,9 @@ export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin"
 /**
  * Where an account stands with Operations.
  *
- * Operations invites riders, so a newly activated account can sign in while
- * still being unable to take any work at all. That gap is a state the app has
- * to show honestly, not a loading spinner.
+ * Riders apply themselves, so a newly created account can sign in while still
+ * being unable to take any work at all. That gap is a state the app has to
+ * show honestly, not a loading spinner.
  */
 export type VerificationStatus =
   | "unverified"
@@ -401,6 +401,33 @@ export async function login(email: string, password: string): Promise<{ token: s
   return result;
 }
 
+/** Everything `POST /auth/signup` needs for a rider account. */
+export type RiderSignupInput = {
+  email: string;
+  password: string;
+  name: string;
+  phone: string;
+  riderProfile: RiderProfile;
+};
+
+/**
+ * Create a rider account.
+ *
+ * The API stores `role: "rider"` and starts `verificationStatus: "pending"`.
+ * This binary never writes a role. Dual/Clerk mode answers
+ * `invitation_required` — do not flip `AUTH_MODE` from here.
+ */
+export async function signupRider(
+  input: RiderSignupInput,
+): Promise<{ token: string; user: User }> {
+  const result = await request<{ token: string; user: User }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ role: "rider", ...input }),
+  });
+  setToken(result.token);
+  return result;
+}
+
 /**
  * Sign out, and stop this phone receiving the account's push in the same call.
  *
@@ -744,8 +771,14 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
         return "Use a password with at least 8 characters.";
       case "invalid_email":
         return "Enter a complete email address.";
+      case "name_required":
+        return "Enter the name this account belongs to.";
+      case "phone_required":
+        return "Enter a number Operations can reach you on.";
       case "invalid_rider_profile":
         return "Fill in your vehicle, plate number and licence number.";
+      case "invitation_required":
+        return "This server is not taking public rider applications. Open the invitation sent by Operations.";
       case "dispatch_proof_route_retired":
       case "payment_route_retired":
         return "This app is out of date for the current GRIDGO process. Update it before taking more work.";

@@ -77,6 +77,8 @@ describe("Sign in", () => {
     expect(screen.getByText("Let’s sign in")).toBeTruthy();
     expect(screen.getByText("Recover password")).toBeTruthy();
     expect(screen.getByText("Continue with Google")).toBeTruthy();
-    expect(screen.queryByText(/Create a rider account/i)).toBeNull();
+    expect(screen.getByText("Need an account? Sign up")).toBeTruthy();
+    expect(screen.queryByText(/Turn on alerts/i)).toBeNull();
+    expect(screen.queryByText(/Client accounts/i)).toBeNull();
   });
 });

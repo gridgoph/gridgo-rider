@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { Text, View, useWindowDimensions } from "react-native";
+import { useRouter, type Href } from "expo-router";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -38,14 +38,15 @@ export default function WelcomeScreen() {
           <View className="gap-2">
             <Text className="text-display text-text-primary">Ready for the next delivery?</Text>
             <Text className="text-body-lg text-text-secondary">
-              GRIDGO Rider keeps every pickup, proof, and handoff in one place.
+              Apply to ride with GRIDGO. Offers stay closed until Operations approves
+              your account.
             </Text>
           </View>
 
           <View className="gap-3">
             <PrimaryButton
-              label="Accept an invitation"
-              onPress={() => router.push("/(auth)/accept-invitation")}
+              label="Sign up"
+              onPress={() => router.push("/(auth)/signup" as Href)}
               size="large"
             />
             <SecondaryButton
@@ -54,9 +55,15 @@ export default function WelcomeScreen() {
             />
           </View>
 
-          <Text className="text-caption text-text-muted">
-            Rider accounts are created only from an invitation sent by GRIDGO Operations.
-          </Text>
+          <Pressable
+            onPress={() => router.push("/(auth)/accept-invitation")}
+            accessibilityRole="button"
+            className="min-h-11 items-center justify-center"
+          >
+            <Text className="text-center text-button text-text-primary">
+              Have an Operations invitation?
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Screen>
