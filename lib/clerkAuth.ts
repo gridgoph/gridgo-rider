@@ -72,3 +72,19 @@ export function clerkPublishableKey(
   }
   return key;
 }
+
+/**
+ * Expo extra is preferred because app.config.ts stamps it at prebuild. Keep
+ * the static process.env read as a Gradle-time fallback: Babel can inline that
+ * value while bundling even if prebuild evaluated an empty environment.
+ */
+export function resolveClerkPublishableKey(
+  extra: unknown,
+  development: boolean,
+): string {
+  const fromExtra = typeof extra === "string" ? extra : "";
+  return clerkPublishableKey(
+    fromExtra || process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    development,
+  );
+}

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn() },
@@ -67,6 +68,23 @@ describe("Sign in", () => {
 
     expect(screen.getByLabelText("Show password")).toBeTruthy();
     expect(screen.getByLabelText("Password").props.secureTextEntry).toBe(true);
+  });
+
+  it("keeps Android native field text centered and away from both strokes", async () => {
+    await render(<LoginScreen />);
+
+    expect(StyleSheet.flatten(screen.getByLabelText("Email").props.style)).toMatchObject({
+      paddingStart: 32,
+      paddingEnd: 32,
+      includeFontPadding: false,
+      textAlignVertical: "center",
+    });
+    expect(StyleSheet.flatten(screen.getByLabelText("Password").props.style)).toMatchObject({
+      paddingStart: 32,
+      paddingEnd: 56,
+      includeFontPadding: false,
+      textAlignVertical: "center",
+    });
   });
 
   it("still says which host it is talking to, and what to do next", async () => {

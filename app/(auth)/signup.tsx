@@ -9,6 +9,7 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { fieldInputStyle } from "@/constants/theme";
 import { useThemeColors } from "@/hooks/useTheme";
 import {
   EMPTY_SIGNUP,
@@ -80,6 +81,7 @@ export default function SignupScreen() {
             <Text className="text-overline text-text-muted">FULL NAME</Text>
             <TextInput
               className="gg-field"
+              style={fieldInputStyle}
               autoCapitalize="words"
               autoComplete="name"
               textContentType="name"
@@ -98,6 +100,7 @@ export default function SignupScreen() {
             <TextInput
               ref={emailField}
               className="gg-field"
+              style={fieldInputStyle}
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -117,6 +120,7 @@ export default function SignupScreen() {
             <TextInput
               ref={phoneField}
               className="gg-field"
+              style={fieldInputStyle}
               autoComplete="tel"
               keyboardType="phone-pad"
               textContentType="telephoneNumber"
@@ -181,6 +185,7 @@ export default function SignupScreen() {
             <TextInput
               ref={plateField}
               className="gg-field"
+              style={fieldInputStyle}
               autoCapitalize="characters"
               value={fields.vehiclePlate}
               onChangeText={(vehiclePlate) => patch({ vehiclePlate })}
@@ -197,6 +202,7 @@ export default function SignupScreen() {
             <TextInput
               ref={licenceField}
               className="gg-field"
+              style={fieldInputStyle}
               autoCapitalize="characters"
               value={fields.licenseNumber}
               onChangeText={(licenseNumber) => patch({ licenseNumber })}

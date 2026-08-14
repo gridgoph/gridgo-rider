@@ -8,6 +8,7 @@ import {
   ThemeProvider,
   type Theme,
 } from "@react-navigation/native";
+import Constants from "expo-constants";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -28,7 +29,7 @@ import {
   confirmSheetScreenOptions,
   multiOriginPushedScreenOptions,
 } from "@/lib/navigationHeaders";
-import { clerkPublishableKey } from "@/lib/clerkAuth";
+import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
 // Nothing may throw out of the launch path, including this.
@@ -242,8 +243,8 @@ function AppShell() {
 }
 
 export default function RootLayout() {
-  const publishableKey = clerkPublishableKey(
-    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  const publishableKey = resolveClerkPublishableKey(
+    Constants.expoConfig?.extra?.clerkPublishableKey,
     __DEV__,
   );
 

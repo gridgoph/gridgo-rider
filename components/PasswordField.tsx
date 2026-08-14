@@ -2,6 +2,7 @@ import { Eye, EyeOff } from "lucide-react-native";
 import { forwardRef, useState } from "react";
 import { Pressable, TextInput, View, type TextInputProps } from "react-native";
 
+import { fieldInputStyle } from "@/constants/theme";
 import { useThemeColors } from "@/hooks/useTheme";
 
 type Props = Omit<TextInputProps, "secureTextEntry"> & {
@@ -21,7 +22,7 @@ export const PasswordField = forwardRef<TextInput, Props>(function PasswordField
         {...props}
         ref={ref}
         className="gg-field"
-        style={[props.style, { paddingRight: 48 }]}
+        style={[props.style, { ...fieldInputStyle, paddingEnd: 56 }]}
         secureTextEntry={!visible}
         placeholderTextColor={props.placeholderTextColor ?? colors.textMuted}
       />

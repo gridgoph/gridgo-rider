@@ -84,6 +84,9 @@ jobs:
 
       - name: Resolve the public app config
         id: config
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: |
           set -euo pipefail
           npx expo config --type public --json > "$RUNNER_TEMP/app.config.json"
@@ -137,6 +140,9 @@ jobs:
       # app.json on every Expo upgrade. The cost is that config correctness has
       # to hold, which is what the step above enforces before the long build.
       - name: Generate the android project
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Stage the release signing key
@@ -172,22 +178,29 @@ jobs:
           # are inlined by Babel while *this* command bundles the JS, not read
           # at runtime. Set anywhere else — a later step, the runner env after
           # the fact — and the app falls back to the loopback base in
-          # lib/api.ts: green in CI, dead on every real phone.
+          # lib/api.ts or throws before Clerk can render: green in CI, dead on
+          # every real phone.
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${EXPO_PUBLIC_API_URL:-}" ]; then
             echo "::error::EXPO_PUBLIC_API_URL is not set for the build step"
             exit 1
           fi
+          case "${EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in
+            pk_live_*) ;;
+            *) echo "::error::release builds require a Clerk pk_live_* publishable key"; exit 1 ;;
+          esac
           ./gradlew assembleRelease --no-daemon
 
-      - name: Verify signature and baked-in API URL
+      - name: Verify signature and baked-in public config
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: scripts/verify-release-apk.sh android/app/build/outputs/apk/release/app-release.apk
 
       - name: Name the build
@@ -210,7 +223,7 @@ jobs:
             echo "| Size | $size |"
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| Signature | release key, verified against the keystore alias |"
-            echo "| API base | deployed URL verified inside the bundle |"
+            echo "| Public config | deployed API and Clerk values verified inside the bundle |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
@@ -235,7 +248,7 @@ jobs:
             "Signed release APK for sideloading ($SIZE). Install it on the phone directly." \
             "" \
             "Commit \`${GITHUB_SHA::7}\`, build $GITHUB_RUN_NUMBER." \
-            "Verified in CI: signed with the release key, and the deployed API base is inlined in the JS bundle.")"
+            "Verified in CI: signed with the release key, and deployed API and Clerk values are inlined in the JS bundle.")"
           gh release create "v$VERSION" "$RUNNER_TEMP/out/$APK" \
             --target "$GITHUB_SHA" \
             --title "GRIDGO Rider $VERSION" \

@@ -8,6 +8,7 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { fieldInputStyle } from "@/constants/theme";
 import { useThemeColors } from "@/hooks/useTheme";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
 import { useSession } from "@/store/session";
@@ -107,6 +108,7 @@ export default function ResetPasswordScreen() {
               <Text className="text-overline text-text-muted">EMAIL</Text>
               <TextInput
                 className="gg-field"
+                style={fieldInputStyle}
                 autoCapitalize="none"
                 autoComplete="email"
                 keyboardType="email-address"
@@ -124,6 +126,7 @@ export default function ResetPasswordScreen() {
               <Text className="text-overline text-text-muted">RECOVERY CODE</Text>
               <TextInput
                 className="gg-field"
+                style={fieldInputStyle}
                 autoComplete="one-time-code"
                 keyboardType="number-pad"
                 value={code}

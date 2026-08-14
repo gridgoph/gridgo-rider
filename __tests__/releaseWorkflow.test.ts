@@ -6,12 +6,13 @@ import { join } from "path";
  * neither shows up in a build log.
  *
  * `EXPO_PUBLIC_*` values are inlined by Babel while the JS bundle is built, so
- * `EXPO_PUBLIC_API_URL` has to be in the environment of the command that runs
- * the bundle — the gradle build. Set on the runner beforehand, in an earlier
- * step, or exported afterwards, it does nothing at all, and the APK falls back
- * to the loopback base in `lib/api.ts`: green in CI, dead on every phone in
- * Davao. `scripts/verify-release-apk.sh` catches it against the built
- * artifact; this catches it against the workflow, before a 20-minute build.
+ * `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` have to be in
+ * the environment of every command that evaluates app config or bundles JS —
+ * `expo config`, `expo prebuild`, and gradle. Extra is written at prebuild;
+ * the static process.env read is the Gradle-time fallback. Missing either is
+ * green in CI but dead on a rider's phone. `scripts/verify-release-apk.sh`
+ * catches it against the built artifact; this catches it against the workflow
+ * before a 20-minute build.
  *
  * And a pull request must never produce a signed release build, so the job
  * that touches the signing key is fenced off from that trigger.
@@ -58,18 +59,43 @@ function steps(body: string): string[] {
 const apk = jobBody("apk");
 const apkSteps = steps(apk);
 
-describe("the release workflow bakes the deployed API URL into the bundle", () => {
+const publicApiUrlEnv =
+  /EXPO_PUBLIC_API_URL:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_API_URL\s*\}\}/;
+const clerkPublishableEnv =
+  /EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY\s*\}\}/;
+
+function stepEnv(step: string): string {
+  return /\n\s+env:\n([\s\S]*?)\n\s+run:/.exec(step)?.[1] ?? "";
+}
+
+function hasReleasePublicEnv(step: string): boolean {
+  const env = stepEnv(step);
+  return publicApiUrlEnv.test(env) && clerkPublishableEnv.test(env);
+}
+
+describe("the release workflow bakes the deployed API and Clerk config into the bundle", () => {
   it("finds the step that builds the bundle", () => {
     expect(apkSteps.filter((step) => step.includes("gradlew assembleRelease"))).toHaveLength(1);
   });
 
-  it("sets EXPO_PUBLIC_API_URL on that step, not somewhere it cannot reach", () => {
+  it("sets both public values on every release config and bundle step", () => {
+    const config = apkSteps.find((step) => step.includes("expo config --type public"));
+    const prebuild = apkSteps.find((step) => step.includes("expo prebuild"));
     const build = apkSteps.find((step) => step.includes("gradlew assembleRelease"));
-    expect(build).toBeDefined();
 
-    // The env: block of this step, up to the run: that consumes it.
-    const env = /\n\s+env:\n([\s\S]*?)\n\s+run:/.exec(build as string)?.[1] ?? "";
-    expect(env).toMatch(/EXPO_PUBLIC_API_URL:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_API_URL\s*\}\}/);
+    expect(config).toBeDefined();
+    expect(prebuild).toBeDefined();
+    expect(build).toBeDefined();
+    expect(hasReleasePublicEnv(config as string)).toBe(true);
+    expect(hasReleasePublicEnv(prebuild as string)).toBe(true);
+    expect(hasReleasePublicEnv(build as string)).toBe(true);
+    expect(build).toContain("pk_live_*");
+  });
+
+  it("passes both public values to the artifact verifier", () => {
+    const verify = apkSteps.find((step) => step.includes("scripts/verify-release-apk.sh"));
+    expect(verify).toBeDefined();
+    expect(hasReleasePublicEnv(verify as string)).toBe(true);
   });
 
   it("verifies the built APK rather than trusting the build", () => {
