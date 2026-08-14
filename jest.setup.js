@@ -8,6 +8,53 @@ require("react-native-reanimated").setUpTests();
 // in, so a root render is a render rather than a crash.
 require("react-native-gesture-handler/jestSetup");
 
+// Clerk restores its session through native SecureStore in the app. Unit tests
+// exercise our bridge and routing around a deterministic signed-out client;
+// the SDK's own storage/network implementation is outside this JS runtime.
+process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||= "pk_test_jest-only";
+jest.mock("@clerk/expo", () => {
+  const signOut = jest.fn(async () => undefined);
+  const signIn = {
+    status: "needs_identifier",
+    password: jest.fn(async () => ({ error: null })),
+    create: jest.fn(async () => ({ error: null })),
+    finalize: jest.fn(async () => ({ error: null })),
+    resetPasswordEmailCode: {
+      sendCode: jest.fn(async () => ({ error: null })),
+      verifyCode: jest.fn(async () => ({ error: null })),
+      submitPassword: jest.fn(async () => ({ error: null })),
+    },
+  };
+  const signUp = {
+    status: "missing_requirements",
+    ticket: jest.fn(async () => ({ error: null })),
+    password: jest.fn(async () => ({ error: null })),
+    finalize: jest.fn(async () => ({ error: null })),
+  };
+  return {
+    ClerkProvider: ({ children }) => children,
+    useAuth: () => ({
+      isLoaded: true,
+      isSignedIn: false,
+      getToken: jest.fn(async () => null),
+      sessionClaims: null,
+    }),
+    useUser: () => ({ isLoaded: true, isSignedIn: false, user: null }),
+    useClerk: () => ({ signOut }),
+    useSignIn: () => ({ isLoaded: true, signIn }),
+    useSignUp: () => ({ isLoaded: true, signUp }),
+  };
+});
+jest.mock("@clerk/expo/experimental", () => ({
+  useSSO: () => ({
+    startSSOFlow: jest.fn(async () => ({
+      createdSessionId: null,
+      authSessionResult: { type: "cancel" },
+    })),
+  }),
+}));
+jest.mock("@clerk/expo/token-cache", () => ({ tokenCache: undefined }));
+
 // Keyboard handling is native too. The library ships its own harness, which
 // stands `KeyboardAwareScrollView` in as a plain `ScrollView` and
 // `KeyboardStickyView` as a `View` — so a form renders in tests, and the parts

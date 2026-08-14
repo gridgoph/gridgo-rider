@@ -6,7 +6,7 @@ import { useSession } from "@/store/session";
  * Launch lands on Active — the job in hand.
  *
  * Nothing is decided until the stored session has been read back: rendering a
- * redirect first would send a signed-in rider to login for one frame, and the
+ * redirect first would send a signed-in rider to welcome for one frame, and the
  * gate would then bounce them back. The splash stays up over this.
  */
 export default function Index() {
@@ -15,5 +15,5 @@ export default function Index() {
 
   if (!hydrated) return null;
   if (user) return <Redirect href="/(tabs)/active" />;
-  return <Redirect href="/(auth)/login" />;
+  return <Redirect href="/(auth)/welcome" />;
 }

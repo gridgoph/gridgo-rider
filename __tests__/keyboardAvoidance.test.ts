@@ -44,10 +44,11 @@ describe("a field a rider is typing into stays visible", () => {
   });
 
   it("scrolls every screen that has a field with the keyboard-aware scroll", () => {
-    // `components/FormScroll.tsx` is the one place allowed to import it, and
-    // the shared `Field` helper on sign-up renders inside its screen's.
+    // Field primitives do not own a viewport; their screen owns the scroll.
+    // Every route that composes one is still enumerated independently here.
     const offenders = withFields
       .filter((file) => !file.endsWith(join("components", "FormScroll.tsx")))
+      .filter((file) => !file.endsWith(join("components", "PasswordField.tsx")))
       .filter((file) => !/from "@\/components\/FormScroll"/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);

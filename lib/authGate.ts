@@ -9,7 +9,7 @@
 
 /** Destinations the gate may emit. Always use replace, never push. */
 export type AuthRedirect =
-  | "/(auth)/login"
+  | "/(auth)/welcome"
   | "/(tabs)/active"
   | null;
 
@@ -42,7 +42,7 @@ export const AUTH_ROOTS = new Set(["(auth)"]);
  *    cold start that begins on a protected route — a deep link, a notification
  *    tap, or a browser reload on Expo web.
  * 2. **The stored session has been read back.** Until AsyncStorage answers, a
- *    signed-in rider looks signed out, and the gate would throw them to login
+ *    signed-in rider looks signed out, and the gate would throw them to welcome
  *    a frame before their own session arrives.
  */
 export function canGateNavigate(input: {
@@ -73,7 +73,7 @@ export function resolveAuthRedirect(
   const inAuth = AUTH_ROOTS.has(root);
 
   if (!isSignedIn && inProtected) {
-    return "/(auth)/login";
+    return "/(auth)/welcome";
   }
 
   if (isSignedIn && inAuth) {
@@ -90,7 +90,7 @@ export function resolveAuthRedirect(
  *
  * Login 401 is a wrong-password signal, not an expired session — never
  * invalidate on `/auth/login`. Any other 401 (including expired/invalid
- * bearer) clears the session so the gate sends the rider to login.
+ * bearer) clears the session so the gate sends the rider to welcome.
  */
 export function shouldInvalidateSessionOnStatus(
   status: number,

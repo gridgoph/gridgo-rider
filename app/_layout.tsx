@@ -1,5 +1,7 @@
 import "../global.css";
 
+import { ClerkProvider } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
 import {
   DarkTheme,
   DefaultTheme,
@@ -18,6 +20,7 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAuthGate } from "@/hooks/useAuthGate";
+import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
@@ -25,6 +28,7 @@ import {
   confirmSheetScreenOptions,
   multiOriginPushedScreenOptions,
 } from "@/lib/navigationHeaders";
+import { clerkPublishableKey } from "@/lib/clerkAuth";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
 // Nothing may throw out of the launch path, including this.
@@ -53,7 +57,7 @@ function navigationTheme(scheme: ThemeName): Theme {
 /**
  * Session ↔ route binding lives here, not only in app/index.tsx.
  * Sign-out, 401, and expired tokens all clear the session; this gate
- * replace-navigates to login so (tabs) is not left on the back stack.
+ * replace-navigates to welcome so (tabs) is not left on the back stack.
  */
 function AuthGate({ children }: { children: ReactNode }) {
   useAuthGate();
@@ -65,13 +69,14 @@ function AuthGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export default function RootLayout() {
+function AppShell() {
   const scheme = useThemeName();
   const token = useThemeColors();
   const fontsReady = useAppFonts();
   const sessionHydrated = useSession((s) => s.hydrated);
   const hydrateSession = useSession((s) => s.hydrate);
-  const launchReady = useLaunchReady({ fontsReady, sessionHydrated });
+  const identityReady = useClerkSessionBridge();
+  const launchReady = useLaunchReady({ fontsReady, sessionHydrated, identityReady });
   useHydrateTheme();
   // Must sit above the launch-ready gate: hooks cannot be skipped on the
   // frames that still return null. It never raises the permission dialog —
@@ -92,7 +97,7 @@ export default function RootLayout() {
   }, [token.canvas]);
 
   // The splash covers the session read as well as the fonts. Hiding it earlier
-  // shows a login screen to a rider who is already signed in. `launchReady` is
+  // shows a welcome screen to a rider who is already signed in. `launchReady` is
   // time-bounded, so this always fires — the splash can never be left up.
   useEffect(() => {
     if (launchReady) void SplashScreen.hideAsync().catch(() => {});
@@ -102,7 +107,7 @@ export default function RootLayout() {
     Nothing renders until the fonts AND the stored session are ready — or until
     the launch deadline passes, whichever comes first.
 
-    Waiting is what keeps a signed-in rider off the login screen: a screen that
+    Waiting is what keeps a signed-in rider off the welcome screen: a screen that
     mounts first fires its data load with no bearer, and the server answers 401.
     Waiting *without a deadline* is what turned a stalled storage read into a
     permanent black screen, so `useLaunchReady` gives up rather than hang.
@@ -157,12 +162,13 @@ export default function RootLayout() {
             }}
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)/welcome" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-            {/*
-              Sign-up is pushed above login and keeps its own labelled way back
-              in the body, so it needs no header of its own.
-            */}
-            <Stack.Screen name="(auth)/signup" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="(auth)/accept-invitation"
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             {/*
               The tab shell draws its own headers per tab, so its header is
@@ -222,5 +228,18 @@ export default function RootLayout() {
       </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
+  );
+}
+
+export default function RootLayout() {
+  const publishableKey = clerkPublishableKey(
+    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    __DEV__,
+  );
+
+  return (
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <AppShell />
+    </ClerkProvider>
   );
 }

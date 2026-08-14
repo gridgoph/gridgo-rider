@@ -1,8 +1,8 @@
 /**
  * Deadlines for the launch path.
  *
- * A rider's first frame waits on two asynchronous things: the typefaces, and
- * the session read back from the phone. Both are fast when they work and
+ * A rider's first frame waits on three asynchronous things: the typefaces, the
+ * legacy session read, and Clerk restoring its encrypted token. All are fast when they work and
  * neither is guaranteed to answer — a native storage call can sit unresolved,
  * and an asset download over a dev server can stall. When the app treated
  * "not answered yet" as "keep waiting", the result was a permanent blank
@@ -10,7 +10,7 @@
  *
  * So nothing in the launch path is allowed to wait forever. Every gate here
  * has a deadline, and every deadline degrades to something the rider can act
- * on: the login screen beats a black rectangle.
+ * on: the welcome screen beats a black rectangle.
  */
 
 /**
@@ -39,6 +39,8 @@ export type LaunchFlags = {
   fontsReady: boolean;
   /** The stored session has been read back, or given up on. */
   sessionHydrated: boolean;
+  /** Clerk has restored (or definitively found no) SecureStore session. */
+  identityReady: boolean;
 };
 
 /**
@@ -50,7 +52,7 @@ export type LaunchFlags = {
  */
 export function isLaunchReady(input: LaunchFlags & { deadlinePassed: boolean }): boolean {
   if (input.deadlinePassed) return true;
-  return input.fontsReady && input.sessionHydrated;
+  return input.fontsReady && input.sessionHydrated && input.identityReady;
 }
 
 /**
@@ -63,5 +65,6 @@ export function pendingLaunchWork(flags: LaunchFlags): string | null {
   const pending: string[] = [];
   if (!flags.fontsReady) pending.push("fonts");
   if (!flags.sessionHydrated) pending.push("stored session");
+  if (!flags.identityReady) pending.push("Clerk session");
   return pending.length ? pending.join(" + ") : null;
 }

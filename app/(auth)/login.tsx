@@ -1,69 +1,55 @@
+import { useSignIn } from "@clerk/expo";
+import { useSSO } from "@clerk/expo/experimental";
 import { Redirect, useRouter } from "expo-router";
-import { Eye, EyeOff } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
+import { AuthBackButton } from "@/components/AuthBackButton";
+import { AuthDivider } from "@/components/AuthDivider";
 import { FormScroll } from "@/components/FormScroll";
+import { GoogleButton } from "@/components/GoogleButton";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
+import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { Screen } from "@/components/Screen";
-import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getApiBase, health } from "@/lib/api";
+import { clerkErrorMessage } from "@/lib/clerkAuth";
 import { DEV_LOGIN } from "@/lib/devLogin";
 import { useSession } from "@/store/session";
 
 type HealthState = "checking" | "reachable" | "unreachable";
 
-/**
- * The first screen of the app.
- *
- * The API address stays, with its reachability, because this build talks to a
- * demo server that moves between machines and "cannot reach GRIDGO" is
- * unanswerable without it. It is the one screen where that is true.
- *
- * Credentials never ship. In a development build the fields start filled with
- * the rider fixture so signing in is one tap (`lib/devLogin.ts`, behind
- * `__DEV__`). A production bundle folds that module to `null` and drops the
- * literals; the production-export assertion proves it. On a hosted pilot the
- * fields start empty — anything typed here is a way in for anyone who opens
- * the app.
- *
- * The password field carries a show/hide control: phone keyboards mistype
- * constantly, and without it the only recovery from a failed sign-in is to
- * clear the field and try again blind.
- */
 export default function LoginScreen() {
   const router = useRouter();
-  const user = useSession((s) => s.user);
-  const login = useSession((s) => s.login);
-  const loading = useSession((s) => s.loading);
-  const error = useSession((s) => s.error);
+  const { fetchStatus, signIn } = useSignIn();
+  const { startSSOFlow } = useSSO();
   const colors = useThemeColors();
-
-  // Prefill only when Metro left the literals in — `__DEV__` is compile-time.
+  const user = useSession((state) => state.user);
+  const legacyLogin = useSession((state) => state.login);
+  const legacyLoading = useSession((state) => state.loading);
+  const storeError = useSession((state) => state.error);
+  const clearError = useSession((state) => state.clearError);
   const [email, setEmail] = useState(() => DEV_LOGIN?.email ?? "");
   const [password, setPassword] = useState(() => DEV_LOGIN?.password ?? "");
-  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [clerkError, setClerkError] = useState<string | null>(null);
   const [apiBase] = useState(() => getApiBase());
   const [healthState, setHealthState] = useState<HealthState>("checking");
   const passwordField = useRef<TextInput>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const result = await health();
-        if (!cancelled) {
-          setHealthState(result.ok ? "reachable" : "unreachable");
-        }
-      } catch {
+    void health()
+      .then((result) => {
+        if (!cancelled) setHealthState(result.ok ? "reachable" : "unreachable");
+      })
+      .catch(() => {
         if (!cancelled) setHealthState("unreachable");
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -71,17 +57,80 @@ export default function LoginScreen() {
 
   if (user) return <Redirect href="/(tabs)/active" />;
 
+  async function submitPassword() {
+    if (busy || legacyLoading) return;
+    const normalizedEmail = email.trim();
+    setClerkError(null);
+    clearError();
+
+    // The replaceable demo API remains available only through the compile-time
+    // development fixture. Every other identity goes through Clerk.
+    if (
+      DEV_LOGIN &&
+      normalizedEmail === DEV_LOGIN.email &&
+      password === DEV_LOGIN.password
+    ) {
+      await legacyLogin(normalizedEmail, password);
+      return;
+    }
+
+    if (fetchStatus === "fetching" || !normalizedEmail || !password) {
+      setClerkError("Enter your email and password.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const attempt = await signIn.password({
+        emailAddress: normalizedEmail,
+        password,
+      });
+      if (attempt.error) throw attempt.error;
+      if (signIn.status !== "complete") {
+        throw new Error("Additional verification is required.");
+      }
+      const completed = await signIn.finalize();
+      if (completed.error) throw completed.error;
+    } catch (caught) {
+      setClerkError(
+        clerkErrorMessage(caught, "Sign in did not go through. Check your details and try again."),
+      );
+      setBusy(false);
+    }
+  }
+
+  async function continueWithGoogle() {
+    if (busy) return;
+    setBusy(true);
+    setClerkError(null);
+    clearError();
+    try {
+      const result = await startSSOFlow({ strategy: "oauth_google" });
+      if (!result.createdSessionId && result.authSessionResult?.type !== "cancel") {
+        throw new Error("Google did not create a session.");
+      }
+      if (!result.createdSessionId) setBusy(false);
+    } catch (caught) {
+      setClerkError(
+        clerkErrorMessage(caught, "Google sign in did not go through. Try again."),
+      );
+      setBusy(false);
+    }
+  }
+
+  const loading = busy || legacyLoading;
+  const error = clerkError ?? storeError;
+
   return (
     <Screen>
-      <FormScroll contentClassName="gg-page grow justify-center gap-8 py-8">
+      <FormScroll contentClassName="gg-page grow gap-8 py-8">
+        <AuthBackButton />
+
         <View className="gap-6">
           <GridgoLogo role="rider" />
           <View className="gap-1">
-            <Text className="text-h1 text-text-primary">Sign in</Text>
-            <Text className="text-body-lg text-text-secondary">
-              Riders only. New here? Create your account below — Operations accredits it
-              before your first job.
-            </Text>
+            <Text className="text-h1 text-text-primary">Welcome Back.</Text>
+            <Text className="text-body-lg text-text-secondary">Let’s sign in</Text>
           </View>
         </View>
 
@@ -98,56 +147,31 @@ export default function LoginScreen() {
               placeholder="you@example.com"
               placeholderTextColor={colors.textMuted}
               accessibilityLabel="Email"
-              // Return moves to the password rather than closing the keyboard,
-              // so the whole sign-in happens without leaving it.
               returnKeyType="next"
-              submitBehavior="submit"
               onSubmitEditing={() => passwordField.current?.focus()}
             />
           </View>
 
           <View className="gap-2">
             <Text className="text-overline text-text-muted">PASSWORD</Text>
-            {/*
-              The reveal control sits inside the field's right edge as a full
-              44×44 target. The input always keeps the same right padding so
-              the glyph never covers the text and the layout does not jump
-              when the icon swaps. Monochrome — yellow is reserved for Sign in.
-            */}
-            <View className="relative justify-center">
-              <TextInput
-                ref={passwordField}
-                className="gg-field"
-                style={{ paddingRight: 48 }}
-                secureTextEntry={!passwordVisible}
-                autoComplete="current-password"
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Your password"
-                placeholderTextColor={colors.textMuted}
-                accessibilityLabel="Password"
-                onSubmitEditing={() => void login(email.trim(), password)}
-                returnKeyType="go"
-                // Keep the same TextInput instance when visibility toggles so
-                // focus and caret are not reset by a remount.
-                textContentType="password"
-              />
-              <Pressable
-                onPress={() => setPasswordVisible((visible) => !visible)}
-                accessibilityRole="button"
-                accessibilityLabel={passwordVisible ? "Hide password" : "Show password"}
-                accessibilityState={{ selected: passwordVisible }}
-                hitSlop={4}
-                testID="password-visibility"
-                className="absolute right-0 top-0 h-12 w-12 items-center justify-center"
-              >
-                {passwordVisible ? (
-                  <EyeOff size={20} color={colors.textSecondary} strokeWidth={2} />
-                ) : (
-                  <Eye size={20} color={colors.textSecondary} strokeWidth={2} />
-                )}
-              </Pressable>
-            </View>
+            <PasswordField
+              ref={passwordField}
+              value={password}
+              onChangeText={setPassword}
+              autoComplete="current-password"
+              placeholder="Your password"
+              accessibilityLabel="Password"
+              returnKeyType="go"
+              textContentType="password"
+              onSubmitEditing={() => void submitPassword()}
+            />
+            <Pressable
+              onPress={() => router.push("/(auth)/reset-password")}
+              accessibilityRole="button"
+              className="min-h-11 self-end justify-center"
+            >
+              <Text className="text-button text-text-primary">Recover password</Text>
+            </Pressable>
           </View>
 
           {error ? (
@@ -156,27 +180,15 @@ export default function LoginScreen() {
 
           <PrimaryButton
             label={loading ? "Signing in…" : "Sign in"}
-            onPress={() => void login(email.trim(), password)}
+            onPress={() => void submitPassword()}
             disabled={loading}
             size="large"
           />
 
-          <SecondaryButton
-            label="Create a rider account"
-            onPress={() => router.push("/(auth)/signup")}
-            disabled={loading}
-          />
+          <AuthDivider />
+          <GoogleButton onPress={() => void continueWithGoogle()} disabled={loading} />
         </View>
 
-        {/*
-          The door asks too, and it is the only surface that can. A rider that
-          installs GRIDGO and does not sign in for a week never reaches a
-          screen behind the gate, and on Android 13+ the permission can only
-          be asked while the app is open — so a door that never asks is a
-          phone GRIDGO can never tell to update. It draws only the ask, never
-          a failure or a settings link (see `pushOffer`), and its copy
-          promises only what an unclaimed phone actually receives.
-        */}
         <PushEnableCard spacing="above" />
 
         <View className="flex-row flex-wrap items-center gap-2 pt-2">

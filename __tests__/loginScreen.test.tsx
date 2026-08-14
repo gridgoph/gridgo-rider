@@ -73,6 +73,10 @@ describe("Sign in", () => {
     await render(<LoginScreen />);
 
     expect(screen.getByText(/gridgo\.example/)).toBeTruthy();
-    expect(screen.getByText("Create a rider account")).toBeTruthy();
+    expect(screen.getByText("Welcome Back.")).toBeTruthy();
+    expect(screen.getByText("Let’s sign in")).toBeTruthy();
+    expect(screen.getByText("Recover password")).toBeTruthy();
+    expect(screen.getByText("Continue with Google")).toBeTruthy();
+    expect(screen.queryByText(/Create a rider account/i)).toBeNull();
   });
 });

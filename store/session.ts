@@ -36,6 +36,8 @@ export function loginErrorMessage(error: unknown): string {
 
 type SessionState = {
   user: User | null;
+  /** Which identity system owns the active bearer during the migration. */
+  authSource: "legacy" | "clerk" | null;
   /**
    * Whether the stored session has been read back from the phone yet.
    * The auth gate waits for this — see `canGateNavigate`.
@@ -44,8 +46,6 @@ type SessionState = {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  /** Create a rider account and sign in. The account arrives awaiting approval. */
-  signup: (input: api.RiderSignup) => Promise<boolean>;
   logout: () => Promise<void>;
   /** Re-read the account so an approval decision lands without signing out. */
   refreshUser: () => Promise<void>;
@@ -56,6 +56,12 @@ type SessionState = {
    * Used when a 401 proves the bearer is already dead, and by tests.
    */
   clearSession: () => void;
+  /** Adopt the API projection after Clerk has authenticated a rider. */
+  adoptClerkSession: () => Promise<boolean>;
+  /** Supersede an older demo session as soon as Clerk reports a session. */
+  beginClerkSession: () => void;
+  /** Show an auth-door error without creating a local session. */
+  rejectClerkSession: (message: string) => void;
   clearError: () => void;
 };
 
@@ -64,7 +70,17 @@ type SessionState = {
  * sign-out, or a 401. A storage read that lands after that must not resurrect
  * the record it happened to capture before the change.
  */
-let storedSessionSuperseded = false;
+let sessionDecisionVersion = 0;
+let clerkOwnsSession = false;
+let clerkSignOut: (() => Promise<unknown>) | null = null;
+
+/** Bind Clerk sign-out without importing a React hook into the Zustand store. */
+export function bindClerkSignOut(signOut: (() => Promise<unknown>) | null): () => void {
+  clerkSignOut = signOut;
+  return () => {
+    if (clerkSignOut === signOut) clerkSignOut = null;
+  };
+}
 
 /** Read the stored session back, treating anything unreadable as no session. */
 function readStoredSession(): Promise<StoredSession | null> {
@@ -96,15 +112,36 @@ function persist(session: { token: string; user: User } | null): void {
 
 export const useSession = create<SessionState>((set, get) => ({
   user: null,
+  authSource: null,
   hydrated: false,
   loading: false,
   error: null,
   clearError: () => set({ error: null }),
   clearSession: () => {
-    storedSessionSuperseded = true;
+    sessionDecisionVersion += 1;
+    clerkOwnsSession = false;
     api.setToken(null);
+    api.setTokenProvider(null);
     persist(null);
-    set({ user: null, error: null, loading: false });
+    const wasClerk = get().authSource === "clerk";
+    set({ user: null, authSource: null, error: null, loading: false });
+    if (wasClerk) void clerkSignOut?.().catch(() => {});
+  },
+  rejectClerkSession: (message) => {
+    sessionDecisionVersion += 1;
+    clerkOwnsSession = true;
+    api.setToken(null);
+    api.setTokenProvider(null);
+    persist(null);
+    set({ user: null, authSource: null, loading: false, error: message });
+  },
+  beginClerkSession: () => {
+    sessionDecisionVersion += 1;
+    clerkOwnsSession = true;
+    api.setToken(null);
+    api.setTokenProvider(null);
+    persist(null);
+    set({ user: null, authSource: null, loading: true, error: null });
   },
   /*
     Read the stored session back — on a deadline.
@@ -122,13 +159,18 @@ export const useSession = create<SessionState>((set, get) => ({
   */
   hydrate: async () => {
     if (get().hydrated) return;
-    storedSessionSuperseded = false;
+    const decisionAtStart = sessionDecisionVersion;
 
     const read = readStoredSession();
 
     /** A stored session is only usable if nothing has decided otherwise since. */
     const usable = (stored: StoredSession | null) =>
-      stored && !storedSessionSuperseded && !get().user ? stored : null;
+      stored &&
+      decisionAtStart === sessionDecisionVersion &&
+      !clerkOwnsSession &&
+      !get().user
+        ? stored
+        : null;
 
     const outcome = await raceDeadline(read, SESSION_READ_TIMEOUT_MS);
 
@@ -146,7 +188,7 @@ export const useSession = create<SessionState>((set, get) => ({
         const session = usable(stored);
         if (!session) return;
         api.setToken(session.token);
-        set({ user: session.user });
+        set({ user: session.user, authSource: "legacy" });
       });
       set({ hydrated: true });
       return;
@@ -155,10 +197,16 @@ export const useSession = create<SessionState>((set, get) => ({
     const session = usable(outcome);
     if (session) api.setToken(session.token);
     // One commit, so a signed-in rider never renders a frame as signed out.
-    set(session ? { user: session.user, hydrated: true } : { hydrated: true });
+    set(
+      session
+        ? { user: session.user, authSource: "legacy", hydrated: true }
+        : { hydrated: true },
+    );
   },
   login: async (email, password) => {
-    storedSessionSuperseded = true;
+    sessionDecisionVersion += 1;
+    clerkOwnsSession = false;
+    api.setTokenProvider(null);
     set({ loading: true, error: null });
     try {
       const { token, user } = await api.login(email, password);
@@ -172,7 +220,7 @@ export const useSession = create<SessionState>((set, get) => ({
         return;
       }
       persist({ token, user });
-      set({ user, loading: false });
+      set({ user, authSource: "legacy", loading: false });
     } catch (e) {
       set({
         loading: false,
@@ -180,29 +228,31 @@ export const useSession = create<SessionState>((set, get) => ({
       });
     }
   },
-  /*
-    Sign-up is a login that happens to create the account first.
-
-    Nothing branches on approval here: the account is real, the token is real,
-    and the rider belongs in the app straight away. What they cannot do is take
-    work — and that is the screens' job to say, not the gate's, because a rider
-    locked out at the door has nowhere to read why.
-  */
-  signup: async (input) => {
-    storedSessionSuperseded = true;
+  adoptClerkSession: async () => {
+    sessionDecisionVersion += 1;
+    clerkOwnsSession = true;
+    api.setToken(null);
+    persist(null);
     set({ loading: true, error: null });
     try {
-      const { token, user } = await api.signupRider(input);
-      persist({ token, user });
-      set({ user, loading: false });
+      const user = await api.me();
+      if (user.role !== APP_ROLE) {
+        set({
+          user: null,
+          authSource: null,
+          loading: false,
+          error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
+        });
+        return false;
+      }
+      set({ user, authSource: "clerk", loading: false });
       return true;
-    } catch (e) {
+    } catch (error) {
       set({
+        user: null,
+        authSource: null,
         loading: false,
-        error: api.apiErrorMessage(
-          e,
-          `Your account was not created. Check the details, or try again — GRIDGO is at ${api.getApiBase()}.`,
-        ),
+        error: loginErrorMessage(error),
       });
       return false;
     }
@@ -219,7 +269,7 @@ export const useSession = create<SessionState>((set, get) => ({
     }
   },
   logout: async () => {
-    storedSessionSuperseded = true;
+    sessionDecisionVersion += 1;
     // The device token rides along with the sign-out rather than being
     // unregistered separately: afterwards the bearer token is dead, so a phone
     // that signed out first could no longer authenticate the unregister and
@@ -237,10 +287,14 @@ export const useSession = create<SessionState>((set, get) => ({
       // Server may reject an already-dead token. Local wipe still happens below.
     } finally {
       // Always clear local state — even if the server call fails (expired token).
-      // Clearing user trips the auth gate → replace to login; back cannot re-enter.
+      // Clearing user trips the auth gate → replace to welcome; back cannot re-enter.
       api.setToken(null);
+      api.setTokenProvider(null);
       persist(null);
-      set({ user: null, error: null });
+      const wasClerk = get().authSource === "clerk";
+      if (wasClerk) await clerkSignOut?.().catch(() => {});
+      clerkOwnsSession = false;
+      set({ user: null, authSource: null, error: null });
       void usePush.getState().release();
     }
   },
@@ -266,7 +320,7 @@ export function roleLabel(role: string): string {
 
 /**
  * Wire the API client so any 401 (expired/invalid token) clears the session.
- * Call once from the root layout. The auth gate then replace-navigates to login.
+ * Call once from the root layout. The auth gate then replace-navigates to welcome.
  */
 export function bindApiUnauthorizedHandler(): () => void {
   return api.setUnauthorizedHandler(() => {

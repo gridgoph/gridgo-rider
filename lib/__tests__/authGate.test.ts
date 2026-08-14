@@ -4,18 +4,18 @@ import {
 } from "@/lib/authGate";
 
 describe("resolveAuthRedirect", () => {
-  it("sends a signed-out rider out of the tab shell to login", () => {
-    expect(resolveAuthRedirect(false, ["(tabs)", "active"])).toBe("/(auth)/login");
-    expect(resolveAuthRedirect(false, ["(tabs)", "account"])).toBe("/(auth)/login");
-    expect(resolveAuthRedirect(false, ["(tabs)", "offers"])).toBe("/(auth)/login");
+  it("sends a signed-out rider out of the tab shell to welcome", () => {
+    expect(resolveAuthRedirect(false, ["(tabs)", "active"])).toBe("/(auth)/welcome");
+    expect(resolveAuthRedirect(false, ["(tabs)", "account"])).toBe("/(auth)/welcome");
+    expect(resolveAuthRedirect(false, ["(tabs)", "offers"])).toBe("/(auth)/welcome");
   });
 
   it("sends a signed-out rider off other protected roots", () => {
-    expect(resolveAuthRedirect(false, ["design-system"])).toBe("/(auth)/login");
-    expect(resolveAuthRedirect(false, ["settings"])).toBe("/(auth)/login");
+    expect(resolveAuthRedirect(false, ["design-system"])).toBe("/(auth)/welcome");
+    expect(resolveAuthRedirect(false, ["settings"])).toBe("/(auth)/welcome");
   });
 
-  it("does not bounce a signed-out rider already on login", () => {
+  it("does not bounce a signed-out rider already in the auth flow", () => {
     expect(resolveAuthRedirect(false, ["(auth)", "login"])).toBeNull();
   });
 

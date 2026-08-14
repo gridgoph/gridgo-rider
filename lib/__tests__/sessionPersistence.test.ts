@@ -66,7 +66,17 @@ describe("a signed-in rider stays signed in across launches", () => {
     expect(api.getToken()).toBe("tok_live");
   });
 
-  it("forgets the session on sign-out, so the next launch lands on login", async () => {
+  it("does not revive a demo session after Clerk has claimed the door", async () => {
+    const stale = serialiseSession({ token: "tok_stale", user: rider });
+    useSession.getState().beginClerkSession();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(stale);
+    await useSession.getState().hydrate();
+
+    expect(useSession.getState().user).toBeNull();
+    expect(api.getToken()).toBeNull();
+  });
+
+  it("forgets the session on sign-out, so the next launch lands on welcome", async () => {
     await AsyncStorage.setItem(
       SESSION_STORAGE_KEY,
       serialiseSession({ token: "tok_live", user: rider }),
@@ -137,7 +147,7 @@ describe("a signed-in rider stays signed in across launches", () => {
       void useSession.getState().hydrate();
       await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS + 100);
 
-      // The app is already rendering by here, on the login screen.
+      // The app is already rendering by here, on the welcome screen.
       expect(useSession.getState().hydrated).toBe(true);
       expect(useSession.getState().user).toBeNull();
 
@@ -234,8 +244,8 @@ describe("the auth gate does not navigate before it is allowed to", () => {
   });
 
   it("still sends a signed-out rider off a deep-linked trip step", () => {
-    expect(resolveAuthRedirect(false, ["trip", "pickup"])).toBe("/(auth)/login");
-    expect(resolveAuthRedirect(false, ["alerts"])).toBe("/(auth)/login");
+    expect(resolveAuthRedirect(false, ["trip", "pickup"])).toBe("/(auth)/welcome");
+    expect(resolveAuthRedirect(false, ["alerts"])).toBe("/(auth)/welcome");
     expect(resolveAuthRedirect(true, ["trip", "pickup"])).toBeNull();
   });
 });

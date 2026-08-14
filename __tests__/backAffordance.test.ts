@@ -17,7 +17,7 @@ import { join } from "path";
  *  - a `confirmSheetScreenOptions` sheet, which has no header and therefore
  *    has to carry a labelled cancel in its own body, in every state.
  *
- * Everything else is a root of the app — the launch redirect, login, sign-up,
+ * Everything else is a root of the app — the launch redirect, auth flow,
  * and onboarding — where there is nothing behind to go back to, and each
  * provides its own explicit exit.
  */
@@ -25,7 +25,15 @@ import { join } from "path";
 const APP = join(__dirname, "..", "app");
 
 /** Routes that are the first screen in their own right. */
-const ROOTS = new Set(["index", "(auth)/login", "(auth)/signup", "onboarding", "(tabs)"]);
+const ROOTS = new Set([
+  "index",
+  "(auth)/welcome",
+  "(auth)/login",
+  "(auth)/accept-invitation",
+  "(auth)/reset-password",
+  "onboarding",
+  "(tabs)",
+]);
 
 function routeFiles(dir: string, prefix = ""): string[] {
   return readdirSync(dir).flatMap((entry) => {

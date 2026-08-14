@@ -40,7 +40,7 @@ export function useLaunchReady(flags: LaunchFlags): boolean {
     if (stalled) {
       console.warn(
         `[GRIDGO launch] rendering after ${elapsed}ms without ${stalled}. ` +
-          "The app degraded rather than waiting; the rider lands on login.",
+          "The app degraded rather than waiting; the rider lands on welcome.",
       );
     } else {
       console.log(`[GRIDGO launch] ready in ${elapsed}ms`);
