@@ -12,15 +12,18 @@ jest.mock("@/lib/api", () => ({
   health: jest.fn().mockResolvedValue({ ok: true }),
 }));
 
+const mockSessionState = {
+  user: null,
+  login: jest.fn(),
+  loading: false,
+  error: null as string | null,
+  clearError: jest.fn(),
+};
+
 jest.mock("@/store/session", () => ({
   isSignedIn: () => false,
   useSession: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      user: null,
-      login: jest.fn(),
-      loading: false,
-      error: null,
-    }),
+    selector(mockSessionState),
 }));
 
 /**
@@ -41,6 +44,10 @@ import LoginScreen from "@/app/(auth)/login";
  * control and the empty production path.
  */
 describe("Sign in", () => {
+  beforeEach(() => {
+    mockSessionState.error = null;
+  });
+
   // @testing-library/react-native 14 made render async by default.
   it("hands nobody a credential when the guard is folded away", async () => {
     await render(<LoginScreen />);
@@ -98,5 +105,16 @@ describe("Sign in", () => {
     expect(screen.getByText("Need an account? Sign up")).toBeTruthy();
     expect(screen.queryByText(/Turn on alerts/i)).toBeNull();
     expect(screen.queryByText(/Client accounts/i)).toBeNull();
+  });
+
+  it("makes a wrong-app Clerk rejection explicit", async () => {
+    mockSessionState.error = "This account belongs in the GRIDGO Client app.";
+
+    await render(<LoginScreen />);
+
+    expect(screen.getByText("Not signed in")).toBeTruthy();
+    expect(
+      screen.getByText("This account belongs in the GRIDGO Client app."),
+    ).toBeTruthy();
   });
 });

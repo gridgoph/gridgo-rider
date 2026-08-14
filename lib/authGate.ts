@@ -10,6 +10,7 @@
 /** Destinations the gate may emit. Always use replace, never push. */
 export type AuthRedirect =
   | "/(auth)/welcome"
+  | "/(auth)/login"
   | "/(tabs)/active"
   | null;
 
@@ -63,11 +64,20 @@ export function canGateNavigate(input: {
 export function resolveAuthRedirect(
   isSignedIn: boolean,
   segments: readonly string[],
+  showErrorOnLogin = false,
 ): AuthRedirect {
   const root = segments[0];
 
   // Still resolving the initial route — wait for a real segment.
   if (!root) return null;
+
+  // Browser SSO returns through a public callback route. If Clerk rejects the
+  // identity there (unassigned or meant for another GRIDGO app), carry that
+  // stored explanation back to the one auth screen that renders it.
+  const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
+  if (!isSignedIn && showErrorOnLogin && !alreadyOnLogin) {
+    return "/(auth)/login";
+  }
 
   const inProtected = PROTECTED_ROOTS.has(root);
   const inAuth = AUTH_ROOTS.has(root);

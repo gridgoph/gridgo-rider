@@ -35,6 +35,24 @@ describe("session clear + 401 wiring", () => {
     expect(api.getToken()).toBeNull();
   });
 
+  it("keeps a rejected Clerk account's explanation headed back to login", () => {
+    useSession
+      .getState()
+      .rejectClerkSession("This account belongs in the GRIDGO Client app.");
+
+    expect(useSession.getState()).toMatchObject({
+      user: null,
+      error: "This account belongs in the GRIDGO Client app.",
+      showErrorOnLogin: true,
+    });
+
+    useSession.getState().clearError();
+    expect(useSession.getState()).toMatchObject({
+      error: null,
+      showErrorOnLogin: false,
+    });
+  });
+
   it("reads a fresh Clerk bearer for every domain request", async () => {
     const originalFetch = global.fetch;
     const getToken = jest

@@ -25,6 +25,16 @@ describe("resolveAuthRedirect", () => {
     expect(resolveAuthRedirect(false, [])).toBeNull();
   });
 
+  it("returns a Clerk callback failure to login where its message is visible", () => {
+    expect(resolveAuthRedirect(false, ["sso-callback"], true)).toBe(
+      "/(auth)/login",
+    );
+    expect(resolveAuthRedirect(false, ["(auth)", "welcome"], true)).toBe(
+      "/(auth)/login",
+    );
+    expect(resolveAuthRedirect(false, ["(auth)", "login"], true)).toBeNull();
+  });
+
   it("sends a signed-in rider past login into Active", () => {
     expect(resolveAuthRedirect(true, ["(auth)", "login"])).toBe("/(tabs)/active");
   });
