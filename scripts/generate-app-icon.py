@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Rasterise the GRIDGO 3×3 mark onto a black plate.
+"""Rasterise the legacy printing_app adaptive mark.
 
-Captain correction 2026-08-19: the launcher is a black rounded tile, not a
-white plate. Pure-black dots vanish on that plate; middle-right must be
-drawn grey so the background cannot show through as a hole.
+Source: printing_app ic_launcher_foreground.xml (108×108 viewport, r=6,
+path starts M32/48/64 — geometric centres 38/54/70) on cockpit-black
+#111111. Captain change: middle-left is #5B5B5B, not white.
 
-  python3 scripts/generate-app-icon.py
+    #FFFFFF  #FFFFFF  #FFDE58
+    #5B5B5B  #FFFFFF  #FFFFFF
+    #FFFFFF  #FFFFFF  #8A8A8A
+
+Run from the repo root:
+
+    python3 scripts/generate-app-icon.py
 """
 
 from __future__ import annotations
@@ -14,22 +20,20 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-# Readable on #000000. Pure black dots disappear into the plate.
-DOT_STRUCT = (0x2A, 0x2A, 0x2A, 255)
+# printing_app values/ic_launcher_colors.xml
+PLATE = (0x11, 0x11, 0x11, 255)
+DOT_WHITE = (0xFF, 0xFF, 0xFF, 255)
 DOT_YELLOW = (0xFF, 0xDE, 0x58, 255)
-DOT_GRAY = (0x5B, 0x5B, 0x5B, 255)
-PLATE = (0x00, 0x00, 0x00, 255)
-MONO = (0xFF, 0xFF, 0xFF, 255)
+DOT_MID_LEFT = (0x5B, 0x5B, 0x5B, 255)
+DOT_BOT_RIGHT = (0x8A, 0x8A, 0x8A, 255)
 
-# favicon.svg viewBox="0 0 48 48": centres at 8/24/40, r=5.
-CENTRES = (8, 24, 40)
-RADIUS = 5
-VIEW = 48
+# Vector viewport 108. Path `M32,38 a6,6 …` is a r=6 circle whose centre
+# is start + radius, i.e. 38 / 54 / 70. Do not add a second safe-zone
+# inset: the 108 canvas already is the adaptive icon.
+VIEW = 108
+CENTRES = (38, 54, 70)
+RADIUS = 6
 
-# Android adaptive icons are 108dp; the unmasked safe zone is the inner 66dp.
-SAFE_ZONE = 66 / 108
-
-# Super-sample then Lanczos-down so the dots stay round, not stair-stepped.
 SCALE = 4
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,54 +42,32 @@ OUT = ROOT / "assets" / "images"
 
 def dot_fill(col: int, row: int, *, mono: bool) -> tuple[int, int, int, int]:
     if mono:
-        return MONO
+        return DOT_WHITE
     if col == 2 and row == 0:
         return DOT_YELLOW
-    # Middle-right and bottom-right are both grey. An empty middle-right
-    # cell used to punch a white hole through the old light plate.
-    if col == 2:
-        return DOT_GRAY
-    return DOT_STRUCT
+    if col == 0 and row == 1:
+        return DOT_MID_LEFT
+    if col == 2 and row == 2:
+        return DOT_BOT_RIGHT
+    return DOT_WHITE
 
 
-def draw_mark(
-    size: int,
-    *,
-    mono: bool = False,
-    inner_ratio: float = 1.0,
-    background: tuple[int, int, int, int] = (0, 0, 0, 0),
-) -> Image.Image:
-    """Paint all nine dots into a size×size canvas.
-
-    `inner_ratio` is the fraction of the canvas the 48-unit viewBox occupies
-    (centred). 66/108 puts every dot inside Android's adaptive safe zone.
-    """
+def draw_mark(size: int, *, mono: bool = False) -> Image.Image:
+    """Paint the 3×3 mark into a size×size opaque #111111 plate."""
     big = size * SCALE
-    canvas = Image.new("RGBA", (big, big), background)
+    canvas = Image.new("RGBA", (big, big), PLATE)
     draw = ImageDraw.Draw(canvas)
-
-    inner = size * inner_ratio
-    origin = (size - inner) / 2
-    unit = inner / VIEW
+    unit = size / VIEW
 
     for row, cy in enumerate(CENTRES):
         for col, cx in enumerate(CENTRES):
-            fill = dot_fill(col, row, mono=mono)
-            px = (origin + cx * unit) * SCALE
-            py = (origin + cy * unit) * SCALE
+            color = dot_fill(col, row, mono=mono)
+            px = cx * unit * SCALE
+            py = cy * unit * SCALE
             r = RADIUS * unit * SCALE
-            draw.ellipse((px - r, py - r, px + r, py + r), fill=fill)
+            draw.ellipse((px - r, py - r, px + r, py + r), fill=color)
 
     return canvas.resize((size, size), Image.Resampling.LANCZOS)
-
-
-def composite_plate(
-    mark: Image.Image,
-    color: tuple[int, int, int, int] = PLATE,
-) -> Image.Image:
-    plate = Image.new("RGBA", mark.size, color)
-    plate.alpha_composite(mark)
-    return plate.convert("RGB")
 
 
 def save_png(image: Image.Image, name: str) -> None:
@@ -97,23 +79,16 @@ def save_png(image: Image.Image, name: str) -> None:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
 
-    # Home-screen / iOS icon: opaque black plate, mark inset so the squircle
-    # mask does not clip a corner dot.
-    save_png(composite_plate(draw_mark(1024, inner_ratio=0.70)), "icon.png")
-
-    # Adaptive layers. Foreground draws every dot (no holes). Background is
-    # the black tile. Monochrome is a white nine-dot silhouette so Android
-    # can tint it; on the black plate all nine stay visible.
-    save_png(draw_mark(1024, inner_ratio=SAFE_ZONE), "android-icon-foreground.png")
+    mark = draw_mark(1024).convert("RGB")
+    save_png(mark, "icon.png")
+    save_png(mark, "android-icon-foreground.png")
     save_png(Image.new("RGB", (1024, 1024), PLATE[:3]), "android-icon-background.png")
-    save_png(draw_mark(1024, mono=True, inner_ratio=SAFE_ZONE), "android-icon-monochrome.png")
+    save_png(draw_mark(1024, mono=True).convert("RGB"), "android-icon-monochrome.png")
 
-    # Splash matches the tile: same nine-dot mark on a black field.
-    save_png(draw_mark(1024, inner_ratio=0.72), "splash-icon.png")
-    save_png(draw_mark(1024, inner_ratio=0.72), "splash-icon-dark.png")
-
-    # Web tab icon: same black plate so it does not flash white in a dark tab.
-    save_png(composite_plate(draw_mark(48, inner_ratio=0.84)), "favicon.png")
+    # Same plate + mark as the launcher so splash cannot invert or charcoal.
+    save_png(mark, "splash-icon.png")
+    save_png(mark, "splash-icon-dark.png")
+    save_png(draw_mark(48).convert("RGB"), "favicon.png")
 
 
 if __name__ == "__main__":

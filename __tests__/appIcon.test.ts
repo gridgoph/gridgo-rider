@@ -4,12 +4,10 @@ import { join } from "node:path";
 import type { ExpoConfig } from "expo/config";
 
 /**
- * The home-screen icon is the GRIDGO 3×3 mark on a black tile.
- *
- * `app.json` is the source of the paths Expo prebuild copies into the
- * native project. A leftover `react-logo*` asset, the default Expo
- * `#E6F4FE` plate, or a white adaptive background would put the wrong
- * icon on the launcher (captain rejected the white plate on 2026-08-19).
+ * The home-screen icon is the printing_app 3×3 mark on cockpit-black
+ * `#111111`. A leftover `react-logo*` asset, the Expo `#E6F4FE` plate,
+ * a white plate, or the rejected charcoal-on-`#000000` mark would put
+ * the wrong icon on the launcher.
  */
 
 const root = join(__dirname, "..");
@@ -93,15 +91,23 @@ function pngPixel(path: string, x: number, y: number): [number, number, number] 
   return [recon[i], recon[i + 1], recon[i + 2]];
 }
 
-function isBlack([r, g, b]: [number, number, number]): boolean {
-  return r < 16 && g < 16 && b < 16;
+function near(
+  pixel: [number, number, number],
+  target: [number, number, number],
+  tol = 8,
+): boolean {
+  return (
+    Math.abs(pixel[0] - target[0]) <= tol &&
+    Math.abs(pixel[1] - target[1]) <= tol &&
+    Math.abs(pixel[2] - target[2]) <= tol
+  );
 }
 
 describe("GRIDGO app icon", () => {
   it("points icon, adaptive layers, favicon and splash at the mark files", () => {
     expect(appJson.expo.icon).toBe("./assets/images/icon.png");
     expect(appJson.expo.android?.adaptiveIcon).toEqual({
-      backgroundColor: "#000000",
+      backgroundColor: "#111111",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -110,14 +116,14 @@ describe("GRIDGO app icon", () => {
 
     const splash = pluginOptions("expo-splash-screen");
     expect(splash.image).toBe("./assets/images/splash-icon.png");
-    expect(splash.backgroundColor).toBe("#000000");
+    expect(splash.backgroundColor).toBe("#111111");
     expect(splash.dark).toEqual({
       image: "./assets/images/splash-icon-dark.png",
-      backgroundColor: "#000000",
+      backgroundColor: "#111111",
     });
   });
 
-  it("does not keep the Expo default blue plate or the rejected white plate", () => {
+  it("does not keep the Expo blue plate or the rejected white plate", () => {
     const encoded = JSON.stringify(appJson);
     expect(encoded).not.toContain("#E6F4FE");
     expect(encoded).not.toContain("#e6f4fe");
@@ -126,6 +132,9 @@ describe("GRIDGO app icon", () => {
     );
     expect(appJson.expo.android?.adaptiveIcon?.backgroundColor).not.toBe(
       "#ffffff",
+    );
+    expect(appJson.expo.android?.adaptiveIcon?.backgroundColor).not.toBe(
+      "#000000",
     );
   });
 
@@ -149,15 +158,15 @@ describe("GRIDGO app icon", () => {
     });
   });
 
-  it("paints a black plate, not a white one", () => {
+  it("paints the cockpit-black #111111 plate, not white", () => {
+    const plate: [number, number, number] = [0x11, 0x11, 0x11];
     const icon = join(images, "icon.png");
     const background = join(images, "android-icon-background.png");
-    // Corners sit outside the 3×3 grid on every generated size.
-    expect(isBlack(pngPixel(icon, 8, 8))).toBe(true);
-    expect(isBlack(pngPixel(icon, 1016, 8))).toBe(true);
-    expect(isBlack(pngPixel(icon, 8, 1016))).toBe(true);
-    expect(isBlack(pngPixel(background, 0, 0))).toBe(true);
-    expect(isBlack(pngPixel(background, 512, 512))).toBe(true);
+    expect(near(pngPixel(icon, 8, 8), plate)).toBe(true);
+    expect(near(pngPixel(icon, 1016, 8), plate)).toBe(true);
+    expect(near(pngPixel(icon, 8, 1016), plate)).toBe(true);
+    expect(near(pngPixel(background, 0, 0), plate)).toBe(true);
+    expect(near(pngPixel(background, 512, 512), plate)).toBe(true);
   });
 
   it("drops leftover Expo react-logo assets", () => {
