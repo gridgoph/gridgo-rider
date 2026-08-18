@@ -5,23 +5,15 @@ import { images } from "@/constants/images";
 import type { OnboardingArt } from "@/data/onboarding";
 
 /**
- * The onboarding picture: the Storyset beat the captain picked, drawn
- * through `expo-image` so a PNG is a bitmap, not a scene SVG.
+ * The onboarding picture: fills the leftover canvas the way Welcome does,
+ * so the figure is the page, not a 340 stamp in empty space.
  */
-export function OnboardingMark({
-  name,
-  size,
-}: {
-  name: OnboardingArt;
-  size: number;
-}) {
-  if (size <= 0) return null;
-
+export function OnboardingMark({ name }: { name: OnboardingArt }) {
   return (
-    <View style={{ width: size, height: size }} accessibilityElementsHidden>
+    <View className="min-h-0 w-full flex-1" accessibilityElementsHidden>
       <Image
         source={images.onboarding[name]}
-        style={{ width: size, height: size }}
+        style={{ width: "100%", height: "100%" }}
         contentFit="contain"
       />
     </View>

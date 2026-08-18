@@ -8,6 +8,7 @@ import type { OnboardingArt } from "@/data/onboarding";
  * so each file is named here, not discovered.
  */
 export const images = {
+  welcome: require("../assets/images/welcome.png"),
   onboarding: {
     offer: require("../assets/images/onboarding/offer.png"),
     check: require("../assets/images/onboarding/check.png"),

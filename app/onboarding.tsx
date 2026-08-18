@@ -26,7 +26,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { onboardingSlides, type OnboardingArt } from "@/data/onboarding";
 import { onboardingShouldPop, resolveOnboardingExit } from "@/lib/onboardingExit";
-import { estimatePagerHeight, onboardingMarkSize } from "@/lib/onboardingStage";
+import { estimatePagerHeight } from "@/lib/onboardingStage";
 
 /**
  * Rider onboarding.
@@ -55,7 +55,6 @@ export default function OnboardingScreen() {
       ? measuredPager
       : estimatePagerHeight(windowHeight, insets.top, insets.bottom);
   const last = onboardingSlides.length - 1;
-  const markSize = onboardingMarkSize(width, pagerHeight);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
@@ -124,7 +123,6 @@ export default function OnboardingScreen() {
               scrollX={scrollX}
               width={width}
               height={pagerHeight}
-              markSize={markSize}
             />
           ))}
         </Animated.ScrollView>
@@ -166,7 +164,6 @@ type SlideProps = {
   width: number;
   /** Full pager height so the page captures vertical gesture space. */
   height: number;
-  markSize: number;
 };
 
 /**
@@ -190,7 +187,6 @@ function Slide({
   scrollX,
   width,
   height,
-  markSize,
 }: SlideProps) {
   const reducedMotion = useReducedMotion();
 
@@ -206,8 +202,8 @@ function Slide({
       importantForAccessibility={active ? "auto" : "no-hide-descendants"}
       style={[{ width, height: height > 0 ? height : undefined }, style]}
     >
-      <View className="flex-1 items-center justify-center" accessibilityElementsHidden>
-        <OnboardingMark name={art} size={markSize} />
+      <View className="min-h-0 flex-1">
+        <OnboardingMark name={art} />
       </View>
       <View className="gg-page pb-1">
         <Text className="text-overline text-text-muted">{step}</Text>

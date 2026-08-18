@@ -29,28 +29,3 @@ export function estimatePagerHeight(
     ),
   );
 }
-
-/** Cap so a tablet does not get a billboard. */
-const MARK_MAX = 340;
-/** Share of screen width the field may take. */
-const MARK_WIDTH_SHARE = 0.8;
-/**
- * Share of the pager the field may take. Leaves the copy its room without
- * measuring it — the mark sits in flex, the words sit under it.
- */
-const MARK_PAGER_SHARE = 0.62;
-
-/**
- * Hero field size: large enough to read as the picture, small enough that
- * the heading never has to fight it.
- */
-export function onboardingMarkSize(screenWidth: number, pagerHeight: number): number {
-  if (!Number.isFinite(screenWidth) || screenWidth <= 0) return 0;
-  if (!Number.isFinite(pagerHeight) || pagerHeight <= 0) return 0;
-  return Math.max(
-    0,
-    Math.round(
-      Math.min(screenWidth * MARK_WIDTH_SHARE, pagerHeight * MARK_PAGER_SHARE, MARK_MAX),
-    ),
-  );
-}

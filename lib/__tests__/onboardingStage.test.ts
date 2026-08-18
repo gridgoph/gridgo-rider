@@ -2,7 +2,6 @@ import {
   ONBOARDING_CHROME_FOOTER,
   ONBOARDING_CHROME_HEADER,
   estimatePagerHeight,
-  onboardingMarkSize,
 } from "@/lib/onboardingStage";
 
 describe("the onboarding pager estimate", () => {
@@ -21,21 +20,4 @@ describe("the onboarding pager estimate", () => {
   });
 });
 
-describe("the onboarding mark size", () => {
-  it("fills most of a phone width without covering the copy", () => {
-    // moto g power: ~412 wide, ~600 pager after chrome.
-    const size = onboardingMarkSize(412, 600);
-    expect(size).toBe(Math.round(412 * 0.8));
-    expect(size).toBeGreaterThan(300);
-    expect(size).toBeLessThan(600 * 0.62 + 1);
-  });
 
-  it("shrinks on a short pager so the heading still has room", () => {
-    expect(onboardingMarkSize(412, 360)).toBe(Math.round(360 * 0.62));
-  });
-
-  it("reports nothing while layout is unmeasured", () => {
-    expect(onboardingMarkSize(0, 600)).toBe(0);
-    expect(onboardingMarkSize(412, 0)).toBe(0);
-  });
-});
