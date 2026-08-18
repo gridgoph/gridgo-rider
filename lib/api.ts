@@ -470,6 +470,7 @@ export async function logout(deviceToken?: string | null): Promise<void> {
     await request("/auth/logout", {
       method: "POST",
       body: JSON.stringify(deviceToken ? { deviceToken } : {}),
+      ignoreUnauthorized: true,
     });
   } finally {
     setToken(null);

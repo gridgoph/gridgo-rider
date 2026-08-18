@@ -56,6 +56,7 @@ export default function SignupScreen() {
   const colors = useThemeColors();
   const user = useSession((state) => state.user);
   const enrollRider = useSession((state) => state.enrollRider);
+  const leaveApplication = useSession((state) => state.leaveApplication);
   const loading = useSession((state) => state.loading);
   const storeError = useSession((state) => state.error);
   const clearError = useSession((state) => state.clearError);
@@ -561,7 +562,11 @@ export default function SignupScreen() {
         />
 
         <Pressable
-          onPress={() => router.push("/(auth)/login")}
+          onPress={() => {
+            leaveApplication();
+            void signOut().catch(() => {});
+            router.replace("/(auth)/login");
+          }}
           accessibilityRole="button"
           className="min-h-11 items-center justify-center"
         >

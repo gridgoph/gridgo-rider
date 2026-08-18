@@ -114,6 +114,8 @@ type SessionState = {
   /** Show an auth-door error without creating a local session. */
   rejectClerkSession: (message: string) => void;
   clearError: () => void;
+  /** Leave the apply hold and let the rider reach Sign in. */
+  leaveApplication: () => void;
 };
 
 /**
@@ -124,6 +126,22 @@ type SessionState = {
 let sessionDecisionVersion = 0;
 let clerkOwnsSession = false;
 let clerkSignOut: (() => Promise<unknown>) | null = null;
+/**
+ * After an explicit sign-out, the Clerk session can still be alive for a
+ * moment. Re-adopting it then reading `/auth/me` as 401 used to mean "this
+ * person has never applied" and pin the rider on Sign up.
+ */
+let clerkAdoptionBlocked = false;
+
+/** True while a sign-out is still killing the Clerk session. */
+export function isClerkAdoptionBlocked(): boolean {
+  return clerkAdoptionBlocked;
+}
+
+/** Clerk is gone; a later sign-in may be adopted again. */
+export function releaseClerkAdoptionBlock(): void {
+  clerkAdoptionBlocked = false;
+}
 
 /** Bind Clerk sign-out without importing a React hook into the Zustand store. */
 export function bindClerkSignOut(signOut: (() => Promise<unknown>) | null): () => void {
@@ -187,6 +205,26 @@ export const useSession = create<SessionState>((set, get) => ({
     });
     if (wasClerk) void clerkSignOut?.().catch(() => {});
   },
+  /**
+   * Drop the apply hold so the rider can sign in as someone else.
+   * The gate otherwise sends every unsigned route back to Sign up.
+   */
+  leaveApplication: () => {
+    sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = true;
+    clerkOwnsSession = false;
+    api.setToken(null);
+    api.setTokenProvider(null);
+    persist(null);
+    set({
+      user: null,
+      authSource: null,
+      error: null,
+      showErrorOnLogin: false,
+      needsApplication: false,
+      loading: false,
+    });
+  },
   rejectClerkSession: (message) => {
     sessionDecisionVersion += 1;
     clerkOwnsSession = true;
@@ -204,6 +242,7 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   beginClerkSession: () => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = false;
     clerkOwnsSession = true;
     api.setToken(null);
     api.setTokenProvider(null);
@@ -279,6 +318,7 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   login: async (email, password) => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = false;
     clerkOwnsSession = false;
     api.setTokenProvider(null);
     set({ loading: true, error: null, showErrorOnLogin: false });
@@ -348,6 +388,10 @@ export const useSession = create<SessionState>((set, get) => ({
     }
   },
   adoptClerkSession: async () => {
+    if (clerkAdoptionBlocked) {
+      set({ loading: false, needsApplication: false });
+      return "rejected";
+    }
     sessionDecisionVersion += 1;
     const decisionAtStart = sessionDecisionVersion;
     clerkOwnsSession = true;
@@ -361,7 +405,9 @@ export const useSession = create<SessionState>((set, get) => ({
       // A sign-out or an enrollment may have moved the session on while this
       // was in flight; that decision wins over an older answer.
       if (decisionAtStart !== sessionDecisionVersion) {
-        return get().user ? "adopted" : "unassigned";
+        if (get().user) return "adopted";
+        if (clerkAdoptionBlocked) return "rejected";
+        return "unassigned";
       }
       if (user.role !== APP_ROLE) {
         set({
@@ -397,7 +443,13 @@ export const useSession = create<SessionState>((set, get) => ({
         the rider record that had just been created.
       */
       if (decisionAtStart !== sessionDecisionVersion) {
-        return get().user ? "adopted" : "unassigned";
+        if (get().user) return "adopted";
+        if (clerkAdoptionBlocked) return "rejected";
+        return "unassigned";
+      }
+      if (clerkAdoptionBlocked) {
+        set({ loading: false, needsApplication: false });
+        return "rejected";
       }
       const unassigned =
         error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404);
@@ -435,6 +487,7 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   logout: async () => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = true;
     // Leave the signed-in area first. Waiting on `/auth/logout` or Clerk used
     // to keep Account up when the API was slow, and a leftover Clerk session
     // could then be adopted as whoever signed in last.

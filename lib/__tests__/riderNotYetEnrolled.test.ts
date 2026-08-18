@@ -1,6 +1,6 @@
 import * as api from "@/lib/api";
 import { resolveAuthRedirect } from "@/lib/authGate";
-import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
+import { bindApiUnauthorizedHandler, releaseClerkAdoptionBlock, useSession } from "@/store/session";
 
 /**
  * A rider between verifying their email and filing their application.
@@ -39,6 +39,7 @@ describe("a Clerk identity GRIDGO has no rider record for", () => {
   afterEach(() => {
     unbind?.();
     useSession.getState().clearSession();
+    releaseClerkAdoptionBlock();
     api.setToken(null);
     api.setTokenProvider(null);
     api.setUnauthorizedHandler(null);
@@ -170,6 +171,7 @@ describe("an application that already landed", () => {
   afterEach(() => {
     unbind?.();
     useSession.getState().clearSession();
+    releaseClerkAdoptionBlock();
     api.setToken(null);
     api.setTokenProvider(null);
     api.setUnauthorizedHandler(null);

@@ -3,7 +3,12 @@ import { useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
 import { readGridgoRole, resolveGridgoRole, riderAccessError } from "@/lib/clerkAuth";
-import { bindClerkSignOut, useSession } from "@/store/session";
+import {
+  bindClerkSignOut,
+  isClerkAdoptionBlocked,
+  releaseClerkAdoptionBlock,
+  useSession,
+} from "@/store/session";
 
 /**
  * Joins Clerk identity to the existing domain session without changing feature
@@ -19,6 +24,7 @@ export function useClerkSessionBridge(): boolean {
   const clearSession = useSession((state) => state.clearSession);
   const rejectClerkSession = useSession((state) => state.rejectClerkSession);
   const authSource = useSession((state) => state.authSource);
+  const needsApplication = useSession((state) => state.needsApplication);
   const [identityReady, setIdentityReady] = useState(false);
   const handledSession = useRef<string | null>(null);
   // A session GRIDGO has no rider record for stays signed in, so `authSource`
@@ -39,7 +45,15 @@ export function useClerkSessionBridge(): boolean {
       handledSession.current = null;
       settledUnassigned.current = null;
       api.setTokenProvider(null);
-      if (authSource === "clerk") clearSession();
+      releaseClerkAdoptionBlock();
+      // Unassigned apply leaves `authSource` null, so a later Clerk sign-out
+      // must still drop the apply hold — otherwise Sign in cannot leave Sign up.
+      if (authSource === "clerk" || needsApplication) clearSession();
+      setIdentityReady(true);
+      return;
+    }
+
+    if (isClerkAdoptionBlocked()) {
       setIdentityReady(true);
       return;
     }
@@ -124,6 +138,7 @@ export function useClerkSessionBridge(): boolean {
     getToken,
     isLoaded,
     isSignedIn,
+    needsApplication,
     rejectClerkSession,
     sessionClaims,
     signOut,

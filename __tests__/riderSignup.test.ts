@@ -55,6 +55,8 @@ describe("public rider self-signup", () => {
     expect(api).toContain("Idempotency-Key");
     expect(signup).toContain("enrollRider(");
     expect(signup).toContain("signUp.password(");
+    expect(signup).toContain("leaveApplication()");
+    expect(signup).toContain('replace("/(auth)/login")');
 
     // No screen may reach for a retired route. The login screen calling
     // /auth/login and returning early on its 404 is the exact regression that
