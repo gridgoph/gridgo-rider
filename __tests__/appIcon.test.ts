@@ -169,7 +169,7 @@ describe("GRIDGO app icon", () => {
     expect(near(pngPixel(background, 512, 512), plate)).toBe(true);
   });
 
-  it("copies printing_app: seven whites, yellow top-right, muted bottom-right", () => {
+  it("paints yellow / muted / muted on the right column", () => {
     const icon = join(images, "icon.png");
     // 108-viewport centres 38/54/70 scaled onto 1024.
     const at = (cx: number, cy: number) =>
@@ -179,7 +179,7 @@ describe("GRIDGO app icon", () => {
     expect(near(at(70, 38), [0xff, 0xde, 0x58])).toBe(true);
     expect(near(at(38, 54), [255, 255, 255])).toBe(true);
     expect(near(at(54, 54), [255, 255, 255])).toBe(true);
-    expect(near(at(70, 54), [255, 255, 255])).toBe(true);
+    expect(near(at(70, 54), [0x8a, 0x8a, 0x8a])).toBe(true);
     expect(near(at(38, 70), [255, 255, 255])).toBe(true);
     expect(near(at(54, 70), [255, 255, 255])).toBe(true);
     expect(near(at(70, 70), [0x8a, 0x8a, 0x8a])).toBe(true);
