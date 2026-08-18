@@ -49,9 +49,13 @@ describe("a field a rider is typing into stays visible", () => {
     const primitives = ["FormScroll.tsx", "PasswordField.tsx", "CodeField.tsx"].map((name) =>
       join("components", name),
     );
+    // Full-bleed map: the search sits at the top of the canvas. FormScroll
+    // would own the map itself, which is the wrong viewport.
+    const overlays = [join("app", "(tabs)", "map.tsx")];
 
     const offenders = withFields
       .filter((file) => !primitives.some((primitive) => file.endsWith(primitive)))
+      .filter((file) => !overlays.some((overlay) => file.endsWith(overlay)))
       .filter((file) => !/from "@\/components\/FormScroll"/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);

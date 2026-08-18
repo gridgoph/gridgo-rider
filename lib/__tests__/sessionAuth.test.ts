@@ -90,6 +90,23 @@ describe("session clear + 401 wiring", () => {
     }
   });
 
+  it("leaves the signed-in area before a hung API logout finishes", async () => {
+    signedIn();
+    jest.useFakeTimers();
+    const logoutSpy = jest.spyOn(api, "logout").mockReturnValue(new Promise(() => {}));
+
+    try {
+      const pending = useSession.getState().logout();
+      expect(useSession.getState().user).toBeNull();
+      expect(api.getToken()).toBeNull();
+      await jest.advanceTimersByTimeAsync(3_000);
+      await pending;
+    } finally {
+      logoutSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
   it("logout clears the user even when the API call fails (expired token)", async () => {
     signedIn();
     const originalFetch = global.fetch;

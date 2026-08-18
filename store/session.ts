@@ -13,6 +13,12 @@ import {
   type StoredSession,
 } from "@/lib/sessionStorage";
 import { usePush } from "@/store/push";
+import { useActiveTrip } from "@/store/activeTrip";
+
+/** Hung /auth/logout must not keep the rider on Account. */
+export const LOGOUT_API_TIMEOUT_MS = 2500;
+/** Hung Clerk sign-out must not keep the rider on Account. */
+export const LOGOUT_CLERK_TIMEOUT_MS = 4000;
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "rider" as const;
@@ -429,6 +435,10 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   logout: async () => {
     sessionDecisionVersion += 1;
+    // Leave the signed-in area first. Waiting on `/auth/logout` or Clerk used
+    // to keep Account up when the API was slow, and a leftover Clerk session
+    // could then be adopted as whoever signed in last.
+    //
     // The device token rides along with the sign-out rather than being
     // unregistered separately: afterwards the bearer token is dead, so a phone
     // that signed out first could no longer authenticate the unregister and
@@ -440,28 +450,28 @@ export const useSession = create<SessionState>((set, get) => ({
     // entirely: a rider that signs out has not uninstalled GRIDGO, and "there
     // is a new version" still has to reach it.
     const deviceToken = usePush.getState().token;
-    try {
-      await api.logout(deviceToken);
-    } catch {
-      // Server may reject an already-dead token. Local wipe still happens below.
-    } finally {
-      // Always clear local state — even if the server call fails (expired token).
-      // Clearing user trips the auth gate → replace to welcome; back cannot re-enter.
-      api.setToken(null);
-      api.setTokenProvider(null);
-      persist(null);
-      const wasClerk = get().authSource === "clerk";
-      if (wasClerk) await clerkSignOut?.().catch(() => {});
-      clerkOwnsSession = false;
-      set({
-        user: null,
-        authSource: null,
-        error: null,
-        showErrorOnLogin: false,
-        needsApplication: false,
-      });
-      void usePush.getState().release();
-    }
+    const identity = clerkSignOut;
+    api.setToken(null);
+    api.setTokenProvider(null);
+    persist(null);
+    clerkOwnsSession = false;
+    set({
+      user: null,
+      authSource: null,
+      error: null,
+      showErrorOnLogin: false,
+      needsApplication: false,
+      loading: false,
+    });
+    useActiveTrip.getState().clear();
+    void usePush.getState().release();
+    await Promise.all([
+      raceDeadline(api.logout(deviceToken).catch(() => undefined), LOGOUT_API_TIMEOUT_MS),
+      raceDeadline(
+        identity ? identity().catch(() => undefined) : Promise.resolve(),
+        LOGOUT_CLERK_TIMEOUT_MS,
+      ),
+    ]);
   },
 }));
 

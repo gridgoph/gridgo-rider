@@ -1,32 +1,26 @@
 import type { ReactNode } from "react";
-import { SafeAreaView, type Edge } from "react-native-safe-area-context";
+import { View } from "react-native";
+import { useSafeAreaInsets, type Edge } from "react-native-safe-area-context";
 
 import { useThemeColors } from "@/hooks/useTheme";
+
+const ALL_EDGES: readonly Edge[] = ["top", "right", "bottom", "left"];
 
 /**
  * The screen shell: full-bleed canvas, inset on the edges the screen asks for.
  *
- * Every screen opens with this, and none of them reach for `SafeAreaView`
- * directly, because `className` does not reach it.
+ * Padding comes from `useSafeAreaInsets()`, not a measuring safe-area view.
+ * A new native stack screen's measuring view reports 0 on the first frame
+ * of the push, so the header and copy paint under the status bar and then
+ * drop into place — the flick on every navigation. The provider already
+ * knows the insets (seeded with `initialWindowMetrics`), so reading them
+ * here is correct on that first frame.
  *
- * NativeWind styles a component by *replacing* it: the Metro alias swaps
- * `react-native`'s exports for styled ones (`react-native-css/components`).
- * `SafeAreaView` comes from `react-native-safe-area-context`, which is not in
- * that set, so a `className` on it is silently dropped — no error, no warning.
- * `gg-screen` carries `flex-1`, so losing it collapsed the shell to the height
- * of its own insets and every `flex: 1` child inside it measured zero. The app
- * rendered a blank canvas on device.
- *
- * Web hid it completely: react-native-web forwards `className` to the DOM node,
- * where the compiled stylesheet applies it for real. So the same code laid out
- * correctly in a browser and showed nothing on a phone.
- *
- * Hence tokens through `style` here rather than a class. If a third-party
- * component ever needs GRIDGO styling again, wrap it once like this — do not
- * hand it a `className` and assume it landed.
+ * Tokens go through `style`, not `className`: NativeWind does not style
+ * third-party views, and the old measuring shell silently dropped `gg-screen`.
  */
 export function Screen({
-  edges,
+  edges = ALL_EDGES,
   children,
 }: {
   /** Which insets to apply. Omit for all four. */
@@ -34,10 +28,20 @@ export function Screen({
   children: ReactNode;
 }) {
   const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={edges}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.canvas,
+        paddingTop: edges.includes("top") ? insets.top : 0,
+        paddingRight: edges.includes("right") ? insets.right : 0,
+        paddingBottom: edges.includes("bottom") ? insets.bottom : 0,
+        paddingLeft: edges.includes("left") ? insets.left : 0,
+      }}
+    >
       {children}
-    </SafeAreaView>
+    </View>
   );
 }

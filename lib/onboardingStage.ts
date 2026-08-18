@@ -1,88 +1,56 @@
 /**
- * How much room onboarding art gets, and how big it may be drawn in it.
+ * First-frame pager height so the copy sits at the bottom before onLayout.
  *
- * The three illustrations are authored at very different proportions — the
- * tallest is half again as tall as it is wide, the widest is landscape — so a
- * single width cap sizes them to wildly different heights. That is what put a
- * pair of legs through the heading: the art was centred in the whole content
- * area and fitted to the width alone, so the tall one simply carried on down
- * into the type.
+ * Slides use `justify-end` (via flex on the mark, copy below) to pin the
+ * words above the dots. With no height they collapse and the words paint
+ * under the logo, then jump down when the measure lands. This estimate is
+ * the window minus safe area minus the two chrome bands, so the first frame
+ * already has a bottom.
  *
- * The fix is a stage the art may not leave, and a fit that respects both of its
- * edges. Kept here as plain arithmetic so the guarantee can be tested without
- * a renderer.
+ * A few pixels off is invisible; height 0 is the jump from the header to
+ * the footer.
  */
 
-/**
- * Share of the content area the stage takes before the copy has been measured.
- * Close enough that the correction on the next frame is not visible.
- */
-export const STAGE_SHARE = 0.52;
+export const ONBOARDING_CHROME_HEADER = 80;
+export const ONBOARDING_CHROME_FOOTER = 120;
 
-/** Widest any piece is drawn, however roomy the screen. */
-export const ART_MAX_WIDTH = 360;
-
-/** Page padding either side of the art. */
-const GUTTER = 32;
-
-/**
- * Breathing room between the art and the heading below it. The art stands on
- * the bottom of the stage, so on the wordiest page this is the whole clearance.
- */
-const STAGE_GAP = 24;
-
-/**
- * The stage's height: whatever is left once the copy has its room.
- *
- * Giving the stage a fixed share of the area instead left a hole between the
- * art and the heading on a tall screen, and — worse — was only accidentally
- * safe. A rider running large system text grows the copy upward into a stage
- * whose size never moved, which is the same collision back again. Measuring the
- * copy and handing the art the remainder is what makes the two regions add up
- * to the area at any text size.
- *
- * Zero while the area is still unmeasured — the first web paint reports no
- * height, and a negative dimension is not a valid SVG size.
- */
-export function stageHeight(contentHeight: number, copyHeight: number): number {
-  if (!Number.isFinite(contentHeight) || contentHeight <= 0) return 0;
-  if (!Number.isFinite(copyHeight) || copyHeight <= 0) {
-    return Math.round(contentHeight * STAGE_SHARE);
-  }
-  // Copy taller than the screen leaves no stage at all. Losing the art is the
-  // right outcome there; drawing it through the words is not.
-  return Math.max(0, Math.round(contentHeight - copyHeight - STAGE_GAP));
+export function estimatePagerHeight(
+  windowHeight: number,
+  insetTop: number,
+  insetBottom: number,
+): number {
+  if (!Number.isFinite(windowHeight) || windowHeight <= 0) return 0;
+  const top = Number.isFinite(insetTop) ? Math.max(0, insetTop) : 0;
+  const bottom = Number.isFinite(insetBottom) ? Math.max(0, insetBottom) : 0;
+  return Math.max(
+    0,
+    Math.round(
+      windowHeight - top - bottom - ONBOARDING_CHROME_HEADER - ONBOARDING_CHROME_FOOTER,
+    ),
+  );
 }
 
-/** The widest the art may be drawn, before its own aspect is considered. */
-export function stageWidth(screenWidth: number): number {
-  if (!Number.isFinite(screenWidth)) return 0;
-  return Math.max(0, Math.min(screenWidth - GUTTER, ART_MAX_WIDTH));
-}
+/** Cap so a tablet does not get a billboard. */
+const MARK_MAX = 340;
+/** Share of screen width the field may take. */
+const MARK_WIDTH_SHARE = 0.8;
+/**
+ * Share of the pager the field may take. Leaves the copy its room without
+ * measuring it — the mark sits in flex, the words sit under it.
+ */
+const MARK_PAGER_SHARE = 0.62;
 
 /**
- * Draw size for one piece, fitted inside the stage in both directions.
- *
- * `aspect` is width / height, as the illustration set records it. Whichever
- * edge the art meets first decides the size, so a tall piece is bounded by the
- * stage's height and a wide one by its width — and neither can reach the copy.
+ * Hero field size: large enough to read as the picture, small enough that
+ * the heading never has to fight it.
  */
-export function fitArt(
-  availableWidth: number,
-  availableHeight: number,
-  aspect: number,
-): { width: number; height: number } {
-  if (!Number.isFinite(aspect) || aspect <= 0) return { width: 0, height: 0 };
-  if (!Number.isFinite(availableWidth) || availableWidth <= 0) return { width: 0, height: 0 };
-  /*
-    No stage means nothing is drawn, never "ignore the height and use the width".
-    A stage of zero arrives two ways — the area has not been measured yet, and
-    the copy has taken all of it — and falling back to the width would answer
-    the second with art at full height straight through the heading, which is
-    the collision this module exists to prevent.
-  */
-  if (!Number.isFinite(availableHeight) || availableHeight <= 0) return { width: 0, height: 0 };
-
-  const width = Math.min(availableWidth, availableHeight * aspect);
-  return { width, height: width / aspect };
+export function onboardingMarkSize(screenWidth: number, pagerHeight: number): number {
+  if (!Number.isFinite(screenWidth) || screenWidth <= 0) return 0;
+  if (!Number.isFinite(pagerHeight) || pagerHeight <= 0) return 0;
+  return Math.max(
+    0,
+    Math.round(
+      Math.min(screenWidth * MARK_WIDTH_SHARE, pagerHeight * MARK_PAGER_SHARE, MARK_MAX),
+    ),
+  );
 }

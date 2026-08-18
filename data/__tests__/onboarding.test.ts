@@ -1,4 +1,3 @@
-import { illustrations } from "@/components/illustrations";
 import { onboardingSlides } from "@/data/onboarding";
 
 describe("onboardingSlides", () => {
@@ -7,11 +6,8 @@ describe("onboardingSlides", () => {
     expect(onboardingSlides.map((s) => s.step)).toEqual(["01 / 03", "02 / 03", "03 / 03"]);
   });
 
-  it("uses rider art keys registered in the illustration set", () => {
-    for (const slide of onboardingSlides) {
-      expect(illustrations[slide.art]).toBeDefined();
-    }
-    expect(onboardingSlides.map((s) => s.art)).toEqual(["mobile_guy", "scooter", "postman"]);
+  it("uses the three onboarding pictures, one per beat", () => {
+    expect(onboardingSlides.map((s) => s.art)).toEqual(["offer", "check", "proof"]);
   });
 
   it("ends with a start verb on the last slide only", () => {

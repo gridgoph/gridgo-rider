@@ -1,13 +1,16 @@
 import { useRouter } from "expo-router";
 import { Bell, Settings2 } from "lucide-react-native";
+import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { DestinationRow } from "@/components/DestinationRow";
 import { Screen } from "@/components/Screen";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { approvalPresentation } from "@/lib/riderApproval";
+import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
 
@@ -25,7 +28,21 @@ export default function AccountScreen() {
   const user = useSession((s) => s.user);
   const logout = useSession((s) => s.logout);
   const unread = useNotifications((s) => s.unread);
+  const trip = useActiveTrip((s) => s.order);
   const approval = approvalPresentation(user);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function confirmSignOut() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await logout();
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
 
   return (
     <Screen edges={["top"]}>
@@ -96,8 +113,26 @@ export default function AccountScreen() {
           />
         </View>
 
-        <SecondaryButton label="Sign out" onPress={() => void logout()} />
+        <SecondaryButton label="Sign out" onPress={() => setConfirming(true)} />
       </ScrollView>
+
+      <ConfirmModal
+        visible={confirming}
+        question="Sign out of GRIDGO?"
+        body={
+          trip
+            ? "This phone will stop sharing your position. The job stays with Operations — signing out does not close it."
+            : "Offers stop arriving on this phone. Sign in again when you are ready to ride."
+        }
+        confirmLabel="Sign out"
+        cancelLabel="Stay signed in"
+        busy={busy}
+        busyLabel="Signing out…"
+        onConfirm={() => void confirmSignOut()}
+        onCancel={() => {
+          if (!busy) setConfirming(false);
+        }}
+      />
     </Screen>
   );
 }
