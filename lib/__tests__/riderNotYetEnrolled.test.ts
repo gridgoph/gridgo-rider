@@ -220,7 +220,10 @@ describe("an application that already landed", () => {
     // sign-ins, so re-reading the account cannot resolve it.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const message = useSession.getState().error ?? "";
-    expect(message).toMatch(/different sign-in/i);
+    expect(message).toMatch(/already holds this email/i);
     expect(message).not.toMatch(/sign in instead/i);
+    // The address may be held by an account nobody can sign into any more, so
+    // the copy must name who can release it rather than send the rider hunting.
+    expect(message).toMatch(/Operations/);
   });
 });

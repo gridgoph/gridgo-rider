@@ -801,11 +801,15 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "invalid_delivery_evidence_type":
         return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
       case "email_already_registered":
-        // Not "sign in instead": the rider reading this is already signed in.
-        // The account exists under a different sign-in for the same address —
-        // a Google sign-in and a password sign-in are two identities here — so
-        // the way out is to leave this one, not to re-enter it.
-        return "This email's GRIDGO account belongs to a different sign-in. Sign out, then use the sign-in that created it — or ask Operations to merge them.";
+        /*
+          Two situations arrive as the same refusal, and the app cannot tell them
+          apart: the address is held by a second live sign-in, or by an account
+          whose sign-in no longer exists. So this must not promise that another
+          sign-in will work — for an orphaned account none will, and a rider
+          told to go and find one would hunt for something unreachable. Name
+          what is true of both, and who can actually release the address.
+        */
+        return "Another GRIDGO account already holds this email. Sign out and try your other sign-in if you have one — otherwise Operations has to release the address before you can apply.";
       case "application_already_exists":
         return "Your application is already on file. Sign out and sign back in to see where it stands.";
       case "invalid_password":
