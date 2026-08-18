@@ -6,6 +6,7 @@ import {
   CircleAlert,
   ClipboardCheck,
   Inbox,
+  Map,
   Navigation,
   Search,
   User,
@@ -29,6 +30,7 @@ const ICONS: Record<TabName, LucideIcon> = {
   active: Navigation,
   // The action column draws `ACTION_GLYPHS` instead; this keeps the map total.
   action: Navigation,
+  map: Map,
   earnings: Wallet,
   account: User,
 };
@@ -287,7 +289,7 @@ export function tabBarHeight(platformOS: string, insetBottom: number): number {
  *
  * The disc is absent, rather than idle, while Operations is still reviewing the
  * account: `riderAction` answers `null`, the centre column is not rendered, and
- * the four destinations spread evenly across the bar. A raised yellow disc is a
+ * the remaining destinations spread evenly across the bar. A raised yellow disc is a
  * promise that something can be done, and for a rider awaiting accreditation
  * nothing can — the state itself is said in the screen header instead.
  *

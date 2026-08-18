@@ -100,12 +100,13 @@ describe("GridgoTabBar", () => {
     useSession.setState({ user: null });
   });
 
-  it("draws five columns: four destinations around one action", () => {
-    expect(TABS).toHaveLength(5);
+  it("draws six columns: five destinations around one action", () => {
+    expect(TABS).toHaveLength(6);
     expect(TABS[2].name).toBe(ACTION_TAB);
     expect(DESTINATION_TABS.map((tab) => tab.name)).toEqual([
       "offers",
       "active",
+      "map",
       "earnings",
       "account",
     ]);
@@ -146,13 +147,13 @@ describe("GridgoTabBar", () => {
       },
     );
 
-    it("keeps all four destinations, with no gap where the disc was", async () => {
+    it("keeps every destination, with no gap where the disc was", async () => {
       signedInAs("pending");
 
       await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-      // Every column is `flex-1`, so four of them spread across the whole bar.
-      expect(screen.queryAllByRole("tab")).toHaveLength(4);
+      // Every column is `flex-1`, so five of them spread across the whole bar.
+      expect(screen.queryAllByRole("tab")).toHaveLength(5);
       for (const tab of DESTINATION_TABS) {
         expect(screen.getByRole("tab", { name: tab.label })).toBeTruthy();
       }

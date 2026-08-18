@@ -31,4 +31,22 @@ describe("buildMapHtml", () => {
     const html = buildMapHtml({ ...base, routeUnavailable: true });
     expect(html).toMatch(/Route unavailable/);
   });
+
+  it("draws teardrop shop pins and tells the host when one is tapped", () => {
+    const html = buildMapHtml({
+      ...base,
+      pickup: null,
+      dropoff: null,
+      routeCoordinates: [],
+      places: [{ id: "shop-vicenta", name: "Vicenta Print House", lat: 7.07, lng: 125.61 }],
+      selectedPlaceId: "shop-vicenta",
+    });
+    expect(html).toMatch(/pin-shop/);
+    expect(html).toMatch(/pin-head/);
+    expect(html).toMatch(/pin-tip/);
+    expect(html).toMatch(/Vicenta Print House/);
+    expect(html).toMatch(/notifyHost/);
+    expect(html).toMatch(/type: 'place'/);
+    expect(html).not.toMatch(/Create Route|create route/i);
+  });
 });

@@ -15,8 +15,8 @@ const TRIP_POLL_MS = 30_000;
 /**
  * Rider tab shell.
  *
- * Offers · Active · [action] · Earnings · Account. The centre column is an
- * action rather than a fifth screen — see `constants/tabs.ts` for why, and
+ * Offers · Active · [action] · Map · Earnings · Account. The centre column is
+ * an action rather than a screen — see `constants/tabs.ts` for why, and
  * `lib/riderAction.ts` for what it does at each point in a job.
  *
  * The shell owns the trip poll because the disc's verb depends on it: a rider

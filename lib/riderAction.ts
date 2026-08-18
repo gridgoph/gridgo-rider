@@ -63,7 +63,7 @@ const FIND_WORK: RiderAction = {
  * An account Operations has not accredited is the one case with no action in
  * it. Every dispatch route answers 403, so there is no job to advance and no
  * work to find, and this returns `null` rather than a disc: the bar draws its
- * four destinations and nothing raised.
+ * destinations and nothing raised.
  *
  * It used to answer a sixth action here — an hourglass labelled "Not yet",
  * routed at Offers. That put a dead end in the one slot the app reserves for
