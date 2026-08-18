@@ -401,31 +401,39 @@ export async function login(email: string, password: string): Promise<{ token: s
   return result;
 }
 
-/** Everything `POST /auth/signup` needs for a rider account. */
-export type RiderSignupInput = {
-  email: string;
-  password: string;
-  name: string;
-  phone: string;
-  riderProfile: RiderProfile;
+/**
+ * Public rider apply — `POST /auth/clerk/enroll/rider`.
+ *
+ * Body is exact: the API rejects unexpected keys, so `role`, `email`,
+ * `password` and `name` must not appear. Clerk owns the identity and the API
+ * reads the name and email from the authenticated Clerk user.
+ */
+export type RiderEnrollment = {
+  profile: {
+    phone: string;
+    vehicleType: RiderProfile["vehicleType"];
+    plateNumber: string;
+    licenseNumber?: string;
+  };
 };
 
 /**
- * Create a rider account.
+ * Open a pending rider account from a live Clerk session.
  *
- * The API stores `role: "rider"` and starts `verificationStatus: "pending"`.
- * This binary never writes a role. Dual/Clerk mode answers
- * `invitation_required` — do not flip `AUTH_MODE` from here.
+ * The caller must already have a Clerk JWT on the token provider. The enroll
+ * reply is a membership projection rather than the rider `User` this app
+ * hydrates, so `/auth/me` is the adopt step.
  */
-export async function signupRider(
-  input: RiderSignupInput,
-): Promise<{ token: string; user: User }> {
-  const result = await request<{ token: string; user: User }>("/auth/signup", {
+export async function enrollRider(
+  input: RiderEnrollment,
+  idempotencyKey: string,
+): Promise<User> {
+  await request("/auth/clerk/enroll/rider", {
     method: "POST",
-    body: JSON.stringify({ role: "rider", ...input }),
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
   });
-  setToken(result.token);
-  return result;
+  return me();
 }
 
 /**

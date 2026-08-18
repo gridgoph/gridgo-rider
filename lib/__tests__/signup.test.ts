@@ -3,8 +3,9 @@ import {
   MIN_PASSWORD_LENGTH,
   canSubmitSignup,
   checkSignupField,
+  enrollmentIdempotencyKey,
   firstSignupProblem,
-  signupInput,
+  toEnrollRequest,
   type SignupFields,
 } from "@/lib/signup";
 
@@ -47,32 +48,57 @@ describe("a rider application is complete before it is sent", () => {
   });
 });
 
-describe("signupInput matches POST /auth/signup", () => {
-  it("trims and lowercases, and keeps the password as typed", () => {
+describe("toEnrollRequest matches POST /auth/clerk/enroll/rider", () => {
+  it("sends only the profile the API accepts, trimmed", () => {
     expect(
-      signupInput(
+      toEnrollRequest(
         filled({
-          name: "  Carlo Rider  ",
-          email: "  Carlo@Example.com ",
           phone: " 0917 123 4567 ",
           vehiclePlate: " abc 1234 ",
           licenseNumber: " n01-23-456789 ",
         }),
       ),
     ).toEqual({
-      email: "carlo@example.com",
-      password: "at-least-8",
-      name: "Carlo Rider",
-      phone: "0917 123 4567",
-      riderProfile: {
+      profile: {
+        phone: "0917 123 4567",
         vehicleType: "motorcycle",
-        vehiclePlate: "abc 1234",
+        plateNumber: "abc 1234",
         licenseNumber: "n01-23-456789",
       },
     });
   });
 
+  it("never sends the identity fields Clerk owns", () => {
+    // The API rejects unexpected keys outright, so a stray email, password,
+    // name or role here fails the whole application with a 400.
+    const body = toEnrollRequest(filled());
+    expect(Object.keys(body)).toEqual(["profile"]);
+    expect(Object.keys(body.profile).sort()).toEqual([
+      "licenseNumber",
+      "phone",
+      "plateNumber",
+      "vehicleType",
+    ]);
+  });
+
+  it("omits an empty licence rather than sending a blank string", () => {
+    const body = toEnrollRequest(filled({ licenseNumber: "   " }));
+    expect("licenseNumber" in body.profile).toBe(false);
+  });
+
   it("refuses to build a body without a vehicle", () => {
-    expect(() => signupInput(filled({ vehicleType: null }))).toThrow(/vehicle/i);
+    expect(() => toEnrollRequest(filled({ vehicleType: null }))).toThrow(/vehicle/i);
+  });
+});
+
+describe("one application keeps one idempotency key", () => {
+  it("reuses a key the API would accept", () => {
+    expect(enrollmentIdempotencyKey("rider-enroll-123_abc")).toBe("rider-enroll-123_abc");
+  });
+
+  it("replaces a key the API would reject", () => {
+    expect(enrollmentIdempotencyKey("has spaces")).toMatch(/^rider-enroll-/);
+    expect(enrollmentIdempotencyKey("")).toMatch(/^rider-enroll-/);
+    expect(enrollmentIdempotencyKey()).toMatch(/^rider-enroll-/);
   });
 });

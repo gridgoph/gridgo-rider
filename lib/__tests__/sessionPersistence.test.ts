@@ -31,6 +31,9 @@ describe("a signed-in rider stays signed in across launches", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     api.setToken(null);
+    // clearSession also releases Clerk's claim on the session, which a
+    // preceding enrollment test sets and hydrate() deliberately respects.
+    useSession.getState().clearSession();
     useSession.setState({ user: null, hydrated: false, loading: false, error: null });
   });
 
@@ -49,26 +52,28 @@ describe("a signed-in rider stays signed in across launches", () => {
     );
   });
 
-  it("writes the token and the pending rider when signup succeeds", async () => {
+  it("adopts the pending rider on enrollment without storing a bearer", async () => {
     const pending = { ...rider, verificationStatus: "pending" as const };
-    mockFetchOnce({ token: "tok_signup", user: pending }, true, 201);
+    mockFetchOnce({ user: pending }, true, 201);
 
-    const ok = await useSession.getState().signup({
-      name: rider.name,
-      email: rider.email,
-      phone: "09171234567",
-      password: "at-least-8",
-      confirmation: "at-least-8",
-      vehicleType: "motorcycle",
-      vehiclePlate: "ABC 1234",
-      licenseNumber: "N01-23-456789",
-    });
+    const ok = await useSession.getState().enrollRider(
+      {
+        profile: {
+          phone: "09171234567",
+          vehicleType: "motorcycle",
+          plateNumber: "ABC 1234",
+          licenseNumber: "N01-23-456789",
+        },
+      },
+      "rider-enroll-test",
+    );
 
     expect(ok).toBe(true);
     expect(useSession.getState().user).toEqual(pending);
-    expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).toBe(
-      serialiseSession({ token: "tok_signup", user: pending }),
-    );
+    expect(useSession.getState().authSource).toBe("clerk");
+    // Clerk owns the session now. Persisting a bearer here would leave a
+    // second, staler credential behind the one the token provider mints.
+    expect(await AsyncStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
   });
 
   it("reads the session back on the next launch, without a network call", async () => {

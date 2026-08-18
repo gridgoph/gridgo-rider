@@ -1,12 +1,14 @@
 /**
  * Creating a rider account.
  *
- * Public apply is the door. The API stores `role: "rider"` and starts the
- * account `pending`; this binary never writes a role itself. Offers stay
- * closed until Operations approves — see `lib/riderApproval.ts`.
+ * Public apply is the door, and it is two steps: Clerk creates the identity
+ * from the email and password, then `POST /auth/clerk/enroll/rider` files the
+ * rider profile against that Clerk session. The API starts the account
+ * `pending` and this binary never writes a role itself. Offers stay closed
+ * until Operations approves — see `lib/riderApproval.ts`.
  */
 
-import type { RiderSignupInput } from "@/lib/api";
+import type { RiderEnrollment } from "@/lib/api";
 
 /** The API's floor. Said on the field, not after a rejected submission. */
 export const MIN_PASSWORD_LENGTH = 8;
@@ -139,20 +141,34 @@ export function canSubmitSignup(fields: SignupFields): boolean {
   return firstSignupProblem(fields) === null;
 }
 
-/** Form values → exactly the body `POST /auth/signup` wants for a rider. */
-export function signupInput(fields: SignupFields): RiderSignupInput {
+/**
+ * Form values → exactly the body `POST /auth/clerk/enroll/rider` wants.
+ *
+ * The body is exact: the API rejects unexpected keys, so email, password, name
+ * and role must not appear. Clerk owns the identity and the API reads the name
+ * and email from the authenticated Clerk user, not from this request.
+ */
+export function toEnrollRequest(fields: SignupFields): RiderEnrollment {
   if (!fields.vehicleType) {
     throw new Error("Choose the vehicle you will ride.");
   }
+  const licenseNumber = fields.licenseNumber.trim();
   return {
-    email: fields.email.trim().toLowerCase(),
-    password: fields.password,
-    name: fields.name.trim(),
-    phone: fields.phone.trim(),
-    riderProfile: {
+    profile: {
+      phone: fields.phone.trim(),
       vehicleType: fields.vehicleType,
-      vehiclePlate: fields.vehiclePlate.trim(),
-      licenseNumber: fields.licenseNumber.trim(),
+      plateNumber: fields.vehiclePlate.trim(),
+      ...(licenseNumber ? { licenseNumber } : {}),
     },
   };
+}
+
+/**
+ * One enrollment attempt keeps one key, so a retry after a lost reply is a
+ * retry to the API rather than a second application.
+ */
+export function enrollmentIdempotencyKey(existing?: string): string {
+  const key = existing?.trim() ?? "";
+  if (key && key.length <= 200 && /^[A-Za-z0-9._:-]+$/.test(key)) return key;
+  return `rider-enroll-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }

@@ -66,6 +66,64 @@ export function clerkErrorMessage(error: unknown, fallback: string): string {
   return typeof message === "string" && message.trim() ? message.trim() : fallback;
 }
 
+/**
+ * Clerk answers a duplicate sign-in attempt with an error rather than a
+ * no-op, and enrollment must treat that as success — the phone already holds
+ * the session the caller was trying to create.
+ */
+export function isAlreadySignedInError(error: unknown): boolean {
+  const message = clerkErrorMessage(error, "").toLowerCase();
+  return (
+    message.includes("already signed in") ||
+    message.includes("already logged in") ||
+    message.includes("currently signed in") ||
+    message.includes("currently logged in")
+  );
+}
+
+export type ClerkGetToken = (
+  options?: { skipCache?: boolean },
+) => Promise<string | null | undefined>;
+
+/**
+ * Fresh JWT for gridgo-api. A cached leftover is often expired or empty, and a
+ * signed-out Clerk throws rather than returning null — answer null either way.
+ */
+async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
+  try {
+    const token = await getToken({ skipCache: true });
+    return token?.trim() ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A session created moments ago does not always mint a token on the first ask,
+ * so enrollment waits briefly rather than sending an unauthenticated request.
+ */
+export async function awaitClerkSessionToken(
+  getToken: ClerkGetToken,
+  attempts = 5,
+  delayMs = 120,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const token = await clerkSessionToken(getToken);
+    if (token) return token;
+    if (attempt < attempts - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
+/** Clerk takes a first and last name; the form asks for one full name. */
+export function splitPersonName(value: string): { firstName: string; lastName?: string } {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() ?? "";
+  return parts.length ? { firstName, lastName: parts.join(" ") } : { firstName };
+}
+
 /** Production builds must be configured explicitly with a live Clerk instance. */
 export function clerkPublishableKey(
   value: string | null | undefined,

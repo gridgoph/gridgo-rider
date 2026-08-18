@@ -42,13 +42,31 @@ describe("public rider self-signup", () => {
     expect(invitation).toContain("signUp.ticket");
   });
 
-  it("sends the legacy rider signup body from the apply screen", () => {
+  it("applies through Clerk enrollment, never the retired signup route", () => {
+    // The API answers 404 on /auth/signup and /auth/login. A call site that
+    // comes back is a dead end that reads to a rider as a rejected form.
     const signup = source("app/(auth)/signup.tsx");
+    const login = source("app/(auth)/login.tsx");
     const api = source("lib/api.ts");
-    expect(signup).toContain("signup(");
-    expect(api).toContain("signupRider");
-    expect(api).toContain("/auth/signup");
-    expect(api).toContain('role: "rider"');
+
+    expect(api).toContain("/auth/clerk/enroll/rider");
+    expect(api).toContain("Idempotency-Key");
+    expect(signup).toContain("enrollRider(");
+    expect(signup).toContain("signUp.password(");
+
+    // No screen may reach for a retired route. The login screen calling
+    // /auth/login and returning early on its 404 is the exact regression that
+    // made rider sign-in impossible, so both screens are pinned. The quoted
+    // form is what a call site uses, so prose explaining the retirement stays
+    // allowed.
+    for (const file of [signup, login]) {
+      expect(file).not.toContain('"/auth/signup"');
+      expect(file).not.toContain('"/auth/login"');
+    }
+    expect(api).not.toContain('"/auth/signup"');
+    // Role is the server's to grant from a membership row, never this app's
+    // to assert in a request body.
+    expect(api).not.toContain('role: "rider"');
   });
 
   it("does not put Turn on alerts on login", () => {

@@ -5,7 +5,7 @@ import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
-import { signupInput, type SignupFields } from "@/lib/signup";
+import type { RiderEnrollment } from "@/lib/api";
 import {
   parseStoredSession,
   serialiseSession,
@@ -67,7 +67,14 @@ type SessionState = {
   /** A Clerk callback failure that must be surfaced by the login screen. */
   showErrorOnLogin: boolean;
   login: (email: string, password: string) => Promise<PasswordLoginResult>;
-  signup: (fields: SignupFields) => Promise<boolean>;
+  /**
+   * File a rider application against a live Clerk session. The caller owns
+   * creating that session and installing the token provider first.
+   */
+  enrollRider: (
+    request: RiderEnrollment,
+    idempotencyKey: string,
+  ) => Promise<boolean>;
   logout: () => Promise<void>;
   /** Re-read the account so an approval decision lands without signing out. */
   refreshUser: () => Promise<void>;
@@ -272,24 +279,27 @@ export const useSession = create<SessionState>((set, get) => ({
       return invalid ? "invalid_credentials" : "failed";
     }
   },
-  signup: async (fields) => {
+  enrollRider: async (request, idempotencyKey) => {
     sessionDecisionVersion += 1;
-    clerkOwnsSession = false;
-    api.setTokenProvider(null);
+    // Clerk already owns this session; the screen installed its token provider
+    // before calling, so nothing here may clear it or persist a local bearer.
+    clerkOwnsSession = true;
+    api.setToken(null);
+    persist(null);
     set({ loading: true, error: null, showErrorOnLogin: false });
     try {
-      const { token, user } = await api.signupRider(signupInput(fields));
+      const user = await api.enrollRider(request, idempotencyKey);
       if (user.role !== APP_ROLE) {
-        await api.logout();
         set({
           user: null,
+          authSource: null,
           loading: false,
           error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
+          showErrorOnLogin: true,
         });
         return false;
       }
-      persist({ token, user });
-      set({ user, authSource: "legacy", loading: false });
+      set({ user, authSource: "clerk", loading: false });
       return true;
     } catch (e) {
       set({
