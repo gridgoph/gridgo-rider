@@ -4,6 +4,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
+import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -222,6 +223,7 @@ export default function ActiveScreen() {
             contradicting itself.
           */
           subtitle={approval.canWork && loaded && !trip ? "Nothing with you right now." : null}
+          status={<ApprovalChip />}
           action={<AlertsButton />}
         />
 

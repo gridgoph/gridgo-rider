@@ -5,7 +5,6 @@ import {
   Camera,
   CircleAlert,
   ClipboardCheck,
-  Hourglass,
   Inbox,
   Navigation,
   Search,
@@ -47,7 +46,6 @@ const ACTION_GLYPHS: Record<RiderActionGlyph, LucideIcon> = {
   navigate: Navigation,
   camera: Camera,
   search: Search,
-  waiting: Hourglass,
 };
 
 /* ---------------------------------------------------------------------------
@@ -287,6 +285,12 @@ export function tabBarHeight(platformOS: string, insetBottom: number): number {
  * an unfinished shortcut. It now performs the next step of the job — check it,
  * set off, hand over — and says which in a word underneath.
  *
+ * The disc is absent, rather than idle, while Operations is still reviewing the
+ * account: `riderAction` answers `null`, the centre column is not rendered, and
+ * the four destinations spread evenly across the bar. A raised yellow disc is a
+ * promise that something can be done, and for a rider awaiting accreditation
+ * nothing can — the state itself is said in the screen header instead.
+ *
  * The disc's label lands in exactly the same 16dp label box as the destinations
  * beside it, because both column kinds bottom-align over the same bottom
  * padding. The disc itself overhangs the row rather than fitting inside it, so
@@ -301,6 +305,7 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const { action, orderId } = useRiderAction();
 
   function runAction() {
+    if (!action) return;
     if (Platform.OS !== "web") {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -338,6 +343,13 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
       <View className="flex-row items-end">
         {TABS.map((tab) => {
           if (tab.name === ACTION_TAB) {
+            /*
+              No action, no column. Every destination is `flex-1`, so dropping
+              this one is all it takes for the remaining four to spread evenly
+              across the bar — there is no gap left behind and no placeholder
+              holding a slot open for something that is not coming.
+            */
+            if (!action) return null;
             return (
               <ActionDisc
                 key="action"

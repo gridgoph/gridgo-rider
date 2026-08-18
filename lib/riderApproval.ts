@@ -17,7 +17,14 @@ export type ApprovalPresentation = {
   body: string;
   tone: "info" | "warning" | "error" | "success";
   icon: "clock" | "triangle-alert" | "circle-x" | "circle-check";
-  /** Short label for the account screen's status row. */
+  /**
+   * The state in a word or two, for the account screen's status row and the
+   * chip on every tab's title line.
+   *
+   * One name per state, in both places: a rider who reads "In review" in the
+   * header and "Awaiting approval" on Account has to work out whether those are
+   * one thing or two. Short enough that the title gives way before it does.
+   */
   chip: string;
 };
 
@@ -52,7 +59,9 @@ export function approvalPresentation(user: User | null): ApprovalPresentation {
         body: "Your vehicle and licence details are with the GRIDGO team. Nothing is dispatched to a rider until that review is done — you will get an alert here the moment it is.",
         tone: "info",
         icon: "clock",
-        chip: "Awaiting approval",
+        // Echoes the title's own verb — Operations *is reviewing* — rather than
+        // introducing "approval" as a second noun for the same wait.
+        chip: "In review",
       };
     case "suspended":
       return {

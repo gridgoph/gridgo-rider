@@ -19,7 +19,9 @@ import {
   tabBarTopGap,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, DESTINATION_TABS, TABS } from "@/constants/tabs";
+import type { VerificationStatus } from "@/lib/api";
 import { useActiveTrip } from "@/store/activeTrip";
+import { useSession } from "@/store/session";
 
 const navigate = jest.fn();
 const emit = jest.fn(() => ({ defaultPrevented: false }));
@@ -75,12 +77,27 @@ function renderInSafeArea(ui: ReactElement, bottomInset = 34) {
   });
 }
 
+/**
+ * Sign the bar in as a rider at a given point in accreditation.
+ *
+ * The disc's existence depends on it: an account Operations has not accredited
+ * has no next step, so there is no disc to draw. A signed-out store reads as
+ * approved on purpose — see `verificationStatusOf` — which is what every other
+ * case here relies on.
+ */
+function signedInAs(verificationStatus: VerificationStatus) {
+  useSession.setState({
+    user: { id: "user_rider", role: "rider", verificationStatus } as never,
+  });
+}
+
 describe("GridgoTabBar", () => {
   beforeEach(() => {
     navigate.mockClear();
     emit.mockClear();
     mockPush.mockClear();
     useActiveTrip.getState().clear();
+    useSession.setState({ user: null });
   });
 
   it("draws five columns: four destinations around one action", () => {
@@ -108,6 +125,56 @@ describe("GridgoTabBar", () => {
     // No trip in hand — the only move a rider has is to take one.
     expect(screen.getByText("Find work")).toBeTruthy();
     expect(screen.getByTestId("tab-action-disc")).toBeTruthy();
+  });
+
+  describe("an account Operations is still reviewing", () => {
+    // The bar used to raise an hourglass here, labelled "Not yet" and pointed at
+    // Offers — the loudest control in the app spent on a dead end, landing the
+    // rider back on the same review notice. The state moved to the header chip
+    // and the disc went away entirely.
+    it.each(["pending", "unverified", "suspended", "rejected"] as VerificationStatus[])(
+      "raises no disc when the account is %s",
+      async (status) => {
+        signedInAs(status);
+
+        await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+        expect(screen.queryByTestId("tab-action-disc")).toBeNull();
+        expect(screen.queryByText("Not yet")).toBeNull();
+        // Nor the accredited rider's verb, which the server would refuse.
+        expect(screen.queryByText("Find work")).toBeNull();
+      },
+    );
+
+    it("keeps all four destinations, with no gap where the disc was", async () => {
+      signedInAs("pending");
+
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+      // Every column is `flex-1`, so four of them spread across the whole bar.
+      expect(screen.queryAllByRole("tab")).toHaveLength(4);
+      for (const tab of DESTINATION_TABS) {
+        expect(screen.getByRole("tab", { name: tab.label })).toBeTruthy();
+      }
+    });
+
+    it("still navigates, because the destinations are not what is withheld", async () => {
+      signedInAs("pending");
+
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+      fireEvent.press(screen.getByRole("tab", { name: "Earnings" }));
+
+      expect(navigate).toHaveBeenCalledWith("earnings");
+    });
+
+    it("brings the disc back the moment Operations approves", async () => {
+      signedInAs("approved");
+
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+      expect(screen.getByTestId("tab-action-disc")).toBeTruthy();
+      expect(screen.getByText("Find work")).toBeTruthy();
+    });
   });
 
   it("marks only the open tab as selected", async () => {

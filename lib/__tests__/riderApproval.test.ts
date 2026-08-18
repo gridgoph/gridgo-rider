@@ -45,7 +45,7 @@ describe("the wait is named, never dressed as an error or an empty list", () => 
     expect(pending.title).toMatch(/reviewing/i);
     expect(pending.body).toMatch(/alert/i);
     expect(pending.tone).toBe("info");
-    expect(pending.chip).toBe("Awaiting approval");
+    expect(pending.chip).toBe("In review");
   });
 
   it("repeats Operations' own words when they left any", () => {
@@ -77,11 +77,23 @@ describe("every state reads in greyscale and in plain language", () => {
     }
   });
 
+  it("keeps every chip short enough to share a title line", () => {
+    // The chip sits beside the screen title now, and the title is the only
+    // thing in that row that gives way — so a long chip truncates the name of
+    // the screen the rider is looking at. "Not accredited" is the longest that
+    // fits, and it is the ceiling rather than a target.
+    for (const status of EVERY_STATUS) {
+      expect(
+        approvalPresentation(rider({ verificationStatus: status })).chip.length,
+      ).toBeLessThanOrEqual("Not accredited".length);
+    }
+  });
+
   it("does not pass an enum off as copy where the enum is not English", () => {
     // "Approved" is both the enum and the right word, so it stays. "Unverified"
     // and "rejected" are not things to say to a rider about themselves.
     expect(approvalPresentation(rider({ verificationStatus: "unverified" })).chip).toBe(
-      "Awaiting approval",
+      "In review",
     );
     expect(approvalPresentation(rider({ verificationStatus: "rejected" })).chip).toBe(
       "Not accredited",

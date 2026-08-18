@@ -7,7 +7,8 @@ import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
 
 export type RiderActionState = {
-  action: RiderAction;
+  /** `null` while Operations is still deciding: there is no next step to offer. */
+  action: RiderAction | null;
   phase: TripPhase;
   orderId: string | null;
 };
