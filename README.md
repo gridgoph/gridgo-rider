@@ -31,12 +31,15 @@ On a physical device, use your machine's LAN IP instead of `127.0.0.1`.
 
 | Command | Does |
 |---|---|
-| `npm start` | Expo dev server |
-| `npm run android` / `npm run ios` | Platform-targeted |
+| `npm start` | Metro for the USB development build (`expo start --dev-client`, port 8083) |
+| `npm run android` | Prebuild and install the development client (`expo run:android`) |
+| `npm run ios` | iOS (not in current use) |
 | `npm run lint` | ESLint |
 | `npm test` | Jest |
 
 Typecheck: `npx tsc --noEmit`.
+
+Local Android work is a USB development build, not Expo Go. Set `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`. Do not commit `/android` or `google-services.json`.
 
 ## Android emulator API URL
 
@@ -46,4 +49,4 @@ From the **Android emulator**, `127.0.0.1` is the emulator itself. Use:
 EXPO_PUBLIC_API_URL=http://10.0.2.2:8787 npm start
 ```
 
-Physical device / Expo Go on phone: use the host LAN IP (e.g. `http://192.168.1.55:8787`).
+Physical device: use the host LAN IP (e.g. `http://192.168.1.55:8787`).
