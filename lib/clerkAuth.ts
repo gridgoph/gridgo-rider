@@ -30,9 +30,17 @@ export function resolveGridgoRole(
   return mismatch ?? claimRole ?? metadataRole;
 }
 
-/** Rider-facing recovery copy for a Clerk account that belongs elsewhere. */
+/**
+ * Rider-facing recovery copy for a Clerk account that belongs elsewhere.
+ *
+ * A *missing* role is not a rejection. Rider enrollment writes a GRIDGO
+ * membership, never Clerk `publicMetadata.gridgoRole`, so a legitimate rider —
+ * and every brand-new applicant — reaches this check with no role at all.
+ * Only `/auth/me` can tell those apart, so absence defers to it. Conflating
+ * the two is what locked riders out of their own app and blocked self-signup.
+ */
 export function riderAccessError(role: Role | null): string | null {
-  if (role === "rider") return null;
+  if (role == null || role === "rider") return null;
   switch (role) {
     case "client":
       return "This account belongs in the GRIDGO Client app.";

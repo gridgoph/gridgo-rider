@@ -31,8 +31,8 @@ export default function LoginScreen() {
   const { setActive } = useClerk();
   const colors = useThemeColors();
   const user = useSession((state) => state.user);
-  const legacyLogin = useSession((state) => state.login);
-  const legacyLoading = useSession((state) => state.loading);
+  // Set while the session bridge adopts a fresh Clerk session against /auth/me.
+  const adopting = useSession((state) => state.loading);
   const storeError = useSession((state) => state.error);
   const clearError = useSession((state) => state.clearError);
   const [email, setEmail] = useState(() => DEV_LOGIN?.email ?? "");
@@ -60,7 +60,7 @@ export default function LoginScreen() {
   if (user) return <Redirect href="/(tabs)/active" />;
 
   async function submitPassword() {
-    if (busy || legacyLoading) return;
+    if (busy || adopting) return;
     const normalizedEmail = email.trim();
     setClerkError(null);
     clearError();
@@ -70,26 +70,11 @@ export default function LoginScreen() {
       return;
     }
 
+    if (fetchStatus === "fetching") return;
+
     setBusy(true);
-    // Public apply lives on the domain API while AUTH_MODE is still legacy.
-    // A 401 here is "wrong password or no such user", which is also the
-    // shape of an Operations-invited Clerk account that has never been
-    // written into the demo store — so only that case falls through.
-    const result = await legacyLogin(normalizedEmail, password);
-    if (result === "signed_in") {
-      setBusy(false);
-      return;
-    }
-    if (result === "failed") {
-      setBusy(false);
-      return;
-    }
-
-    if (fetchStatus === "fetching") {
-      setBusy(false);
-      return;
-    }
-
+    // Clerk is the only identity source. The API answers 404 on /auth/login,
+    // so there is no domain password path to fall through from.
     try {
       const attempt = await signIn.password({
         emailAddress: normalizedEmail,
@@ -102,8 +87,8 @@ export default function LoginScreen() {
       const completed = await signIn.finalize();
       if (completed.error) throw completed.error;
     } catch (caught) {
-      // Prefer Clerk's rider-facing explanation when the domain fallback did
-      // not already leave one. Never render a title with an empty body.
+      // The session bridge may have already left a rider-facing explanation.
+      // Never render a title with an empty body.
       if (!useSession.getState().error) {
         setClerkError(clerkErrorMessage(caught, "Wrong email or password."));
       }
@@ -134,7 +119,7 @@ export default function LoginScreen() {
     }
   }
 
-  const loading = busy || legacyLoading;
+  const loading = busy || adopting;
   const error = clerkError ?? storeError;
 
   return (
