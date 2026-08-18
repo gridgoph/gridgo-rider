@@ -169,6 +169,29 @@ describe("GRIDGO app icon", () => {
     expect(near(pngPixel(background, 512, 512), plate)).toBe(true);
   });
 
+  it("copies printing_app: seven whites, yellow top-right, muted bottom-right", () => {
+    const icon = join(images, "icon.png");
+    // 108-viewport centres 38/54/70 scaled onto 1024.
+    const at = (cx: number, cy: number) =>
+      pngPixel(icon, Math.round((cx / 108) * 1024), Math.round((cy / 108) * 1024));
+    expect(near(at(38, 38), [255, 255, 255])).toBe(true);
+    expect(near(at(54, 38), [255, 255, 255])).toBe(true);
+    expect(near(at(70, 38), [0xff, 0xde, 0x58])).toBe(true);
+    expect(near(at(38, 54), [255, 255, 255])).toBe(true);
+    expect(near(at(54, 54), [255, 255, 255])).toBe(true);
+    expect(near(at(70, 54), [255, 255, 255])).toBe(true);
+    expect(near(at(38, 70), [255, 255, 255])).toBe(true);
+    expect(near(at(54, 70), [255, 255, 255])).toBe(true);
+    expect(near(at(70, 70), [0x8a, 0x8a, 0x8a])).toBe(true);
+
+    const generator = readFileSync(
+      join(root, "scripts/generate-app-icon.py"),
+      "utf8",
+    );
+    expect(generator).not.toContain("5B5B5B");
+    expect(generator).not.toContain("0x5B");
+  });
+
   it("drops leftover Expo react-logo assets", () => {
     const names = readdirSync(images);
     expect(names.filter((name) => name.includes("react-logo"))).toEqual([]);
