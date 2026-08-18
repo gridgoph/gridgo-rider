@@ -128,17 +128,43 @@ const ORDERED_FIELDS: (keyof SignupFields)[] = [
   "licenseNumber",
 ];
 
+/**
+ * Fields that belong to the identity rather than the application.
+ *
+ * Once Clerk holds the identity, the API reads the name and email from it and
+ * the password is already set — so asking for them again would be asking a
+ * signed-in rider to re-enter credentials that are not even sent.
+ */
+const IDENTITY_FIELDS = new Set<keyof SignupFields>([
+  "name",
+  "email",
+  "password",
+  "confirmation",
+]);
+
+type SignupCheckOptions = {
+  /** Clerk already holds this rider's identity; only the application is missing. */
+  identityExists?: boolean;
+};
+
 /** The first thing still missing, so the button can say why it will not go. */
-export function firstSignupProblem(fields: SignupFields): string | null {
+export function firstSignupProblem(
+  fields: SignupFields,
+  options: SignupCheckOptions = {},
+): string | null {
   for (const field of ORDERED_FIELDS) {
+    if (options.identityExists && IDENTITY_FIELDS.has(field)) continue;
     const result = checkSignupField(field, fields);
     if (!result.ok) return result.reason;
   }
   return null;
 }
 
-export function canSubmitSignup(fields: SignupFields): boolean {
-  return firstSignupProblem(fields) === null;
+export function canSubmitSignup(
+  fields: SignupFields,
+  options: SignupCheckOptions = {},
+): boolean {
+  return firstSignupProblem(fields, options) === null;
 }
 
 /**

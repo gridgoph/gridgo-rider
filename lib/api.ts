@@ -354,7 +354,22 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+type RequestInitWithProbe = RequestInit & {
+  /*
+    Ask a question without betting the session on the answer.
+
+    A 401 normally means the bearer died, so it wipes local auth and the gate
+    leaves the authenticated area. But `/auth/me` is also how this app asks
+    "does GRIDGO know this Clerk identity yet?", and for someone who has just
+    created their account the honest answer is 401 — the enrollment that
+    creates their rider record has not run yet. Letting that answer tear the
+    session down signed brand-new riders out mid-application.
+  */
+  ignoreUnauthorized?: boolean;
+};
+
+async function request<T>(path: string, init: RequestInitWithProbe = {}): Promise<T> {
+  const { ignoreUnauthorized, ...fetchInit } = init;
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -364,7 +379,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const sentBearer = Boolean(bearer);
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...fetchInit, headers });
   const text = await res.text();
   let data: unknown = null;
   if (text) {
@@ -383,7 +398,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // was read back from the phone. Treating it as expiry deleted the very
     // session that was still loading, which signed the rider out on every cold
     // start.
-    if (sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
+    if (!ignoreUnauthorized && sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
       tokenMemory = null;
       unauthorizedHandler?.();
     }
@@ -433,7 +448,7 @@ export async function enrollRider(
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(input),
   });
-  return me();
+  return me({ ignoreUnauthorized: true });
 }
 
 /**
@@ -551,8 +566,10 @@ export async function unregisterDevice(token: string): Promise<void> {
   });
 }
 
-export async function me(): Promise<User> {
-  const result = await request<{ user: User }>("/auth/me");
+export async function me(options: { ignoreUnauthorized?: boolean } = {}): Promise<User> {
+  const result = await request<{ user: User }>("/auth/me", {
+    ignoreUnauthorized: options.ignoreUnauthorized,
+  });
   return result.user;
 }
 
@@ -731,12 +748,22 @@ export function isInternalCode(text: string): boolean {
   return false;
 }
 
+/**
+ * The machine-readable reason the API refused, for the few callers that must
+ * branch on it rather than just show a sentence. Null when the failure never
+ * reached the API, so a caller cannot mistake a dead connection for a verdict.
+ */
+export function apiErrorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  return typeof error.body === "object" && error.body && "error" in error.body
+    ? String((error.body as { error: string }).error)
+    : null;
+}
+
 /** Map API errors to rider-facing recovery copy. Never shows a raw code. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
-    const code = typeof error.body === "object" && error.body && "error" in error.body
-      ? String((error.body as { error: string }).error)
-      : error.message;
+    const code = apiErrorCode(error) ?? error.message;
     switch (code) {
       case "not_offerable":
         return "Another rider took this job. Pull down to refresh the list.";
@@ -774,7 +801,13 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "invalid_delivery_evidence_type":
         return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
       case "email_already_registered":
-        return "That email already has a GRIDGO account. Sign in instead, or use another address.";
+        // Not "sign in instead": the rider reading this is already signed in.
+        // The account exists under a different sign-in for the same address —
+        // a Google sign-in and a password sign-in are two identities here — so
+        // the way out is to leave this one, not to re-enter it.
+        return "This email's GRIDGO account belongs to a different sign-in. Sign out, then use the sign-in that created it — or ask Operations to merge them.";
+      case "application_already_exists":
+        return "Your application is already on file. Sign out and sign back in to see where it stands.";
       case "invalid_password":
         return "Use a password with at least 8 characters.";
       case "invalid_email":

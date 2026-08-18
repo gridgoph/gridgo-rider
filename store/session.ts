@@ -25,6 +25,17 @@ export function isSignedIn(user: User | null | undefined): boolean {
 /** Outcome of a password login against the domain API. */
 export type PasswordLoginResult = "signed_in" | "invalid_credentials" | "failed";
 
+/**
+ * What happened when a live Clerk identity was offered to the domain API.
+ *
+ * `unassigned` is the case that matters: Clerk knows who this is, GRIDGO does
+ * not know them as a rider yet. That is the normal state of someone who has
+ * just verified their email and has not filed their application, so it is not
+ * a failure and must not end the Clerk session — the application is filed
+ * against exactly that session.
+ */
+export type ClerkAdoption = "adopted" | "unassigned" | "rejected";
+
 /** Map login failures to rider-facing copy (network vs bad credentials). */
 export function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -66,6 +77,11 @@ type SessionState = {
   error: string | null;
   /** A Clerk callback failure that must be surfaced by the login screen. */
   showErrorOnLogin: boolean;
+  /**
+   * Clerk has authenticated someone GRIDGO holds no rider record for. They are
+   * signed in and can only do one thing: apply. The gate routes them there.
+   */
+  needsApplication: boolean;
   login: (email: string, password: string) => Promise<PasswordLoginResult>;
   /**
    * File a rider application against a live Clerk session. The caller owns
@@ -86,7 +102,7 @@ type SessionState = {
    */
   clearSession: () => void;
   /** Adopt the API projection after Clerk has authenticated a rider. */
-  adoptClerkSession: () => Promise<boolean>;
+  adoptClerkSession: () => Promise<ClerkAdoption>;
   /** Supersede an older demo session as soon as Clerk reports a session. */
   beginClerkSession: () => void;
   /** Show an auth-door error without creating a local session. */
@@ -146,6 +162,7 @@ export const useSession = create<SessionState>((set, get) => ({
   loading: false,
   error: null,
   showErrorOnLogin: false,
+  needsApplication: false,
   clearError: () => set({ error: null, showErrorOnLogin: false }),
   clearSession: () => {
     sessionDecisionVersion += 1;
@@ -159,6 +176,7 @@ export const useSession = create<SessionState>((set, get) => ({
       authSource: null,
       error: null,
       showErrorOnLogin: false,
+      needsApplication: false,
       loading: false,
     });
     if (wasClerk) void clerkSignOut?.().catch(() => {});
@@ -175,6 +193,7 @@ export const useSession = create<SessionState>((set, get) => ({
       loading: false,
       error: message,
       showErrorOnLogin: true,
+      needsApplication: false,
     });
   },
   beginClerkSession: () => {
@@ -189,6 +208,7 @@ export const useSession = create<SessionState>((set, get) => ({
       loading: true,
       error: null,
       showErrorOnLogin: false,
+      needsApplication: false,
     });
   },
   /*
@@ -299,9 +319,21 @@ export const useSession = create<SessionState>((set, get) => ({
         });
         return false;
       }
-      set({ user, authSource: "clerk", loading: false });
+      set({ user, authSource: "clerk", loading: false, needsApplication: false });
       return true;
     } catch (e) {
+      /*
+        "You already applied" is not a refusal, it is the answer the rider
+        wanted. It happens whenever the application landed but the reply did
+        not — a dropped response, a retry, a second tap — and reporting it as a
+        failure would leave a rider who has finished staring at the form that
+        no longer has anything to send. So re-read the account instead: if
+        GRIDGO now knows this rider, let them in.
+      */
+      if (api.apiErrorCode(e) === "application_already_exists") {
+        const adoption = await get().adoptClerkSession();
+        if (adoption === "adopted") return true;
+      }
       set({
         loading: false,
         error: signupErrorMessage(e),
@@ -311,12 +343,20 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   adoptClerkSession: async () => {
     sessionDecisionVersion += 1;
+    const decisionAtStart = sessionDecisionVersion;
     clerkOwnsSession = true;
     api.setToken(null);
     persist(null);
-    set({ loading: true, error: null, showErrorOnLogin: false });
+    set({ loading: true, error: null, showErrorOnLogin: false, needsApplication: false });
     try {
-      const user = await api.me();
+      // Probed, not spent: a 401 here is an answer about the account, not proof
+      // that the bearer is dead, so it must not trip the session-wiping handler.
+      const user = await api.me({ ignoreUnauthorized: true });
+      // A sign-out or an enrollment may have moved the session on while this
+      // was in flight; that decision wins over an older answer.
+      if (decisionAtStart !== sessionDecisionVersion) {
+        return get().user ? "adopted" : "unassigned";
+      }
       if (user.role !== APP_ROLE) {
         set({
           user: null,
@@ -325,11 +365,47 @@ export const useSession = create<SessionState>((set, get) => ({
           error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
           showErrorOnLogin: true,
         });
-        return false;
+        return "rejected";
       }
-      set({ user, authSource: "clerk", loading: false });
-      return true;
+      set({ user, authSource: "clerk", loading: false, needsApplication: false });
+      return "adopted";
     } catch (error) {
+      /*
+        GRIDGO does not know this identity as a rider yet.
+
+        This is the state every new rider passes through: Clerk has just
+        created the account and verified the email, and the application that
+        creates the rider record is the very next step. Treating it as a failed
+        sign-in used to end the Clerk session the application needed, drop the
+        rider back to the sign-in screen, and blame their password for it.
+
+        So it is reported as its own outcome and the Clerk session is left
+        standing. The apply screen files against it; a rider who arrived here by
+        signing in is routed to that screen instead of a dead end.
+      */
+      /*
+        The application can land while this probe is still in flight — the
+        rider files it from the same Clerk session, seconds after the code.
+        `enrollRider` moves the decision on, and a "GRIDGO has never heard of
+        you" answer that arrives after that is stale: acting on it would erase
+        the rider record that had just been created.
+      */
+      if (decisionAtStart !== sessionDecisionVersion) {
+        return get().user ? "adopted" : "unassigned";
+      }
+      const unassigned =
+        error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404);
+      if (unassigned) {
+        set({
+          user: null,
+          authSource: null,
+          loading: false,
+          error: null,
+          showErrorOnLogin: false,
+          needsApplication: true,
+        });
+        return "unassigned";
+      }
       set({
         user: null,
         authSource: null,
@@ -337,7 +413,7 @@ export const useSession = create<SessionState>((set, get) => ({
         error: loginErrorMessage(error),
         showErrorOnLogin: true,
       });
-      return false;
+      return "rejected";
     }
   },
   refreshUser: async () => {
@@ -382,6 +458,7 @@ export const useSession = create<SessionState>((set, get) => ({
         authSource: null,
         error: null,
         showErrorOnLogin: false,
+        needsApplication: false,
       });
       void usePush.getState().release();
     }

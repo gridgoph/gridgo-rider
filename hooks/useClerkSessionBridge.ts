@@ -21,6 +21,11 @@ export function useClerkSessionBridge(): boolean {
   const authSource = useSession((state) => state.authSource);
   const [identityReady, setIdentityReady] = useState(false);
   const handledSession = useRef<string | null>(null);
+  // A session GRIDGO has no rider record for stays signed in, so `authSource`
+  // never becomes "clerk" and the short-circuit below would miss. Without this
+  // the effect would ask `/auth/me` again on every render while someone fills
+  // in the application form.
+  const settledUnassigned = useRef<string | null>(null);
 
   useEffect(() => bindClerkSignOut(signOut), [signOut]);
 
@@ -32,6 +37,7 @@ export function useClerkSessionBridge(): boolean {
 
     if (!isSignedIn) {
       handledSession.current = null;
+      settledUnassigned.current = null;
       api.setTokenProvider(null);
       if (authSource === "clerk") clearSession();
       setIdentityReady(true);
@@ -72,15 +78,32 @@ export function useClerkSessionBridge(): boolean {
       return;
     }
 
+    if (settledUnassigned.current === sessionId) {
+      setIdentityReady(true);
+      return;
+    }
+
     beginClerkSession();
     handledSession.current = sessionId;
     setIdentityReady(false);
     const removeProvider = api.setTokenProvider(() => getToken());
     let cancelled = false;
 
-    void adoptClerkSession().then((adopted) => {
+    void adoptClerkSession().then((adoption) => {
       if (cancelled) return;
-      if (!adopted) {
+      /*
+        Only a rejection ends the session.
+
+        "unassigned" means Clerk authenticated someone GRIDGO holds no rider
+        record for — every rider between verifying their email and filing their
+        application. Signing them out here destroyed the session their own
+        application had to be filed against, and the apply screen was replaced
+        by a sign-in screen blaming their password. The bearer stays installed
+        so that application can authenticate.
+      */
+      if (adoption === "unassigned") {
+        settledUnassigned.current = sessionId;
+      } else if (adoption === "rejected") {
         removeProvider();
         void signOut().catch(() => {});
       }
