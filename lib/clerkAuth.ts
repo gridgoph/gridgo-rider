@@ -62,8 +62,12 @@ type ClerkErrorLike = {
 export function clerkErrorMessage(error: unknown, fallback: string): string {
   if (typeof error !== "object" || error === null) return fallback;
   const first = (error as ClerkErrorLike).errors?.[0];
-  const message = first?.longMessage ?? first?.message;
-  return typeof message === "string" && message.trim() ? message.trim() : fallback;
+  const structured = first?.longMessage ?? first?.message;
+  if (typeof structured === "string" && structured.trim()) return structured.trim();
+  // A thrown Error (incomplete factor, leftover session) used to collapse into
+  // "Wrong email or password" and hide the real reason.
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return fallback;
 }
 
 /**

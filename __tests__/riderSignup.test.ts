@@ -27,6 +27,8 @@ describe("public rider self-signup", () => {
     const welcome = source("app/(auth)/welcome.tsx");
     expect(welcome).toContain('label="Sign up"');
     expect(welcome).toContain('label="Sign in"');
+    expect(welcome).toMatch(/label="Sign up"[\s\S]*size="large"/);
+    expect(welcome).toMatch(/label="Sign in"[\s\S]*size="large"/);
     expect(welcome).toContain("/(auth)/signup");
     expect(welcome).toContain("/(auth)/login");
     expect(welcome).toMatch(/approve/i);

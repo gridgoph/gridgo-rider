@@ -1,10 +1,28 @@
 import {
+  clerkErrorMessage,
   clerkPublishableKey,
   readGridgoRole,
   resolveClerkPublishableKey,
   resolveGridgoRole,
   riderAccessError,
 } from "@/lib/clerkAuth";
+
+describe("clerkErrorMessage", () => {
+  it("prefers Clerk's structured copy", () => {
+    expect(
+      clerkErrorMessage(
+        { errors: [{ longMessage: "Password is incorrect." }] },
+        "Wrong email or password.",
+      ),
+    ).toBe("Password is incorrect.");
+  });
+
+  it("does not hide a thrown Error behind the password fallback", () => {
+    expect(
+      clerkErrorMessage(new Error("Additional verification is required."), "Wrong email or password."),
+    ).toBe("Additional verification is required.");
+  });
+});
 
 describe("Clerk rider role policy", () => {
   it("accepts only the rider role from public metadata", () => {

@@ -16,9 +16,19 @@ jest.mock("@clerk/expo", () => {
   const signOut = jest.fn(async () => undefined);
   const signIn = {
     status: "needs_identifier",
+    existingSession: null,
+    supportedSecondFactors: [],
     password: jest.fn(async () => ({ error: null })),
     create: jest.fn(async () => ({ error: null })),
     finalize: jest.fn(async () => ({ error: null })),
+    mfa: {
+      sendEmailCode: jest.fn(async () => ({ error: null })),
+      verifyEmailCode: jest.fn(async () => ({ error: null })),
+      sendPhoneCode: jest.fn(async () => ({ error: null })),
+      verifyPhoneCode: jest.fn(async () => ({ error: null })),
+      verifyTOTP: jest.fn(async () => ({ error: null })),
+      verifyBackupCode: jest.fn(async () => ({ error: null })),
+    },
     resetPasswordEmailCode: {
       sendCode: jest.fn(async () => ({ error: null })),
       verifyCode: jest.fn(async () => ({ error: null })),
@@ -40,7 +50,7 @@ jest.mock("@clerk/expo", () => {
       sessionClaims: null,
     }),
     useUser: () => ({ isLoaded: true, isSignedIn: false, user: null }),
-    useClerk: () => ({ signOut }),
+    useClerk: () => ({ signOut, setActive: jest.fn(async () => undefined) }),
     useSignIn: () => ({ isLoaded: true, signIn }),
     useSignUp: () => ({ isLoaded: true, signUp }),
   };

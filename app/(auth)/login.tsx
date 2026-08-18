@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
 import { AuthDivider } from "@/components/AuthDivider";
+import { CodeField } from "@/components/CodeField";
 import { FormScroll } from "@/components/FormScroll";
 import { GoogleButton } from "@/components/GoogleButton";
 import { GridgoLogo } from "@/components/GridgoLogo";
@@ -12,56 +13,117 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
-import { StatusChip } from "@/components/StatusChip";
 import { fieldInputStyle } from "@/constants/theme";
 import { useThemeColors } from "@/hooks/useTheme";
-import { getApiBase, health } from "@/lib/api";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
-import { DEV_LOGIN } from "@/lib/devLogin";
+import {
+  clerkSignOutRecoveryMessage,
+  continuationAfterPassword,
+  loginVerifyCopy,
+  type ClerkSecondFactorStrategy,
+} from "@/lib/clerkSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
 import { useSession } from "@/store/session";
 
-type HealthState = "checking" | "reachable" | "unreachable";
+/** Clerk's emailed / SMS / authenticator codes are six digits. */
+const CODE_LENGTH = 6;
+
+/**
+ * Seconds before another code can be asked for. Long enough that the first
+ * one has time to arrive — most "it isn't working" taps are impatience.
+ */
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function LoginScreen() {
   const router = useRouter();
   const { fetchStatus, signIn } = useSignIn();
   const { startSSOFlow } = useSSO();
   const { isSignedIn } = useAuth();
-  const { setActive } = useClerk();
+  const { setActive, signOut } = useClerk();
   const colors = useThemeColors();
   const user = useSession((state) => state.user);
   // Set while the session bridge adopts a fresh Clerk session against /auth/me.
   const adopting = useSession((state) => state.loading);
   const storeError = useSession((state) => state.error);
   const clearError = useSession((state) => state.clearError);
-  const [email, setEmail] = useState(() => DEV_LOGIN?.email ?? "");
-  const [password, setPassword] = useState(() => DEV_LOGIN?.password ?? "");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [clerkError, setClerkError] = useState<string | null>(null);
-  const [apiBase] = useState(() => getApiBase());
-  const [healthState, setHealthState] = useState<HealthState>("checking");
+  const [verifying, setVerifying] = useState(false);
+  const [code, setCode] = useState("");
+  const [verifyFactor, setVerifyFactor] = useState<ClerkSecondFactorStrategy>("email_code");
+  const [resendIn, setResendIn] = useState(0);
   const passwordField = useRef<TextInput>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    void health()
-      .then((result) => {
-        if (!cancelled) setHealthState(result.ok ? "reachable" : "unreachable");
-      })
-      .catch(() => {
-        if (!cancelled) setHealthState("unreachable");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((left) => left - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   if (user) return <Redirect href="/(tabs)/active" />;
 
-  async function submitPassword() {
+  async function sendSecondFactor(factor: ClerkSecondFactorStrategy) {
+    if (!signIn) return;
+    if (factor === "phone_code") {
+      const sent = await signIn.mfa.sendPhoneCode();
+      if (sent.error) throw sent.error;
+      return;
+    }
+    if (factor === "email_code") {
+      const sent = await signIn.mfa.sendEmailCode();
+      if (sent.error) throw sent.error;
+    }
+  }
+
+  async function continueAfterPassword(
+    retriedExistingSession = false,
+  ): Promise<"ready" | "code" | "blocked"> {
+    if (!signIn) return "blocked";
+    const next = continuationAfterPassword(
+      signIn.status,
+      signIn.existingSession,
+      signIn.supportedSecondFactors,
+    );
+    if (next.kind === "existing_session") {
+      if (!retriedExistingSession) {
+        try {
+          await signOut();
+        } catch {
+          setClerkError(clerkSignOutRecoveryMessage);
+          return "blocked";
+        }
+        setBusy(false);
+        await submitPassword(true);
+        return "blocked";
+      }
+      const adopted = await setActive({ session: next.sessionId });
+      if (adopted && typeof adopted === "object" && "error" in adopted && adopted.error) {
+        throw adopted.error;
+      }
+      return "ready";
+    }
+    if (next.kind === "blocked") {
+      setClerkError(next.message);
+      return "blocked";
+    }
+    if (next.kind === "verification") {
+      await sendSecondFactor(next.factor);
+      setVerifyFactor(next.factor);
+      setCode("");
+      setVerifying(true);
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      return "code";
+    }
+    const completed = await signIn.finalize();
+    if (completed.error) throw completed.error;
+    return "ready";
+  }
+
+  async function submitPassword(retriedExistingSession = false) {
     if (busy || adopting) return;
-    const normalizedEmail = email.trim();
+    const normalizedEmail = email.trim().toLowerCase();
     setClerkError(null);
     clearError();
 
@@ -70,7 +132,7 @@ export default function LoginScreen() {
       return;
     }
 
-    if (fetchStatus === "fetching") return;
+    if (!signIn || fetchStatus === "fetching") return;
 
     setBusy(true);
     // Clerk is the only identity source. The API answers 404 on /auth/login,
@@ -81,19 +143,76 @@ export default function LoginScreen() {
         password,
       });
       if (attempt.error) throw attempt.error;
-      if (signIn.status !== "complete") {
-        throw new Error("Additional verification is required.");
-      }
-      const completed = await signIn.finalize();
-      if (completed.error) throw completed.error;
+      await continueAfterPassword(retriedExistingSession);
     } catch (caught) {
       // The session bridge may have already left a rider-facing explanation.
       // Never render a title with an empty body.
       if (!useSession.getState().error) {
         setClerkError(clerkErrorMessage(caught, "Wrong email or password."));
       }
+    } finally {
       setBusy(false);
     }
+  }
+
+  async function verifyCode() {
+    const typed = code.replace(/\D/g, "");
+    if (!signIn || typed.length < CODE_LENGTH || busy || adopting) return;
+    setClerkError(null);
+    clearError();
+    setBusy(true);
+    try {
+      const checked =
+        verifyFactor === "phone_code"
+          ? await signIn.mfa.verifyPhoneCode({ code: typed })
+          : verifyFactor === "totp"
+            ? await signIn.mfa.verifyTOTP({ code: typed })
+            : verifyFactor === "backup_code"
+              ? await signIn.mfa.verifyBackupCode({ code: typed })
+              : await signIn.mfa.verifyEmailCode({ code: typed });
+      if (checked.error) throw checked.error;
+      if (signIn.status !== "complete") {
+        throw new Error("That code did not match. Check the six digits, or send another.");
+      }
+      const completed = await signIn.finalize();
+      if (completed.error) throw completed.error;
+    } catch (caught) {
+      setCode("");
+      if (!useSession.getState().error) {
+        setClerkError(
+          clerkErrorMessage(
+            caught,
+            "That code did not match. Check the six digits, or send another.",
+          ),
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendCode() {
+    if (!signIn || busy || resendIn > 0) return;
+    setClerkError(null);
+    clearError();
+    setCode("");
+    setBusy(true);
+    try {
+      await sendSecondFactor(verifyFactor);
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+    } catch (caught) {
+      setClerkError(clerkErrorMessage(caught, "GRIDGO could not send another code. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function editEmail() {
+    setCode("");
+    setResendIn(0);
+    setClerkError(null);
+    clearError();
+    setVerifying(false);
   }
 
   async function continueWithGoogle() {
@@ -121,6 +240,102 @@ export default function LoginScreen() {
 
   const loading = busy || adopting;
   const error = clerkError ?? storeError;
+  const verifyCopy = loginVerifyCopy(verifyFactor, email);
+  const codeProblem = Boolean(clerkError);
+
+  if (verifying) {
+    return (
+      <Screen edges={["bottom"]}>
+        <FormScroll contentClassName="gg-page grow gap-8 py-6">
+          <View className="gap-6">
+            <GridgoLogo role="rider" />
+            <View className="gap-2">
+              <Text className="text-h1 text-text-primary">{verifyCopy.heading}</Text>
+              <Text className="text-body-lg text-text-secondary">{verifyCopy.body}</Text>
+            </View>
+          </View>
+
+          <View className="gap-4">
+            <View className="gap-3">
+              <Text className="text-overline text-text-muted">
+                {verifyFactor === "phone_code"
+                  ? "PHONE CODE"
+                  : verifyFactor === "totp"
+                    ? "AUTHENTICATOR CODE"
+                    : verifyFactor === "backup_code"
+                      ? "BACKUP CODE"
+                      : "EMAILED CODE"}
+              </Text>
+              <CodeField
+                value={code}
+                onChangeText={(next) => {
+                  setCode(next);
+                  setClerkError(null);
+                  clearError();
+                }}
+                length={CODE_LENGTH}
+                invalid={codeProblem}
+                onComplete={() => void verifyCode()}
+                autoFocus
+                accessibilityLabel="Emailed code"
+                accessibilityHint={`Enter the ${CODE_LENGTH} digits GRIDGO emailed you`}
+                testID="login-code"
+              />
+            </View>
+
+            {error ? (
+              <InlineNotice
+                tone="error"
+                icon="circle-x"
+                title={codeProblem ? "Code not accepted" : "Not signed in"}
+                body={error}
+              />
+            ) : null}
+
+            <PrimaryButton
+              label={loading ? "Signing in…" : "Sign in"}
+              onPress={() => void verifyCode()}
+              disabled={loading || code.length < CODE_LENGTH}
+              size="large"
+            />
+
+            <View className="items-center">
+              {verifyCopy.resend ? (
+                <Pressable
+                  onPress={() => void resendCode()}
+                  disabled={loading || resendIn > 0}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: loading || resendIn > 0 }}
+                  className="min-h-11 items-center justify-center"
+                >
+                  <Text
+                    className={
+                      resendIn > 0
+                        ? "text-button text-text-muted"
+                        : "text-button text-text-primary"
+                    }
+                  >
+                    {resendIn > 0 ? `Send another code in ${resendIn}s` : "Send another code"}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                onPress={editEmail}
+                disabled={loading}
+                accessibilityRole="button"
+                className="min-h-11 items-center justify-center"
+              >
+                <Text className="text-caption text-text-secondary">
+                  {email.trim() ? `Not ${email.trim()}? Change it` : "Use a different email"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </FormScroll>
+      </Screen>
+    );
+  }
 
   return (
     <Screen edges={["bottom"]}>
@@ -195,19 +410,6 @@ export default function LoginScreen() {
           >
             <Text className="text-button text-text-primary">Need an account? Sign up</Text>
           </Pressable>
-        </View>
-
-        <View className="flex-row flex-wrap items-center gap-2 pt-2">
-          <Text className="text-caption text-text-muted" numberOfLines={2}>
-            {apiBase}
-          </Text>
-          {healthState === "checking" ? (
-            <StatusChip tone="neutral" label="Checking…" icon="clock" />
-          ) : healthState === "reachable" ? (
-            <StatusChip tone="success" label="Reachable" icon="circle-check" />
-          ) : (
-            <StatusChip tone="error" label="Unreachable" icon="circle-x" />
-          )}
         </View>
       </FormScroll>
     </Screen>

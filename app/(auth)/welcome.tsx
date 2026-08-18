@@ -52,6 +52,7 @@ export default function WelcomeScreen() {
             <SecondaryButton
               label="Sign in"
               onPress={() => router.push("/(auth)/login")}
+              size="large"
             />
           </View>
 
