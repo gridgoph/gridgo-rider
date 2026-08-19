@@ -173,6 +173,8 @@ export type Notification = {
   userId: string;
   title: string;
   body: string;
+  /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
+  imageUrl?: string | null;
   read: boolean;
   at: string;
   /** Internal kind. Never rendered — it decides nothing the rider reads. */
@@ -320,6 +322,14 @@ export function getApiBase(): string {
     devHostUri: getExpoDevHostUri(),
     platformOS: Platform.OS,
   });
+}
+
+/** In-app picture URL. Hosted broadcast paths resolve against this app's API. */
+export function notificationImageUrl(imageUrl?: string | null): string | null {
+  const value = typeof imageUrl === "string" ? imageUrl.trim() : "";
+  if (!value) return null;
+  if (value.startsWith("/")) return `${getApiBase().replace(/\/$/, "")}${value}`;
+  return value;
 }
 
 export function setToken(token: string | null): void {

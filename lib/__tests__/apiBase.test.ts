@@ -1,4 +1,4 @@
-import { hostnameFromDevHostUri, resolveApiBase } from "@/lib/api";
+import { hostnameFromDevHostUri, notificationImageUrl, resolveApiBase } from "@/lib/api";
 
 describe("resolveApiBase", () => {
   const defaultPort = "8787";
@@ -140,5 +140,15 @@ describe("hostnameFromDevHostUri", () => {
   it("returns null for empty input", () => {
     expect(hostnameFromDevHostUri(null)).toBeNull();
     expect(hostnameFromDevHostUri("")).toBeNull();
+  });
+});
+
+describe("notificationImageUrl", () => {
+  it("leaves a public picture link alone and ignores blanks", () => {
+    expect(notificationImageUrl("https://cdn.gridgo.example/update.png")).toBe(
+      "https://cdn.gridgo.example/update.png",
+    );
+    expect(notificationImageUrl("  ")).toBeNull();
+    expect(notificationImageUrl(undefined)).toBeNull();
   });
 });

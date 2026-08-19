@@ -1,10 +1,11 @@
+import { Image } from "expo-image";
 import { CheckCheck } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { OrderStageBar } from "@/components/OrderStageBar";
 import { useThemeColors } from "@/hooks/useTheme";
-import type { Notification, Order } from "@/lib/api";
+import { notificationImageUrl, type Notification, type Order } from "@/lib/api";
 import { orderStage } from "@/lib/orderStage";
 import { formatAlertAt } from "@/lib/riderOrder";
 
@@ -38,6 +39,7 @@ type Props = {
 export function AlertCard({ alert, order, read, onMarkRead }: Props) {
   const colors = useThemeColors();
   const progress = order ? orderStage(order) : null;
+  const picture = notificationImageUrl(alert.imageUrl);
 
   const spoken = [
     read ? null : "Unread.",
@@ -112,6 +114,15 @@ export function AlertCard({ alert, order, read, onMarkRead }: Props) {
             </Text>
           </View>
         </View>
+
+        {picture ? (
+          <Image
+            testID="alert-picture"
+            source={{ uri: picture }}
+            style={{ width: "100%", height: 144, borderRadius: 12 }}
+            contentFit="cover"
+          />
+        ) : null}
 
         {progress && progress.index >= 0 ? (
           <View className="gap-2 border-t border-outline-subtle pt-4">
