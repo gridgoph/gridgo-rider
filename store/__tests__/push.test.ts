@@ -60,6 +60,7 @@ beforeEach(() => {
 
 afterEach(() => {
   api.setToken(null);
+  api.setTokenProvider(null);
 });
 
 describe("pushSupported", () => {
@@ -122,6 +123,25 @@ describe("registerIfGranted", () => {
     expect(usePush.getState().claimed).toBe(false);
     claimed.mockRestore();
     unclaimed.mockRestore();
+  });
+
+  it("claims the token when Clerk holds the session and getToken is empty", async () => {
+    // Clerk never writes tokenMemory. Looking only at getToken() registered
+    // the phone unclaimed, so a Rider broadcast had nobody to interrupt.
+    api.setToken(null);
+    api.setTokenProvider(async () => "clerk-jwt");
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    const claimed = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    const unclaimed = jest.spyOn(api, "registerDeviceUnclaimed");
+
+    await usePush.getState().registerIfGranted();
+
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(unclaimed).not.toHaveBeenCalled();
+    expect(usePush.getState().claimed).toBe(true);
+    claimed.mockRestore();
+    unclaimed.mockRestore();
+    api.setTokenProvider(null);
   });
 
   it("claims the same token the moment a rider signs in", async () => {

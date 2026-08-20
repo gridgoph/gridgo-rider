@@ -360,6 +360,26 @@ export function getToken(): string | null {
   return tokenMemory;
 }
 
+/**
+ * Whether this phone currently has a GRIDGO bearer — a stored demo token *or*
+ * a live Clerk session that can mint one.
+ *
+ * Push registration used to look at {@link getToken} only. Clerk never writes
+ * that memory: it installs a provider, so a signed-in rider looked unsigned-in
+ * and the phone registered unclaimed (or failed the unclaimed shape check).
+ * A Rider broadcast then had nobody to interrupt.
+ */
+export async function sessionBearerPresent(): Promise<boolean> {
+  if (tokenMemory) return true;
+  if (!tokenProvider) return false;
+  try {
+    const token = await tokenProvider();
+    return Boolean(token?.trim());
+  } catch {
+    return false;
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
