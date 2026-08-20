@@ -231,6 +231,12 @@ export type ResolveApiBaseInput = {
   devHostUri?: string | null;
   /** Platform.OS value. */
   platformOS: string;
+  /**
+   * `false` only for an Android emulator. Loopback then becomes `10.0.2.2`.
+   * A physical phone (or unknown) keeps IPv4 loopback so USB reverse of
+   * `:8787` works on any Wi-Fi without baking a LAN address into the app.
+   */
+  isDevice?: boolean;
 };
 
 /**
@@ -239,7 +245,7 @@ export type ResolveApiBaseInput = {
  * Precedence:
  * 1. Explicit EXPO_PUBLIC_API_URL (trailing slash stripped)
  * 2. Hostname from the Expo dev server + apiPort
- * 3. Android emulator loopback alias when dev host is localhost
+ * 3. Android loopback: emulator → 10.0.2.2; USB phone → 127.0.0.1
  * 4. http://127.0.0.1:apiPort
  */
 export function resolveApiBase({
@@ -247,6 +253,7 @@ export function resolveApiBase({
   envPort,
   devHostUri,
   platformOS,
+  isDevice,
 }: ResolveApiBaseInput): string {
   const trimmed = envUrl?.trim().replace(/\/$/, "");
   if (trimmed) return trimmed;
@@ -255,11 +262,13 @@ export function resolveApiBase({
   const hostname = hostnameFromDevHostUri(devHostUri);
 
   if (hostname) {
-    if (
-      (hostname === "localhost" || hostname === "127.0.0.1") &&
-      platformOS === "android"
-    ) {
-      return `http://10.0.2.2:${apiPort}`;
+    const loopback = hostname === "localhost" || hostname === "127.0.0.1";
+    if (loopback && platformOS === "android") {
+      if (isDevice === false) {
+        return `http://10.0.2.2:${apiPort}`;
+      }
+      // `localhost` can resolve to IPv6 ::1; adb reverse only tunnels IPv4.
+      return `http://127.0.0.1:${apiPort}`;
     }
     return `http://${hostname}:${apiPort}`;
   }
@@ -321,6 +330,7 @@ export function getApiBase(): string {
     envPort: process.env.EXPO_PUBLIC_API_PORT,
     devHostUri: getExpoDevHostUri(),
     platformOS: Platform.OS,
+    isDevice: Constants.isDevice,
   });
 }
 
@@ -417,13 +427,31 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
   return data as T;
 }
 
+/**
+ * `/auth/me` and the rider profile both speak `plateNumber`. This app's
+ * session has always called it `vehiclePlate`, so both reads are mapped here
+ * rather than at every screen.
+ */
+function sessionUser(user: User): User {
+  const profile = user.riderProfile as (RiderProfile & { plateNumber?: string }) | undefined;
+  if (!profile) return user;
+  return {
+    ...user,
+    riderProfile: {
+      vehicleType: profile.vehicleType,
+      vehiclePlate: profile.vehiclePlate || profile.plateNumber || "",
+      licenseNumber: profile.licenseNumber || "",
+    },
+  };
+}
+
 export async function login(email: string, password: string): Promise<{ token: string; user: User }> {
   const result = await request<{ token: string; user: User }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
   setToken(result.token);
-  return result;
+  return { ...result, user: sessionUser(result.user) };
 }
 
 /**
@@ -581,7 +609,59 @@ export async function me(options: { ignoreUnauthorized?: boolean } = {}): Promis
   const result = await request<{ user: User }>("/auth/me", {
     ignoreUnauthorized: options.ignoreUnauthorized,
   });
-  return result.user;
+  return sessionUser(result.user);
+}
+
+/* --------------------------------------------------------------------------
+   The rider's own details
+
+   The record behind the identity card on Account: the name Operations sees,
+   the number they call, and the vehicle on the application. GRIDGO owns those.
+   The portrait belongs to the GRIDGO sign-in and never goes through this pair.
+
+   The write carries the version it was read at, as both `expectedVersion` in
+   the body and `If-Match` in the header, or GRIDGO answers
+   `400 expected_version_required`. Email is deliberately absent from the
+   patch type — the platform refuses it.
+   -------------------------------------------------------------------------- */
+
+export type RiderSelfProfile = {
+  userId: string;
+  name: string | null;
+  /** Canonical `+639XXXXXXXXX`, or null when the rider has never given one. */
+  phone: string | null;
+  /** Owned by the GRIDGO sign-in. Read-only everywhere in this app. */
+  email: string;
+  vehicleType: string;
+  plateNumber: string;
+  licenseNumber: string | null;
+  version: number;
+  updatedAt: string;
+};
+
+export type RiderSelfProfilePatch = {
+  name?: string;
+  phone?: string;
+  vehicleType?: string;
+  plateNumber?: string;
+  licenseNumber?: string;
+};
+
+export async function getRiderProfile(): Promise<RiderSelfProfile> {
+  const result = await request<{ profile: RiderSelfProfile }>("/me/rider-profile");
+  return result.profile;
+}
+
+export async function updateRiderProfile(
+  version: number,
+  patch: RiderSelfProfilePatch,
+): Promise<RiderSelfProfile> {
+  const result = await request<{ profile: RiderSelfProfile }>("/me/rider-profile", {
+    method: "PATCH",
+    headers: { "If-Match": String(version) },
+    body: JSON.stringify({ ...patch, expectedVersion: version }),
+  });
+  return result.profile;
 }
 
 export async function listOrders(): Promise<Order[]> {

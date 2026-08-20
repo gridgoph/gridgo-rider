@@ -16,8 +16,8 @@ export type RiderActionState = {
 /**
  * The next step of the job in hand, wherever the rider is in the app.
  *
- * Both the raised centre disc and the Active screen read this, so the disc and
- * the screen's own button can never disagree about what happens next.
+ * Active reads this so the trip's next-step button and the status chip stay
+ * on the same phase. Finding work is Offers, not a tab-bar action.
  */
 export function useRiderAction(): RiderActionState {
   const order = useActiveTrip((s) => s.order);

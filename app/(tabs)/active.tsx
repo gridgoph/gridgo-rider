@@ -253,12 +253,6 @@ export default function ActiveScreen() {
                 body="Accept an offer and it appears here with the route, the stops, and every step you need to close it."
                 actionLabel="Browse offers"
                 onAction={() => router.push("/(tabs)/offers")}
-                /*
-                  Quiet on purpose: the raised disc below already offers this
-                  exact move in yellow, and the same action twice in the same
-                  colour makes both of them ordinary.
-                */
-                secondaryAction
               />
             ) : null}
           </>
@@ -292,9 +286,7 @@ export default function ActiveScreen() {
 
             {/*
               The step sits directly under where the rider is going, above the
-              fold on every phone. It is deliberately NOT pinned above the tab
-              bar: the raised disc already carries this same action from every
-              screen, and stacking two yellows an inch apart makes both quieter.
+              fold on every phone. Status is the chip; this button is the move.
             */}
             {cta ? (
               <Animated.View

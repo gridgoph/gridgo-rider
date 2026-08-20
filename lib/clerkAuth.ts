@@ -128,6 +128,22 @@ export function splitPersonName(value: string): { firstName: string; lastName?: 
   return parts.length ? { firstName, lastName: parts.join(" ") } : { firstName };
 }
 
+/**
+ * The person currently signed in, from Clerk.
+ *
+ * GRIDGO still stores a copy for Operations. Account prefers this live name so
+ * a rename is visible before the copy lands.
+ */
+export function clerkDisplayName(
+  user: { firstName?: string | null; lastName?: string | null } | null | undefined,
+): string | undefined {
+  const name = [user?.firstName, user?.lastName]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter(Boolean)
+    .join(" ");
+  return name || undefined;
+}
+
 /** Production builds must be configured explicitly with a live Clerk instance. */
 export function clerkPublishableKey(
   value: string | null | undefined,

@@ -71,6 +71,7 @@ describe("resolveApiBase", () => {
         envPort: null,
         devHostUri: "127.0.0.1:8081",
         platformOS: "android",
+        isDevice: false,
       }),
     ).toBe(`http://10.0.2.2:${defaultPort}`);
 
@@ -80,8 +81,21 @@ describe("resolveApiBase", () => {
         envPort: null,
         devHostUri: "localhost:8081",
         platformOS: "android",
+        isDevice: false,
       }),
     ).toBe(`http://10.0.2.2:${defaultPort}`);
+  });
+
+  it("3b. Android USB phone uses IPv4 loopback so a reverse reaches GRIDGO on any Wi-Fi", () => {
+    expect(
+      resolveApiBase({
+        envUrl: null,
+        envPort: null,
+        devHostUri: "localhost:8083",
+        platformOS: "android",
+        isDevice: true,
+      }),
+    ).toBe(`http://127.0.0.1:${defaultPort}`);
   });
 
   it("4. iOS simulator keeps loopback hostname from the dev server (not the Android alias)", () => {

@@ -215,6 +215,13 @@ function AppShell() {
               }}
             />
             <Stack.Screen
+              name="rider-details"
+              options={{
+                title: "Your details",
+                ...multiOriginPushedScreenOptions,
+              }}
+            />
+            <Stack.Screen
               name="design-system"
               options={{
                 title: "Design system",
@@ -243,6 +250,7 @@ function AppShell() {
               see `confirmSheetScreenOptions` for what that buys.
             */}
             <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+            <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
           </Stack>
         </AuthGate>
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
