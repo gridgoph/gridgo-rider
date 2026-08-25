@@ -98,10 +98,7 @@ export default function LoginScreen() {
         await submitPassword(true);
         return "blocked";
       }
-      const adopted = await setActive({ session: next.sessionId });
-      if (adopted && typeof adopted === "object" && "error" in adopted && adopted.error) {
-        throw adopted.error;
-      }
+      await setActive({ session: next.sessionId });
       return "ready";
     }
     if (next.kind === "blocked") {

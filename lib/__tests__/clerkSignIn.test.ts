@@ -36,9 +36,10 @@ describe("continuationAfterPassword", () => {
       kind: "blocked",
       message: clerkPasswordIncompleteMessage,
     });
-    expect(continuationAfterPassword("needs_new_password").message).toBe(
-      clerkNeedsNewPasswordMessage,
-    );
+    expect(continuationAfterPassword("needs_new_password")).toEqual({
+      kind: "blocked",
+      message: clerkNeedsNewPasswordMessage,
+    });
   });
 });
 
