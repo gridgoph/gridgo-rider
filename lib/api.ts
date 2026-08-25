@@ -453,6 +453,7 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
  * rather than at every screen.
  */
 function sessionUser(user: User): User {
+  if (!user) return user;
   const profile = user.riderProfile as (RiderProfile & { plateNumber?: string }) | undefined;
   if (!profile) return user;
   return {
