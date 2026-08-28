@@ -46,9 +46,19 @@ describe("a field a rider is typing into stays visible", () => {
   it("scrolls every screen that has a field with the keyboard-aware scroll", () => {
     // Field primitives do not own a viewport; their screen owns the scroll.
     // Every route that composes one is still enumerated independently here.
+    const primitives = [
+      "FormScroll.tsx",
+      "PasswordField.tsx",
+      "CodeField.tsx",
+      "TextField.tsx",
+    ].map((name) => join("components", name));
+    // Full-bleed map: the search sits at the top of the canvas. FormScroll
+    // would own the map itself, which is the wrong viewport.
+    const overlays = [join("app", "(tabs)", "map.tsx")];
+
     const offenders = withFields
-      .filter((file) => !file.endsWith(join("components", "FormScroll.tsx")))
-      .filter((file) => !file.endsWith(join("components", "PasswordField.tsx")))
+      .filter((file) => !primitives.some((primitive) => file.endsWith(primitive)))
+      .filter((file) => !overlays.some((overlay) => file.endsWith(overlay)))
       .filter((file) => !/from "@\/components\/FormScroll"/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);

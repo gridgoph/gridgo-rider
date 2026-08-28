@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { useCallback, useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
-import { DESTINATION_TABS } from "@/constants/tabs";
+import { TABS } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
@@ -15,13 +15,11 @@ const TRIP_POLL_MS = 30_000;
 /**
  * Rider tab shell.
  *
- * Offers · Active · [action] · Earnings · Account. The centre column is an
- * action rather than a fifth screen — see `constants/tabs.ts` for why, and
- * `lib/riderAction.ts` for what it does at each point in a job.
+ * Offers · Active · Map · Earnings · Account. Finding work is Offers. The
+ * job in hand, its status, and the next step live on Active.
  *
- * The shell owns the trip poll because the disc's verb depends on it: a rider
- * sitting on Earnings still needs the disc to say "Hand over" the moment the
- * job reaches that step.
+ * The shell still polls the trip while the app is open so Active's step
+ * stays current even if the rider is sitting on Earnings when the job moves.
  *
  * The bar is drawn from tokens on every platform — see `GridgoTabBar`.
  */
@@ -84,7 +82,7 @@ export default function TabsLayout() {
         animation: "none",
       }}
     >
-      {DESTINATION_TABS.map((tab) => (
+      {TABS.map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} options={{ title: tab.label }} />
       ))}
     </Tabs>

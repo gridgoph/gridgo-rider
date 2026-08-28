@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
 import { AlertsButton } from "@/components/AlertsButton";
+import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -124,6 +125,7 @@ export default function OffersScreen() {
           subtitle={
             approval.canWork ? "Jobs ready for pickup. You carry one at a time." : null
           }
+          status={<ApprovalChip />}
           action={<AlertsButton />}
         />
 

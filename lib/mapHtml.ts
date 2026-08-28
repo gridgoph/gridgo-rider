@@ -12,6 +12,19 @@ import type { LatLng, LonLat } from "@/lib/geo";
 
 export type MapTheme = "light" | "dark";
 
+export type MapPlace = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+};
+
+export type MapView = {
+  lat: number;
+  lng: number;
+  zoom?: number;
+};
+
 export type MapModel = {
   theme: MapTheme;
   pickup: LatLng | null;
@@ -25,6 +38,14 @@ export type MapModel = {
   rider: LatLng | null;
   /** When true, show an on-map note that routing failed. */
   routeUnavailable: boolean;
+  /**
+   * Supplier / shop pins for the city Map tab. Absent on trip maps.
+   * A later live directory fills the same shape.
+   */
+  places?: readonly MapPlace[] | null;
+  selectedPlaceId?: string | null;
+  /** When set, the camera goes here instead of fitting markers. */
+  view?: MapView | null;
 };
 
 const LIGHT_TILES =
@@ -83,6 +104,27 @@ export function buildMapHtml(model: MapModel): string {
       width: 16px; height: 16px; border-radius: 999px;
       background: #1565C0; border: 3px solid #fff;
     }
+    /* Teardrop — a pin, not a plate. Head is the circle; tip is the diamond. */
+    .pin-shop { width: 32px; }
+    .pin-shop .pin-head {
+      width: 30px; height: 30px; border-radius: 999px;
+      background: #FFDE58; color: #1a1a1a;
+      border: 2px solid #1a1a1a;
+      display: flex; align-items: center; justify-content: center;
+      font: 700 12px/1 system-ui, sans-serif;
+      position: relative; z-index: 1;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+    .pin-shop .pin-tip {
+      width: 12px; height: 12px;
+      background: #FFDE58;
+      border-right: 2px solid #1a1a1a;
+      border-bottom: 2px solid #1a1a1a;
+      transform: translateY(-7px) rotate(45deg);
+    }
+    .pin-shop.is-selected .pin-head {
+      box-shadow: 0 0 0 3px #ffffff, 0 1px 3px rgba(0,0,0,0.35);
+    }
     .pin-label {
       margin-top: 2px; padding: 1px 4px;
       font: 600 9px/1.2 system-ui, sans-serif;
@@ -116,16 +158,55 @@ export function buildMapHtml(model: MapModel): string {
     var tileLayer = null;
     var routeLayer = null;
     var markers = [];
+    var cameraReady = false;
+    var lastViewKey = '';
+    var lastTripKey = '';
 
     function clearMarkers() {
       markers.forEach(function (m) { map.removeLayer(m); });
       markers = [];
     }
 
-    function pinIcon(kind, shortLabel) {
-      var cls = kind === 'pickup' ? 'pin-pickup' : kind === 'rider' ? 'pin-rider' : 'pin-dropoff';
-      var mark = kind === 'rider' ? '' : shortLabel;
-      var labelHtml = kind === 'rider' ? '' : '<div class="pin-label">' + shortLabel + '</div>';
+    function notifyHost(payload) {
+      var raw = JSON.stringify(payload);
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(raw);
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(raw, '*');
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function pinIcon(kind, shortLabel, selected, longLabel) {
+      var cls = kind === 'pickup' ? 'pin-pickup'
+        : kind === 'rider' ? 'pin-rider'
+        : kind === 'shop' ? 'pin-shop'
+        : 'pin-dropoff';
+      if (selected) cls += ' is-selected';
+      var mark = kind === 'rider' ? '' : escapeHtml(shortLabel);
+      var caption = longLabel === '' ? '' : (longLabel || shortLabel);
+      var labelHtml = kind === 'rider' || !caption
+        ? ''
+        : '<div class="pin-label">' + escapeHtml(caption) + '</div>';
+      if (kind === 'shop') {
+        return L.divIcon({
+          className: '',
+          html: '<div class="pin pin-shop' + (selected ? ' is-selected' : '') + '">'
+            + '<div class="pin-head">' + mark + '</div>'
+            + '<div class="pin-tip"></div>'
+            + labelHtml
+            + '</div>',
+          iconSize: [32, 44],
+          iconAnchor: [16, 40]
+        });
+      }
       return L.divIcon({
         className: '',
         html: '<div class="pin ' + cls + '"><div class="pin-mark">' + mark + '</div>' + labelHtml + '</div>',
@@ -202,16 +283,48 @@ export function buildMapHtml(model: MapModel): string {
         bounds.push([m.rider.lat, m.rider.lng]);
       }
 
-      if (routeLayer) {
-        try { map.fitBounds(routeLayer.getBounds().pad(0.15)); }
-        catch (e) { /* keep previous view */ }
-      } else if (bounds.length >= 2) {
-        map.fitBounds(bounds, { padding: [36, 36] });
-      } else if (bounds.length === 1) {
-        map.setView(bounds[0], 15);
-      } else {
-        // Davao City centre fallback so an empty model still shows a map.
-        map.setView([7.1907, 125.4553], 12);
+      var places = m.places || [];
+      for (var i = 0; i < places.length; i++) {
+        var place = places[i];
+        if (!place || !isFinite(place.lat) || !isFinite(place.lng)) continue;
+        var selected = Boolean(m.selectedPlaceId && place.id === m.selectedPlaceId);
+        var letter = (place.name || '?').charAt(0).toUpperCase();
+        var shop = L.marker([place.lat, place.lng], {
+          icon: pinIcon('shop', letter, selected, selected ? (place.name || 'Shop') : ''),
+          title: place.name || 'Shop'
+        }).addTo(map);
+        shop.on('click', (function (id) {
+          return function () { notifyHost({ type: 'place', id: id }); };
+        })(place.id));
+        markers.push(shop);
+        bounds.push([place.lat, place.lng]);
+      }
+
+      var viewKey = m.view && isFinite(m.view.lat) && isFinite(m.view.lng)
+        ? m.view.lat + ',' + m.view.lng + ',' + (m.view.zoom || 15)
+        : '';
+      var tripKey = (m.pickup ? m.pickup.lat + ',' + m.pickup.lng : '')
+        + '|' + (m.dropoff ? m.dropoff.lat + ',' + m.dropoff.lng : '')
+        + '|' + ((m.routeCoordinates && m.routeCoordinates.length) || 0);
+      var shouldFitTrip = Boolean(m.pickup || m.dropoff || routeLayer) && tripKey !== lastTripKey;
+      if (viewKey && viewKey !== lastViewKey) {
+        map.setView([m.view.lat, m.view.lng], m.view.zoom || 15);
+        lastViewKey = viewKey;
+        cameraReady = true;
+      } else if (!cameraReady || shouldFitTrip) {
+        if (routeLayer) {
+          try { map.fitBounds(routeLayer.getBounds().pad(0.15)); }
+          catch (e) { /* keep previous view */ }
+        } else if (bounds.length >= 2) {
+          map.fitBounds(bounds, { padding: [36, 36] });
+        } else if (bounds.length === 1) {
+          map.setView(bounds[0], 15);
+        } else {
+          // Davao City centre fallback so an empty model still shows a map.
+          map.setView([7.1907, 125.4553], 12);
+        }
+        lastTripKey = tripKey;
+        cameraReady = true;
       }
     }
 

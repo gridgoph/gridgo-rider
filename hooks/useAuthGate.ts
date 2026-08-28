@@ -20,6 +20,7 @@ export function useAuthGate(): void {
   const user = useSession((s) => s.user);
   const hydrated = useSession((s) => s.hydrated);
   const showErrorOnLogin = useSession((s) => s.showErrorOnLogin);
+  const needsApplication = useSession((s) => s.needsApplication);
   const segments = useSegments();
   const router = useRouter();
   const rootState = useRootNavigationState();
@@ -28,9 +29,22 @@ export function useAuthGate(): void {
   useEffect(() => {
     if (!canGateNavigate({ rootNavigatorKey, sessionHydrated: hydrated })) return;
 
-    const target = resolveAuthRedirect(Boolean(user), segments, showErrorOnLogin);
+    const target = resolveAuthRedirect(
+      Boolean(user),
+      segments,
+      showErrorOnLogin,
+      needsApplication,
+    );
     if (target) {
       router.replace(target);
     }
-  }, [user, hydrated, showErrorOnLogin, rootNavigatorKey, segments, router]);
+  }, [
+    user,
+    hydrated,
+    showErrorOnLogin,
+    needsApplication,
+    rootNavigatorKey,
+    segments,
+    router,
+  ]);
 }

@@ -1,7 +1,8 @@
 import type { TripPhase } from "@/lib/riderOrder";
 
 /**
- * What the raised centre disc does right now.
+ * What the raised centre disc does right now, or nothing when there is nothing
+ * to do.
  *
  * The disc is the app's one action, so it has to mean something at every point
  * in a shift — including the long stretches with no job in hand, where the
@@ -18,17 +19,10 @@ export type RiderActionKind =
   | "on-hold"
   | "start-delivery"
   | "delivery-proof"
-  | "find-work"
-  | "not-accredited";
+  | "find-work";
 
 /** Which glyph the disc wears. Mapped to Lucide in the tab bar. */
-export type RiderActionGlyph =
-  | "checklist"
-  | "hold"
-  | "navigate"
-  | "camera"
-  | "search"
-  | "waiting";
+export type RiderActionGlyph = "checklist" | "hold" | "navigate" | "camera" | "search";
 
 export type RiderAction = {
   kind: RiderActionKind;
@@ -59,34 +53,31 @@ const FIND_WORK: RiderAction = {
 };
 
 /**
- * An account Operations has not accredited cannot take a job, so the disc must
- * not offer to find one. It still goes somewhere useful: Offers is where the
- * review status and what is under it are explained.
- */
-const NOT_ACCREDITED: RiderAction = {
-  kind: "not-accredited",
-  glyph: "waiting",
-  label: "Not yet",
-  spoken:
-    "Operations has not accredited this account yet. Opens where your review status is explained.",
-  route: "/(tabs)/offers",
-  needsOrderId: false,
-};
-
-/**
- * Map the trip phase to the disc's action.
+ * Map the trip phase to the disc's action, or to no action at all.
  *
  * With no job in hand the disc offers the only move that exists — take one.
  * It is never disabled: a permanently dead primary action is worse than one
  * that points at the obvious next thing. When transport is blocked, that next
  * thing is the trip screen, which is where the hold and its reason live.
+ *
+ * An account Operations has not accredited is the one case with no action in
+ * it. Every dispatch route answers 403, so there is no job to advance and no
+ * work to find, and this returns `null` rather than a disc: the bar draws its
+ * destinations and nothing raised.
+ *
+ * It used to answer a sixth action here — an hourglass labelled "Not yet",
+ * routed at Offers. That put a dead end in the one slot the app reserves for
+ * whatever moves the rider forward, and it landed the rider on a screen
+ * carrying the same review notice they had just tapped away from. A wait is
+ * not an action, and the honest way to say so is to have none. Where the
+ * rider stands is said in the header instead — see `ApprovalChip`.
  */
 export function riderAction(
   phase: TripPhase,
   orderId: string | null,
   canWork = true,
-): RiderAction {
-  if (!canWork) return NOT_ACCREDITED;
+): RiderAction | null {
+  if (!canWork) return null;
   if (!orderId) return FIND_WORK;
 
   switch (phase) {

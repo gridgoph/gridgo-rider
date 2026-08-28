@@ -1,14 +1,8 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
 import {
-  Camera,
-  CircleAlert,
-  ClipboardCheck,
-  Hourglass,
   Inbox,
+  Map,
   Navigation,
-  Search,
   User,
   Wallet,
   type LucideIcon,
@@ -16,38 +10,19 @@ import {
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
-import { useRiderAction } from "@/hooks/useRiderAction";
+import { TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
-import type { RiderActionGlyph } from "@/lib/riderAction";
 
 /**
  * One Lucide glyph per destination, all outline, all the same optical weight,
- * so the row reads as one set. The action disc has its own filled-weight glyph.
+ * so the row reads as one set.
  */
 const ICONS: Record<TabName, LucideIcon> = {
   offers: Inbox,
   active: Navigation,
-  // The action column draws `ACTION_GLYPHS` instead; this keeps the map total.
-  action: Navigation,
+  map: Map,
   earnings: Wallet,
   account: User,
-};
-
-/**
- * The disc's glyph follows its verb.
- *
- * A fixed icon over a changing label reads as a label that does not belong to
- * it. Pairing the two means the disc says the same thing twice — which is what
- * keeps it legible at a glance, and in greyscale.
- */
-const ACTION_GLYPHS: Record<RiderActionGlyph, LucideIcon> = {
-  checklist: ClipboardCheck,
-  hold: CircleAlert,
-  navigate: Navigation,
-  camera: Camera,
-  search: Search,
-  waiting: Hourglass,
 };
 
 /* ---------------------------------------------------------------------------
@@ -279,57 +254,23 @@ export function tabBarHeight(platformOS: string, insetBottom: number): number {
 }
 
 /**
- * The GRIDGO rider tab bar.
+ * The GRIDGO rider tab bar: five labelled destinations, no raised centre disc.
  *
- * Four labelled destinations around one raised action, in the shape the client
- * app already ships. What changed is what the disc means: it used to open
- * Active, which is a place, and a raised disc that delivers a screen reads as
- * an unfinished shortcut. It now performs the next step of the job — check it,
- * set off, hand over — and says which in a word underneath.
- *
- * The disc's label lands in exactly the same 16dp label box as the destinations
- * beside it, because both column kinds bottom-align over the same bottom
- * padding. The disc itself overhangs the row rather than fitting inside it, so
- * it breaks the hairline of a surface that paints the full column.
+ * Finding work is Offers. The job, its status, and the next step live on
+ * Active. Yellow is spent on those screens' own buttons, not on the bar.
  *
  * The open tab is said twice over, in colour and in weight, so the row still
- * reads in grayscale. Yellow is spent in one place: the disc.
+ * reads in grayscale.
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { action, orderId } = useRiderAction();
-
-  function runAction() {
-    if (Platform.OS !== "web") {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    if (action.needsOrderId && orderId) {
-      router.push({ pathname: action.route, params: { orderId } });
-      return;
-    }
-    router.push(action.route);
-  }
 
   return (
     <View
       testID="gridgo-tab-bar"
       className="relative"
-      // `overflow: visible` is the React Native default, and it is written down
-      // because on iOS the action disc is drawn 14pt above this container (see
-      // `tabBarActionOverhang`). A later style setting it to "hidden" would
-      // slice the top off the disc rather than fail loudly.
-      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom), overflow: "visible" }}
+      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom) }}
     >
-      {/*
-        Drawn before the row, so the action disc paints over the top border and
-        the hairline breaks around it with no cut-out to maintain. Spans the
-        whole container — the content row and the bottom inset region both —
-        exactly as gridgo-supplier paints it. It used to start `actionRise`
-        below the row top to leave the disc somewhere to break; the disc now
-        overhangs the row on both platforms and does that unaided, and the strip
-        was what left every item's icon too close to the painted edge.
-      */}
       <View
         testID="gridgo-tab-bar-surface"
         className="absolute inset-0 border-t border-outline bg-surface"
@@ -337,18 +278,6 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
 
       <View className="flex-row items-end">
         {TABS.map((tab) => {
-          if (tab.name === ACTION_TAB) {
-            return (
-              <ActionDisc
-                key="action"
-                glyph={action.glyph}
-                label={action.label}
-                spoken={action.spoken}
-                onPress={runAction}
-              />
-            );
-          }
-
           const index = state.routes.findIndex((route) => route.name === tab.name);
           const route = state.routes[index];
           if (!route) return null;
@@ -379,70 +308,6 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
         })}
       </View>
     </View>
-  );
-}
-
-type ActionDiscProps = {
-  glyph: RiderActionGlyph;
-  label: string;
-  spoken: string;
-  onPress: () => void;
-};
-
-/**
- * The raised action.
- *
- * The column is the platform's own row height, so the disc's label lands in the
- * same line box as the destination labels beside it. `justify-end` pins that
- * stack to the bottom, which is what keeps the labels on one line: on Android
- * 56 + 16 + 16 is 88 against an 80dp column, and on iOS 44 + 16 + 3 is 63
- * against a 49pt row, so the disc rises 8dp and 14pt above the row
- * respectively. See `tabBarActionOverhang` for why the overhang is the right
- * answer on a row too short to hold the disc.
- *
- * That overhang is what breaks the hairline on both platforms, so the surface
- * can paint the full column instead of starting below it.
- *
- * Unlike the client's plus, this verb changes with the job, so it is labelled.
- * An unlabelled disc that does four different things is a guess, not an action.
- */
-function ActionDisc({ glyph, label, spoken, onPress }: ActionDiscProps) {
-  const colors = useThemeColors();
-  const Glyph = ACTION_GLYPHS[glyph];
-  const { columnHeight, actionDiameter, itemPaddingBottom } = TAB_BAR_METRICS;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={spoken}
-      testID="tab-action-disc"
-      className="flex-1 items-center justify-end"
-      // The row height is the touch target, and it is the platform's own: 49pt
-      // clears the 44pt floor, 80dp clears it comfortably.
-      style={{ height: columnHeight, paddingBottom: itemPaddingBottom }}
-    >
-      {({ pressed }) => (
-        <>
-          <View
-            className="items-center justify-center rounded-pill bg-action-yellow"
-            style={{ height: actionDiameter, width: actionDiameter }}
-          >
-            {/* 26 on both platforms, as in gridgo-client — the disc resizes, the glyph does not. */}
-            <Glyph size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
-            {pressed ? <View className="gg-pressed absolute inset-0 rounded-pill" /> : null}
-          </View>
-          <Text
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.4}
-            style={{ includeFontPadding: false, textAlignVertical: "center" }}
-            className="h-4 text-nav font-medium text-text-primary"
-          >
-            {label}
-          </Text>
-        </>
-      )}
-    </Pressable>
   );
 }
 

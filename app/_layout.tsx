@@ -184,7 +184,14 @@ function AppShell() {
               name="(auth)/reset-password"
               options={{ title: "Recover password", ...multiOriginPushedScreenOptions }}
             />
-            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="onboarding"
+              options={{
+                headerShown: false,
+                animation: "fade",
+                contentStyle: { backgroundColor: token.canvas },
+              }}
+            />
             {/*
               The tab shell draws its own headers per tab, so its header is
               hidden — but it still needs a title. Screens pushed above it set
@@ -204,6 +211,13 @@ function AppShell() {
               name="settings"
               options={{
                 title: "Settings",
+                ...multiOriginPushedScreenOptions,
+              }}
+            />
+            <Stack.Screen
+              name="rider-details"
+              options={{
+                title: "Your details",
                 ...multiOriginPushedScreenOptions,
               }}
             />
@@ -236,6 +250,7 @@ function AppShell() {
               see `confirmSheetScreenOptions` for what that buys.
             */}
             <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+            <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
           </Stack>
         </AuthGate>
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />

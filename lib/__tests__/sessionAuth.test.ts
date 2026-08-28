@@ -1,5 +1,10 @@
 import * as api from "@/lib/api";
-import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
+import {
+  bindApiUnauthorizedHandler,
+  isClerkAdoptionBlocked,
+  releaseClerkAdoptionBlock,
+  useSession,
+} from "@/store/session";
 
 const rider = {
   id: "user_rider",
@@ -23,6 +28,7 @@ describe("session clear + 401 wiring", () => {
 
   afterEach(() => {
     useSession.getState().clearSession();
+    releaseClerkAdoptionBlock();
     api.setToken(null);
     api.setUnauthorizedHandler(null);
     api.setTokenProvider(null);
@@ -88,6 +94,53 @@ describe("session clear + 401 wiring", () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  it("leaves the signed-in area before a hung API logout finishes", async () => {
+    signedIn();
+    jest.useFakeTimers();
+    const logoutSpy = jest.spyOn(api, "logout").mockReturnValue(new Promise(() => {}));
+
+    try {
+      const pending = useSession.getState().logout();
+      expect(useSession.getState().user).toBeNull();
+      expect(api.getToken()).toBeNull();
+      await jest.advanceTimersByTimeAsync(3_000);
+      await pending;
+    } finally {
+      logoutSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
+  it("logout does not treat a leftover Clerk session as a missing application", async () => {
+    signedIn();
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ error: "unauthorized" }),
+    }) as unknown as typeof fetch;
+    api.setTokenProvider(() => Promise.resolve("clerk_jwt"));
+
+    try {
+      await useSession.getState().logout();
+      expect(isClerkAdoptionBlocked()).toBe(true);
+      expect(useSession.getState().needsApplication).toBe(false);
+
+      const adoption = await useSession.getState().adoptClerkSession();
+      expect(adoption).toBe("rejected");
+      expect(useSession.getState().needsApplication).toBe(false);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("lets Sign in leave the apply hold", () => {
+    useSession.setState({ needsApplication: true, user: null });
+    useSession.getState().leaveApplication();
+    expect(useSession.getState().needsApplication).toBe(false);
+    expect(isClerkAdoptionBlocked()).toBe(true);
   });
 
   it("logout clears the user even when the API call fails (expired token)", async () => {

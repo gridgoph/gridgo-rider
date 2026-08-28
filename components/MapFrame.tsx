@@ -15,6 +15,8 @@ type Props = {
   /** Fired once the document is ready to receive a model. */
   onReady: () => void;
   accessibilityLabel: string;
+  /** Raw JSON from a pin tap inside the Leaflet document. */
+  onMessage?: (raw: string) => void;
 };
 
 /**
@@ -28,7 +30,7 @@ type Props = {
  * OSRM routing, exactly as before.
  */
 export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
-  { html, onReady, accessibilityLabel },
+  { html, onReady, accessibilityLabel, onMessage },
   ref,
 ) {
   const colors = useThemeColors();
@@ -46,6 +48,7 @@ export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
       originWhitelist={["*"]}
       source={{ html, baseUrl: "https://localhost" }}
       onLoadEnd={onReady}
+      onMessage={onMessage ? (event) => onMessage(event.nativeEvent.data) : undefined}
       style={{ flex: 1, backgroundColor: colors.surfaceVariant }}
       // Map gestures should not fight the parent ScrollView on Android.
       nestedScrollEnabled

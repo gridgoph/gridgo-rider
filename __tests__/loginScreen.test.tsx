@@ -94,15 +94,18 @@ describe("Sign in", () => {
     });
   });
 
-  it("still says which host it is talking to, and what to do next", async () => {
+  it("shows the welcome and next steps, without a host or health chip", async () => {
     await render(<LoginScreen />);
 
-    expect(screen.getByText(/gridgo\.example/)).toBeTruthy();
     expect(screen.getByText("Welcome Back.")).toBeTruthy();
     expect(screen.getByText("Let’s sign in")).toBeTruthy();
     expect(screen.getByText("Recover password")).toBeTruthy();
     expect(screen.getByText("Continue with Google")).toBeTruthy();
     expect(screen.getByText("Need an account? Sign up")).toBeTruthy();
+    expect(screen.queryByText(/gridgo\.example/)).toBeNull();
+    expect(screen.queryByText("Reachable")).toBeNull();
+    expect(screen.queryByText("Checking…")).toBeNull();
+    expect(screen.queryByText("Unreachable")).toBeNull();
     expect(screen.queryByText(/Turn on alerts/i)).toBeNull();
     expect(screen.queryByText(/Client accounts/i)).toBeNull();
   });

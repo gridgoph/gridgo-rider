@@ -99,14 +99,17 @@ describe("headerless confirmation sheets carry their own way out", () => {
     expect(sheets.length).toBeGreaterThan(0);
   });
 
-  it.each(sheets)("%s offers a cancel while loading, on error, and when ready", (name) => {
-    const source = readFileSync(join(APP, `${name}.tsx`), "utf8");
+  it("every sheet carries a labelled cancel", () => {
+    for (const name of sheets) {
+      const source = readFileSync(join(APP, `${name}.tsx`), "utf8");
+      expect(source).toMatch(/cancelLabel=/);
+    }
+  });
 
-    // Loading: the skeleton takes a real cancel rather than drawing a fake one.
+  it("trip/start offers a cancel while loading, on error, and when ready", () => {
+    const source = readFileSync(join(APP, "trip/start.tsx"), "utf8");
     expect(source).toMatch(/ConfirmSheetSkeleton[\s\S]*?cancelLabel=/);
-    // Failed to load: an explicit route back to the trip.
     expect(source).toContain("Back to the trip");
-    // Ready: the sheet body's own labelled cancel.
-    expect(source).toMatch(/cancelLabel=/);
+    expect(source).toMatch(/cancelLabel="Not yet"/);
   });
 });

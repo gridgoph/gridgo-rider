@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import { PlayCircle } from "lucide-react-native";
+import { useEffect } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { DestinationRow } from "@/components/DestinationRow";
@@ -25,6 +26,10 @@ const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
  */
 export default function SettingsScreen() {
   const preference = useThemePreference();
+
+  useEffect(() => {
+    router.prefetch("/onboarding");
+  }, []);
 
   return (
     <Screen edges={["bottom"]}>

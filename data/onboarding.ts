@@ -11,7 +11,8 @@
  * none of it mentions any.
  */
 
-import type { IllustrationName } from "@/components/illustrations";
+/** Raster beat, keyed to `images.onboarding`. */
+export type OnboardingArt = "offer" | "check" | "proof";
 
 export type OnboardingSlide = {
   id: string;
@@ -21,8 +22,8 @@ export type OnboardingSlide = {
   body: string;
   /** A clear verb. Changes on the last slide, which is the one that starts. */
   cta: string;
-  /** Which piece of art carries this beat. */
-  art: IllustrationName;
+  /** Picture for this beat. */
+  art: OnboardingArt;
 };
 
 export const onboardingSlides: readonly OnboardingSlide[] = [
@@ -32,7 +33,7 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     title: "Work lands on your phone",
     body: "Dispatch offers arrive with pickup, drop-off and pay. Accept the ones you can take; decline the rest.",
     cta: "Next",
-    art: "mobile_guy",
+    art: "offer",
   },
   {
     id: "carry",
@@ -40,7 +41,7 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     title: "Check it before you carry it",
     body: "Six checks at the supplier's counter — count, spec, defects, packaging, paperwork, sign-off. All six pass or the package stays put.",
     cta: "Next",
-    art: "scooter",
+    art: "check",
   },
   {
     id: "proof",
@@ -48,6 +49,6 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     title: "Prove the handoff",
     body: "Photograph the package at the door. A delivery is not closed until GRIDGO has that photo — and no money changes hands at the door.",
     cta: "Get Started",
-    art: "postman",
+    art: "proof",
   },
 ] as const;

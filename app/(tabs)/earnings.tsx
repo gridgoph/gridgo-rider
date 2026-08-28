@@ -2,6 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 
+import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -89,7 +90,11 @@ export default function EarningsScreen() {
           />
         }
       >
-        <ScreenHeader title="Earnings" subtitle="Delivery fees from jobs you closed." />
+        <ScreenHeader
+          title="Earnings"
+          subtitle="Delivery fees from jobs you closed."
+          status={<ApprovalChip />}
+        />
 
         {!approval.canWork ? <ApprovalNotice /> : null}
 

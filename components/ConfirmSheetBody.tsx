@@ -12,6 +12,8 @@ type Props = {
   confirmLabel: string;
   cancelLabel: string;
   busy?: boolean;
+  /** Shown on the confirm control while the action is in flight. */
+  busyLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
   /** An error from the last attempt, shown above the buttons. */
@@ -37,6 +39,7 @@ export function ConfirmSheetBody({
   confirmLabel,
   cancelLabel,
   busy = false,
+  busyLabel,
   onConfirm,
   onCancel,
   children,
@@ -50,12 +53,17 @@ export function ConfirmSheetBody({
       {children}
       <View className="gap-3 pt-1">
         <PrimaryButton
-          label={busy ? "Recording…" : confirmLabel}
+          label={busy ? (busyLabel ?? confirmLabel) : confirmLabel}
           onPress={onConfirm}
           disabled={busy}
           size="large"
         />
-        <SecondaryButton label={cancelLabel} onPress={onCancel} disabled={busy} />
+        <SecondaryButton
+          label={cancelLabel}
+          onPress={onCancel}
+          disabled={busy}
+          size="large"
+        />
       </View>
     </View>
   );

@@ -2,6 +2,22 @@
 // useSharedValue throw when the worklet runtime is absent.
 require("react-native-reanimated").setUpTests();
 
+// Screen reads insets from the provider. A test that renders a route
+// without wrapping one used to throw; fall back to zero so those tests
+// still exercise the screen. Tests that wrap a provider (Screen itself)
+// keep the seeded metrics.
+jest.mock("react-native-safe-area-context", () => {
+  const React = require("react");
+  const actual = jest.requireActual("react-native-safe-area-context");
+  return {
+    ...actual,
+    useSafeAreaInsets: () => {
+      const insets = React.useContext(actual.SafeAreaInsetsContext);
+      return insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    },
+  };
+});
+
 // Gesture Handler installs itself through a native module the JS-only test
 // runtime does not have, and `GestureHandlerRootView` — which the root layout
 // now renders — throws outright without it. Its own harness stands the module
@@ -16,9 +32,19 @@ jest.mock("@clerk/expo", () => {
   const signOut = jest.fn(async () => undefined);
   const signIn = {
     status: "needs_identifier",
+    existingSession: null,
+    supportedSecondFactors: [],
     password: jest.fn(async () => ({ error: null })),
     create: jest.fn(async () => ({ error: null })),
     finalize: jest.fn(async () => ({ error: null })),
+    mfa: {
+      sendEmailCode: jest.fn(async () => ({ error: null })),
+      verifyEmailCode: jest.fn(async () => ({ error: null })),
+      sendPhoneCode: jest.fn(async () => ({ error: null })),
+      verifyPhoneCode: jest.fn(async () => ({ error: null })),
+      verifyTOTP: jest.fn(async () => ({ error: null })),
+      verifyBackupCode: jest.fn(async () => ({ error: null })),
+    },
     resetPasswordEmailCode: {
       sendCode: jest.fn(async () => ({ error: null })),
       verifyCode: jest.fn(async () => ({ error: null })),
@@ -40,7 +66,7 @@ jest.mock("@clerk/expo", () => {
       sessionClaims: null,
     }),
     useUser: () => ({ isLoaded: true, isSignedIn: false, user: null }),
-    useClerk: () => ({ signOut }),
+    useClerk: () => ({ signOut, setActive: jest.fn(async () => undefined) }),
     useSignIn: () => ({ isLoaded: true, signIn }),
     useSignUp: () => ({ isLoaded: true, signUp }),
   };

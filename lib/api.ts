@@ -173,6 +173,8 @@ export type Notification = {
   userId: string;
   title: string;
   body: string;
+  /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
+  imageUrl?: string | null;
   read: boolean;
   at: string;
   /** Internal kind. Never rendered — it decides nothing the rider reads. */
@@ -229,6 +231,12 @@ export type ResolveApiBaseInput = {
   devHostUri?: string | null;
   /** Platform.OS value. */
   platformOS: string;
+  /**
+   * `false` only for an Android emulator. Loopback then becomes `10.0.2.2`.
+   * A physical phone (or unknown) keeps IPv4 loopback so USB reverse of
+   * `:8787` works on any Wi-Fi without baking a LAN address into the app.
+   */
+  isDevice?: boolean;
 };
 
 /**
@@ -237,7 +245,7 @@ export type ResolveApiBaseInput = {
  * Precedence:
  * 1. Explicit EXPO_PUBLIC_API_URL (trailing slash stripped)
  * 2. Hostname from the Expo dev server + apiPort
- * 3. Android emulator loopback alias when dev host is localhost
+ * 3. Android loopback: emulator → 10.0.2.2; USB phone → 127.0.0.1
  * 4. http://127.0.0.1:apiPort
  */
 export function resolveApiBase({
@@ -245,6 +253,7 @@ export function resolveApiBase({
   envPort,
   devHostUri,
   platformOS,
+  isDevice,
 }: ResolveApiBaseInput): string {
   const trimmed = envUrl?.trim().replace(/\/$/, "");
   if (trimmed) return trimmed;
@@ -253,11 +262,13 @@ export function resolveApiBase({
   const hostname = hostnameFromDevHostUri(devHostUri);
 
   if (hostname) {
-    if (
-      (hostname === "localhost" || hostname === "127.0.0.1") &&
-      platformOS === "android"
-    ) {
-      return `http://10.0.2.2:${apiPort}`;
+    const loopback = hostname === "localhost" || hostname === "127.0.0.1";
+    if (loopback && platformOS === "android") {
+      if (isDevice === false) {
+        return `http://10.0.2.2:${apiPort}`;
+      }
+      // `localhost` can resolve to IPv6 ::1; adb reverse only tunnels IPv4.
+      return `http://127.0.0.1:${apiPort}`;
     }
     return `http://${hostname}:${apiPort}`;
   }
@@ -319,7 +330,16 @@ export function getApiBase(): string {
     envPort: process.env.EXPO_PUBLIC_API_PORT,
     devHostUri: getExpoDevHostUri(),
     platformOS: Platform.OS,
+    isDevice: Constants.isDevice,
   });
+}
+
+/** In-app picture URL. Hosted broadcast paths resolve against this app's API. */
+export function notificationImageUrl(imageUrl?: string | null): string | null {
+  const value = typeof imageUrl === "string" ? imageUrl.trim() : "";
+  if (!value) return null;
+  if (value.startsWith("/")) return `${getApiBase().replace(/\/$/, "")}${value}`;
+  return value;
 }
 
 export function setToken(token: string | null): void {
@@ -340,6 +360,26 @@ export function getToken(): string | null {
   return tokenMemory;
 }
 
+/**
+ * Whether this phone currently has a GRIDGO bearer — a stored demo token *or*
+ * a live Clerk session that can mint one.
+ *
+ * Push registration used to look at {@link getToken} only. Clerk never writes
+ * that memory: it installs a provider, so a signed-in rider looked unsigned-in
+ * and the phone registered unclaimed (or failed the unclaimed shape check).
+ * A Rider broadcast then had nobody to interrupt.
+ */
+export async function sessionBearerPresent(): Promise<boolean> {
+  if (tokenMemory) return true;
+  if (!tokenProvider) return false;
+  try {
+    const token = await tokenProvider();
+    return Boolean(token?.trim());
+  } catch {
+    return false;
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -354,7 +394,22 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+type RequestInitWithProbe = RequestInit & {
+  /*
+    Ask a question without betting the session on the answer.
+
+    A 401 normally means the bearer died, so it wipes local auth and the gate
+    leaves the authenticated area. But `/auth/me` is also how this app asks
+    "does GRIDGO know this Clerk identity yet?", and for someone who has just
+    created their account the honest answer is 401 — the enrollment that
+    creates their rider record has not run yet. Letting that answer tear the
+    session down signed brand-new riders out mid-application.
+  */
+  ignoreUnauthorized?: boolean;
+};
+
+async function request<T>(path: string, init: RequestInitWithProbe = {}): Promise<T> {
+  const { ignoreUnauthorized, ...fetchInit } = init;
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -364,7 +419,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const sentBearer = Boolean(bearer);
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...fetchInit, headers });
   const text = await res.text();
   let data: unknown = null;
   if (text) {
@@ -383,7 +438,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // was read back from the phone. Treating it as expiry deleted the very
     // session that was still loading, which signed the rider out on every cold
     // start.
-    if (sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
+    if (!ignoreUnauthorized && sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
       tokenMemory = null;
       unauthorizedHandler?.();
     }
@@ -392,40 +447,67 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+/**
+ * `/auth/me` and the rider profile both speak `plateNumber`. This app's
+ * session has always called it `vehiclePlate`, so both reads are mapped here
+ * rather than at every screen.
+ */
+function sessionUser(user: User): User {
+  if (!user) return user;
+  const profile = user.riderProfile as (RiderProfile & { plateNumber?: string }) | undefined;
+  if (!profile) return user;
+  return {
+    ...user,
+    riderProfile: {
+      vehicleType: profile.vehicleType,
+      vehiclePlate: profile.vehiclePlate || profile.plateNumber || "",
+      licenseNumber: profile.licenseNumber || "",
+    },
+  };
+}
+
 export async function login(email: string, password: string): Promise<{ token: string; user: User }> {
   const result = await request<{ token: string; user: User }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
   setToken(result.token);
-  return result;
+  return { ...result, user: sessionUser(result.user) };
 }
 
-/** Everything `POST /auth/signup` needs for a rider account. */
-export type RiderSignupInput = {
-  email: string;
-  password: string;
-  name: string;
-  phone: string;
-  riderProfile: RiderProfile;
+/**
+ * Public rider apply — `POST /auth/clerk/enroll/rider`.
+ *
+ * Body is exact: the API rejects unexpected keys, so `role`, `email`,
+ * `password` and `name` must not appear. Clerk owns the identity and the API
+ * reads the name and email from the authenticated Clerk user.
+ */
+export type RiderEnrollment = {
+  profile: {
+    phone: string;
+    vehicleType: RiderProfile["vehicleType"];
+    plateNumber: string;
+    licenseNumber?: string;
+  };
 };
 
 /**
- * Create a rider account.
+ * Open a pending rider account from a live Clerk session.
  *
- * The API stores `role: "rider"` and starts `verificationStatus: "pending"`.
- * This binary never writes a role. Dual/Clerk mode answers
- * `invitation_required` — do not flip `AUTH_MODE` from here.
+ * The caller must already have a Clerk JWT on the token provider. The enroll
+ * reply is a membership projection rather than the rider `User` this app
+ * hydrates, so `/auth/me` is the adopt step.
  */
-export async function signupRider(
-  input: RiderSignupInput,
-): Promise<{ token: string; user: User }> {
-  const result = await request<{ token: string; user: User }>("/auth/signup", {
+export async function enrollRider(
+  input: RiderEnrollment,
+  idempotencyKey: string,
+): Promise<User> {
+  await request("/auth/clerk/enroll/rider", {
     method: "POST",
-    body: JSON.stringify({ role: "rider", ...input }),
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
   });
-  setToken(result.token);
-  return result;
+  return me({ ignoreUnauthorized: true });
 }
 
 /**
@@ -447,6 +529,7 @@ export async function logout(deviceToken?: string | null): Promise<void> {
     await request("/auth/logout", {
       method: "POST",
       body: JSON.stringify(deviceToken ? { deviceToken } : {}),
+      ignoreUnauthorized: true,
     });
   } finally {
     setToken(null);
@@ -543,9 +626,63 @@ export async function unregisterDevice(token: string): Promise<void> {
   });
 }
 
-export async function me(): Promise<User> {
-  const result = await request<{ user: User }>("/auth/me");
-  return result.user;
+export async function me(options: { ignoreUnauthorized?: boolean } = {}): Promise<User> {
+  const result = await request<{ user: User }>("/auth/me", {
+    ignoreUnauthorized: options.ignoreUnauthorized,
+  });
+  return sessionUser(result.user);
+}
+
+/* --------------------------------------------------------------------------
+   The rider's own details
+
+   The record behind the identity card on Account: the name Operations sees,
+   the number they call, and the vehicle on the application. GRIDGO owns those.
+   The portrait belongs to the GRIDGO sign-in and never goes through this pair.
+
+   The write carries the version it was read at, as both `expectedVersion` in
+   the body and `If-Match` in the header, or GRIDGO answers
+   `400 expected_version_required`. Email is deliberately absent from the
+   patch type — the platform refuses it.
+   -------------------------------------------------------------------------- */
+
+export type RiderSelfProfile = {
+  userId: string;
+  name: string | null;
+  /** Canonical `+639XXXXXXXXX`, or null when the rider has never given one. */
+  phone: string | null;
+  /** Owned by the GRIDGO sign-in. Read-only everywhere in this app. */
+  email: string;
+  vehicleType: string;
+  plateNumber: string;
+  licenseNumber: string | null;
+  version: number;
+  updatedAt: string;
+};
+
+export type RiderSelfProfilePatch = {
+  name?: string;
+  phone?: string;
+  vehicleType?: string;
+  plateNumber?: string;
+  licenseNumber?: string;
+};
+
+export async function getRiderProfile(): Promise<RiderSelfProfile> {
+  const result = await request<{ profile: RiderSelfProfile }>("/me/rider-profile");
+  return result.profile;
+}
+
+export async function updateRiderProfile(
+  version: number,
+  patch: RiderSelfProfilePatch,
+): Promise<RiderSelfProfile> {
+  const result = await request<{ profile: RiderSelfProfile }>("/me/rider-profile", {
+    method: "PATCH",
+    headers: { "If-Match": String(version) },
+    body: JSON.stringify({ ...patch, expectedVersion: version }),
+  });
+  return result.profile;
 }
 
 export async function listOrders(): Promise<Order[]> {
@@ -723,12 +860,22 @@ export function isInternalCode(text: string): boolean {
   return false;
 }
 
+/**
+ * The machine-readable reason the API refused, for the few callers that must
+ * branch on it rather than just show a sentence. Null when the failure never
+ * reached the API, so a caller cannot mistake a dead connection for a verdict.
+ */
+export function apiErrorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  return typeof error.body === "object" && error.body && "error" in error.body
+    ? String((error.body as { error: string }).error)
+    : null;
+}
+
 /** Map API errors to rider-facing recovery copy. Never shows a raw code. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
-    const code = typeof error.body === "object" && error.body && "error" in error.body
-      ? String((error.body as { error: string }).error)
-      : error.message;
+    const code = apiErrorCode(error) ?? error.message;
     switch (code) {
       case "not_offerable":
         return "Another rider took this job. Pull down to refresh the list.";
@@ -766,7 +913,17 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "invalid_delivery_evidence_type":
         return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
       case "email_already_registered":
-        return "That email already has a GRIDGO account. Sign in instead, or use another address.";
+        /*
+          Two situations arrive as the same refusal, and the app cannot tell them
+          apart: the address is held by a second live sign-in, or by an account
+          whose sign-in no longer exists. So this must not promise that another
+          sign-in will work — for an orphaned account none will, and a rider
+          told to go and find one would hunt for something unreachable. Name
+          what is true of both, and who can actually release the address.
+        */
+        return "Another GRIDGO account already holds this email. Sign out and try your other sign-in if you have one — otherwise Operations has to release the address before you can apply.";
+      case "application_already_exists":
+        return "Your application is already on file. Sign out and sign back in to see where it stands.";
       case "invalid_password":
         return "Use a password with at least 8 characters.";
       case "invalid_email":

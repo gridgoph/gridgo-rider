@@ -189,9 +189,11 @@ export const usePush = create<PushState>((set, get) => ({
     if (permission !== "granted") return;
 
     // A bearer means the rider is signed in and this registration names them.
+    // Clerk sessions keep that bearer on a provider, not in getToken() memory,
+    // so this has to ask the same way every other authenticated call does.
     // Without one the phone is registered unclaimed, so an announcement can
     // still reach a handset nobody has signed in on.
-    const signedIn = Boolean(api.getToken());
+    const signedIn = await api.sessionBearerPresent();
 
     set({ busy: true, error: null });
     try {

@@ -49,12 +49,24 @@ describe("styling reaches the components it is written on", () => {
   });
 
   it("opens every screen with the shared shell rather than a raw SafeAreaView", () => {
-    // components/Screen.tsx is the one place allowed to touch it.
-    const offenders = files
-      .filter((file) => !file.endsWith(join("components", "Screen.tsx")))
-      .filter((file) => /from "react-native-safe-area-context"/.test(readFileSync(file, "utf8")))
-      .filter((file) => /\bSafeAreaView\b/.test(readFileSync(file, "utf8")));
+    // A measuring safe-area view reports 0 on the first frame of a native
+    // stack push, which is the navigation flick. Insets belong on
+    // `useSafeAreaInsets` padding. Ignore comments; only imports and JSX.
+    const offenders = files.filter((file) => {
+      const source = readFileSync(file, "utf8");
+      return (
+        /import\s*\{[^}]*\bSafeAreaView\b/.test(source) ||
+        /<SafeAreaView[\s>]/.test(source)
+      );
+    });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("reads insets in the shell instead of measuring them", () => {
+    const source = readFileSync(join(__dirname, "..", "components", "Screen.tsx"), "utf8");
+    expect(source).toContain("useSafeAreaInsets");
+    expect(source).not.toMatch(/import\s*\{[^}]*\bSafeAreaView\b/);
+    expect(source).not.toMatch(/<SafeAreaView[\s>]/);
   });
 });

@@ -1,4 +1,4 @@
-import { createElement, forwardRef, useImperativeHandle, useRef } from "react";
+import { createElement, forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 import type { MapFrameHandle } from "@/components/MapFrame";
 
@@ -6,6 +6,7 @@ type Props = {
   html: string;
   onReady: () => void;
   accessibilityLabel: string;
+  onMessage?: (raw: string) => void;
 };
 
 /**
@@ -18,7 +19,7 @@ type Props = {
  * phone — same HTML, same tiles, same route.
  */
 export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
-  { html, onReady, accessibilityLabel },
+  { html, onReady, accessibilityLabel, onMessage },
   ref,
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -28,6 +29,16 @@ export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
       frameRef.current?.contentWindow?.postMessage(json, "*");
     },
   }));
+
+  useEffect(() => {
+    if (!onMessage) return;
+    const handle = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return;
+      if (typeof event.data === "string") onMessage(event.data);
+    };
+    window.addEventListener("message", handle);
+    return () => window.removeEventListener("message", handle);
+  }, [onMessage]);
 
   return createElement("iframe", {
     ref: frameRef,

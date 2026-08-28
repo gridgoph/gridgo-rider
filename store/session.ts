@@ -5,7 +5,7 @@ import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
-import { signupInput, type SignupFields } from "@/lib/signup";
+import type { RiderEnrollment } from "@/lib/api";
 import {
   parseStoredSession,
   serialiseSession,
@@ -13,6 +13,12 @@ import {
   type StoredSession,
 } from "@/lib/sessionStorage";
 import { usePush } from "@/store/push";
+import { useActiveTrip } from "@/store/activeTrip";
+
+/** Hung /auth/logout must not keep the rider on Account. */
+export const LOGOUT_API_TIMEOUT_MS = 2500;
+/** Hung Clerk sign-out must not keep the rider on Account. */
+export const LOGOUT_CLERK_TIMEOUT_MS = 4000;
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "rider" as const;
@@ -24,6 +30,17 @@ export function isSignedIn(user: User | null | undefined): boolean {
 
 /** Outcome of a password login against the domain API. */
 export type PasswordLoginResult = "signed_in" | "invalid_credentials" | "failed";
+
+/**
+ * What happened when a live Clerk identity was offered to the domain API.
+ *
+ * `unassigned` is the case that matters: Clerk knows who this is, GRIDGO does
+ * not know them as a rider yet. That is the normal state of someone who has
+ * just verified their email and has not filed their application, so it is not
+ * a failure and must not end the Clerk session — the application is filed
+ * against exactly that session.
+ */
+export type ClerkAdoption = "adopted" | "unassigned" | "rejected";
 
 /** Map login failures to rider-facing copy (network vs bad credentials). */
 export function loginErrorMessage(error: unknown): string {
@@ -66,8 +83,20 @@ type SessionState = {
   error: string | null;
   /** A Clerk callback failure that must be surfaced by the login screen. */
   showErrorOnLogin: boolean;
+  /**
+   * Clerk has authenticated someone GRIDGO holds no rider record for. They are
+   * signed in and can only do one thing: apply. The gate routes them there.
+   */
+  needsApplication: boolean;
   login: (email: string, password: string) => Promise<PasswordLoginResult>;
-  signup: (fields: SignupFields) => Promise<boolean>;
+  /**
+   * File a rider application against a live Clerk session. The caller owns
+   * creating that session and installing the token provider first.
+   */
+  enrollRider: (
+    request: RiderEnrollment,
+    idempotencyKey: string,
+  ) => Promise<boolean>;
   logout: () => Promise<void>;
   /** Re-read the account so an approval decision lands without signing out. */
   refreshUser: () => Promise<void>;
@@ -79,12 +108,14 @@ type SessionState = {
    */
   clearSession: () => void;
   /** Adopt the API projection after Clerk has authenticated a rider. */
-  adoptClerkSession: () => Promise<boolean>;
+  adoptClerkSession: () => Promise<ClerkAdoption>;
   /** Supersede an older demo session as soon as Clerk reports a session. */
   beginClerkSession: () => void;
   /** Show an auth-door error without creating a local session. */
   rejectClerkSession: (message: string) => void;
   clearError: () => void;
+  /** Leave the apply hold and let the rider reach Sign in. */
+  leaveApplication: () => void;
 };
 
 /**
@@ -95,6 +126,22 @@ type SessionState = {
 let sessionDecisionVersion = 0;
 let clerkOwnsSession = false;
 let clerkSignOut: (() => Promise<unknown>) | null = null;
+/**
+ * After an explicit sign-out, the Clerk session can still be alive for a
+ * moment. Re-adopting it then reading `/auth/me` as 401 used to mean "this
+ * person has never applied" and pin the rider on Sign up.
+ */
+let clerkAdoptionBlocked = false;
+
+/** True while a sign-out is still killing the Clerk session. */
+export function isClerkAdoptionBlocked(): boolean {
+  return clerkAdoptionBlocked;
+}
+
+/** Clerk is gone; a later sign-in may be adopted again. */
+export function releaseClerkAdoptionBlock(): void {
+  clerkAdoptionBlocked = false;
+}
 
 /** Bind Clerk sign-out without importing a React hook into the Zustand store. */
 export function bindClerkSignOut(signOut: (() => Promise<unknown>) | null): () => void {
@@ -139,6 +186,7 @@ export const useSession = create<SessionState>((set, get) => ({
   loading: false,
   error: null,
   showErrorOnLogin: false,
+  needsApplication: false,
   clearError: () => set({ error: null, showErrorOnLogin: false }),
   clearSession: () => {
     sessionDecisionVersion += 1;
@@ -152,9 +200,30 @@ export const useSession = create<SessionState>((set, get) => ({
       authSource: null,
       error: null,
       showErrorOnLogin: false,
+      needsApplication: false,
       loading: false,
     });
     if (wasClerk) void clerkSignOut?.().catch(() => {});
+  },
+  /**
+   * Drop the apply hold so the rider can sign in as someone else.
+   * The gate otherwise sends every unsigned route back to Sign up.
+   */
+  leaveApplication: () => {
+    sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = true;
+    clerkOwnsSession = false;
+    api.setToken(null);
+    api.setTokenProvider(null);
+    persist(null);
+    set({
+      user: null,
+      authSource: null,
+      error: null,
+      showErrorOnLogin: false,
+      needsApplication: false,
+      loading: false,
+    });
   },
   rejectClerkSession: (message) => {
     sessionDecisionVersion += 1;
@@ -168,10 +237,12 @@ export const useSession = create<SessionState>((set, get) => ({
       loading: false,
       error: message,
       showErrorOnLogin: true,
+      needsApplication: false,
     });
   },
   beginClerkSession: () => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = false;
     clerkOwnsSession = true;
     api.setToken(null);
     api.setTokenProvider(null);
@@ -182,6 +253,7 @@ export const useSession = create<SessionState>((set, get) => ({
       loading: true,
       error: null,
       showErrorOnLogin: false,
+      needsApplication: false,
     });
   },
   /*
@@ -246,6 +318,7 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   login: async (email, password) => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = false;
     clerkOwnsSession = false;
     api.setTokenProvider(null);
     set({ loading: true, error: null, showErrorOnLogin: false });
@@ -272,41 +345,16 @@ export const useSession = create<SessionState>((set, get) => ({
       return invalid ? "invalid_credentials" : "failed";
     }
   },
-  signup: async (fields) => {
+  enrollRider: async (request, idempotencyKey) => {
     sessionDecisionVersion += 1;
-    clerkOwnsSession = false;
-    api.setTokenProvider(null);
-    set({ loading: true, error: null, showErrorOnLogin: false });
-    try {
-      const { token, user } = await api.signupRider(signupInput(fields));
-      if (user.role !== APP_ROLE) {
-        await api.logout();
-        set({
-          user: null,
-          loading: false,
-          error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
-        });
-        return false;
-      }
-      persist({ token, user });
-      set({ user, authSource: "legacy", loading: false });
-      return true;
-    } catch (e) {
-      set({
-        loading: false,
-        error: signupErrorMessage(e),
-      });
-      return false;
-    }
-  },
-  adoptClerkSession: async () => {
-    sessionDecisionVersion += 1;
+    // Clerk already owns this session; the screen installed its token provider
+    // before calling, so nothing here may clear it or persist a local bearer.
     clerkOwnsSession = true;
     api.setToken(null);
     persist(null);
     set({ loading: true, error: null, showErrorOnLogin: false });
     try {
-      const user = await api.me();
+      const user = await api.enrollRider(request, idempotencyKey);
       if (user.role !== APP_ROLE) {
         set({
           user: null,
@@ -317,9 +365,105 @@ export const useSession = create<SessionState>((set, get) => ({
         });
         return false;
       }
-      set({ user, authSource: "clerk", loading: false });
+      set({ user, authSource: "clerk", loading: false, needsApplication: false });
       return true;
+    } catch (e) {
+      /*
+        "You already applied" is not a refusal, it is the answer the rider
+        wanted. It happens whenever the application landed but the reply did
+        not — a dropped response, a retry, a second tap — and reporting it as a
+        failure would leave a rider who has finished staring at the form that
+        no longer has anything to send. So re-read the account instead: if
+        GRIDGO now knows this rider, let them in.
+      */
+      if (api.apiErrorCode(e) === "application_already_exists") {
+        const adoption = await get().adoptClerkSession();
+        if (adoption === "adopted") return true;
+      }
+      set({
+        loading: false,
+        error: signupErrorMessage(e),
+      });
+      return false;
+    }
+  },
+  adoptClerkSession: async () => {
+    if (clerkAdoptionBlocked) {
+      set({ loading: false, needsApplication: false });
+      return "rejected";
+    }
+    sessionDecisionVersion += 1;
+    const decisionAtStart = sessionDecisionVersion;
+    clerkOwnsSession = true;
+    api.setToken(null);
+    persist(null);
+    set({ loading: true, error: null, showErrorOnLogin: false, needsApplication: false });
+    try {
+      // Probed, not spent: a 401 here is an answer about the account, not proof
+      // that the bearer is dead, so it must not trip the session-wiping handler.
+      const user = await api.me({ ignoreUnauthorized: true });
+      // A sign-out or an enrollment may have moved the session on while this
+      // was in flight; that decision wins over an older answer.
+      if (decisionAtStart !== sessionDecisionVersion) {
+        if (get().user) return "adopted";
+        if (clerkAdoptionBlocked) return "rejected";
+        return "unassigned";
+      }
+      if (user.role !== APP_ROLE) {
+        set({
+          user: null,
+          authSource: null,
+          loading: false,
+          error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
+          showErrorOnLogin: true,
+        });
+        return "rejected";
+      }
+      set({ user, authSource: "clerk", loading: false, needsApplication: false });
+      return "adopted";
     } catch (error) {
+      /*
+        GRIDGO does not know this identity as a rider yet.
+
+        This is the state every new rider passes through: Clerk has just
+        created the account and verified the email, and the application that
+        creates the rider record is the very next step. Treating it as a failed
+        sign-in used to end the Clerk session the application needed, drop the
+        rider back to the sign-in screen, and blame their password for it.
+
+        So it is reported as its own outcome and the Clerk session is left
+        standing. The apply screen files against it; a rider who arrived here by
+        signing in is routed to that screen instead of a dead end.
+      */
+      /*
+        The application can land while this probe is still in flight — the
+        rider files it from the same Clerk session, seconds after the code.
+        `enrollRider` moves the decision on, and a "GRIDGO has never heard of
+        you" answer that arrives after that is stale: acting on it would erase
+        the rider record that had just been created.
+      */
+      if (decisionAtStart !== sessionDecisionVersion) {
+        if (get().user) return "adopted";
+        if (clerkAdoptionBlocked) return "rejected";
+        return "unassigned";
+      }
+      if (clerkAdoptionBlocked) {
+        set({ loading: false, needsApplication: false });
+        return "rejected";
+      }
+      const unassigned =
+        error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404);
+      if (unassigned) {
+        set({
+          user: null,
+          authSource: null,
+          loading: false,
+          error: null,
+          showErrorOnLogin: false,
+          needsApplication: true,
+        });
+        return "unassigned";
+      }
       set({
         user: null,
         authSource: null,
@@ -327,7 +471,7 @@ export const useSession = create<SessionState>((set, get) => ({
         error: loginErrorMessage(error),
         showErrorOnLogin: true,
       });
-      return false;
+      return "rejected";
     }
   },
   refreshUser: async () => {
@@ -343,6 +487,11 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   logout: async () => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = true;
+    // Leave the signed-in area first. Waiting on `/auth/logout` or Clerk used
+    // to keep Account up when the API was slow, and a leftover Clerk session
+    // could then be adopted as whoever signed in last.
+    //
     // The device token rides along with the sign-out rather than being
     // unregistered separately: afterwards the bearer token is dead, so a phone
     // that signed out first could no longer authenticate the unregister and
@@ -354,27 +503,28 @@ export const useSession = create<SessionState>((set, get) => ({
     // entirely: a rider that signs out has not uninstalled GRIDGO, and "there
     // is a new version" still has to reach it.
     const deviceToken = usePush.getState().token;
-    try {
-      await api.logout(deviceToken);
-    } catch {
-      // Server may reject an already-dead token. Local wipe still happens below.
-    } finally {
-      // Always clear local state — even if the server call fails (expired token).
-      // Clearing user trips the auth gate → replace to welcome; back cannot re-enter.
-      api.setToken(null);
-      api.setTokenProvider(null);
-      persist(null);
-      const wasClerk = get().authSource === "clerk";
-      if (wasClerk) await clerkSignOut?.().catch(() => {});
-      clerkOwnsSession = false;
-      set({
-        user: null,
-        authSource: null,
-        error: null,
-        showErrorOnLogin: false,
-      });
-      void usePush.getState().release();
-    }
+    const identity = clerkSignOut;
+    api.setToken(null);
+    api.setTokenProvider(null);
+    persist(null);
+    clerkOwnsSession = false;
+    set({
+      user: null,
+      authSource: null,
+      error: null,
+      showErrorOnLogin: false,
+      needsApplication: false,
+      loading: false,
+    });
+    useActiveTrip.getState().clear();
+    void usePush.getState().release();
+    await Promise.all([
+      raceDeadline(api.logout(deviceToken).catch(() => undefined), LOGOUT_API_TIMEOUT_MS),
+      raceDeadline(
+        identity ? identity().catch(() => undefined) : Promise.resolve(),
+        LOGOUT_CLERK_TIMEOUT_MS,
+      ),
+    ]);
   },
 }));
 

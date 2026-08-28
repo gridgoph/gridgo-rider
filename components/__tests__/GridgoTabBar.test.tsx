@@ -8,7 +8,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
   GridgoTabBar,
-  TAB_BAR_METRICS,
   TAB_BAR_MIN_BOTTOM_GAP,
   TAB_LABEL_BOX,
   TAB_ICON_SIZE,
@@ -18,21 +17,12 @@ import {
   tabBarPaddingBottom,
   tabBarTopGap,
 } from "@/components/GridgoTabBar";
-import { ACTION_TAB, DESTINATION_TABS, TABS } from "@/constants/tabs";
-import { useActiveTrip } from "@/store/activeTrip";
+import { TABS } from "@/constants/tabs";
+import type { VerificationStatus } from "@/lib/api";
+import { useSession } from "@/store/session";
 
 const navigate = jest.fn();
 const emit = jest.fn(() => ({ defaultPrevented: false }));
-const mockPush = jest.fn();
-
-jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: mockPush }),
-}));
-
-jest.mock("expo-haptics", () => ({
-  impactAsync: jest.fn(async () => undefined),
-  ImpactFeedbackStyle: { Medium: "medium" },
-}));
 
 /**
  * The bar reads three things off the navigator: the route list, which index is
@@ -40,15 +30,14 @@ jest.mock("expo-haptics", () => ({
  * belongs to the navigator, so the cast keeps the fixture to what is actually
  * exercised rather than restating React Navigation's internals.
  *
- * The navigator only knows about destinations — the action column is not a
- * screen — so the fixture's route list is `DESTINATION_TABS`, exactly what
- * `app/(tabs)/_layout.tsx` registers.
+ * The fixture's route list is `TABS`, exactly what `app/(tabs)/_layout.tsx`
+ * registers.
  */
 function tabBarProps(openIndex: number): BottomTabBarProps {
   return {
     state: {
       index: openIndex,
-      routes: DESTINATION_TABS.map((tab) => ({ key: `${tab.name}-key`, name: tab.name })),
+      routes: TABS.map((tab) => ({ key: `${tab.name}-key`, name: tab.name })),
     },
     navigation: { emit, navigate },
   } as unknown as BottomTabBarProps;
@@ -75,20 +64,30 @@ function renderInSafeArea(ui: ReactElement, bottomInset = 34) {
   });
 }
 
+/**
+ * Sign the bar in as a rider at a given point in accreditation.
+ *
+ * A signed-out store reads as approved on purpose — see
+ * `verificationStatusOf` — which is what every other case here relies on.
+ */
+function signedInAs(verificationStatus: VerificationStatus) {
+  useSession.setState({
+    user: { id: "user_rider", role: "rider", verificationStatus } as never,
+  });
+}
+
 describe("GridgoTabBar", () => {
   beforeEach(() => {
     navigate.mockClear();
     emit.mockClear();
-    mockPush.mockClear();
-    useActiveTrip.getState().clear();
+    useSession.setState({ user: null });
   });
 
-  it("draws five columns: four destinations around one action", () => {
-    expect(TABS).toHaveLength(5);
-    expect(TABS[2].name).toBe(ACTION_TAB);
-    expect(DESTINATION_TABS.map((tab) => tab.name)).toEqual([
+  it("draws five destination tabs and no Find work disc", () => {
+    expect(TABS.map((tab) => tab.name)).toEqual([
       "offers",
       "active",
+      "map",
       "earnings",
       "account",
     ]);
@@ -97,24 +96,41 @@ describe("GridgoTabBar", () => {
   it("labels every destination, so none is an icon alone", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    for (const tab of DESTINATION_TABS) {
+    expect(screen.queryAllByRole("tab")).toHaveLength(5);
+    for (const tab of TABS) {
       expect(screen.getByText(tab.label)).toBeTruthy();
     }
+    expect(screen.queryByText("Find work")).toBeNull();
+    expect(screen.queryByTestId("tab-action-disc")).toBeNull();
   });
 
-  it("labels the action with its verb, because the verb changes with the job", async () => {
-    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+  describe("an account Operations is still reviewing", () => {
+    it("keeps every destination, because accreditation is a header chip, not a missing tab", async () => {
+      signedInAs("pending");
 
-    // No trip in hand — the only move a rider has is to take one.
-    expect(screen.getByText("Find work")).toBeTruthy();
-    expect(screen.getByTestId("tab-action-disc")).toBeTruthy();
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+      expect(screen.queryAllByRole("tab")).toHaveLength(5);
+      for (const tab of TABS) {
+        expect(screen.getByRole("tab", { name: tab.label })).toBeTruthy();
+      }
+    });
+
+    it("still navigates, because the destinations are not what is withheld", async () => {
+      signedInAs("pending");
+
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+      fireEvent.press(screen.getByRole("tab", { name: "Earnings" }));
+
+      expect(navigate).toHaveBeenCalledWith("earnings");
+    });
   });
 
   it("marks only the open tab as selected", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(1)} />);
 
     expect(
-      screen.getByRole("tab", { name: DESTINATION_TABS[1].label, selected: true }),
+      screen.getByRole("tab", { name: TABS[1].label, selected: true }),
     ).toBeTruthy();
     expect(screen.queryAllByRole("tab", { selected: true })).toHaveLength(1);
   });
@@ -142,27 +158,6 @@ describe("GridgoTabBar", () => {
 
     fireEvent.press(screen.getByRole("tab", { name: "Active" }));
 
-    expect(navigate).not.toHaveBeenCalled();
-  });
-
-  it("the action disc performs the job's next step, carrying the order id", async () => {
-    useActiveTrip.getState().setOrder({
-      id: "ord_1",
-      state: "rider_assigned",
-      riderId: "user_rider",
-      timeline: [],
-    } as never);
-
-    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
-
-    expect(screen.getByText("Check it")).toBeTruthy();
-    fireEvent.press(screen.getByTestId("tab-action-disc"));
-
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/trip/pickup",
-      params: { orderId: "ord_1" },
-    });
-    // The disc is an action, not a destination: it never drives the tab state.
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -357,14 +352,6 @@ describe("GridgoTabBar", () => {
 
       const style = StyleSheet.flatten(screen.getByTestId("gridgo-tab-bar").props.style);
       expect(style.paddingBottom).toBe(expected);
-    });
-
-    it("gives the action column the running platform's row height and disc", async () => {
-      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
-
-      const style = StyleSheet.flatten(screen.getByTestId("tab-action-disc").props.style);
-      expect(style.height).toBe(TAB_BAR_METRICS.columnHeight);
-      expect(style.paddingBottom).toBe(TAB_BAR_METRICS.itemPaddingBottom);
     });
 
     it("paints the surface across the whole bar, as gridgo-supplier does", () => {

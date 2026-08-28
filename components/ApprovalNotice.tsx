@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useCallback } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
 import { InlineNotice } from "@/components/InlineNotice";
@@ -23,9 +23,24 @@ export function ApprovalNotice() {
   const refreshUser = useSession((s) => s.refreshUser);
   const approval = approvalPresentation(user);
 
+  const [opening, setOpening] = useState(false);
+
   const check = useCallback(() => {
     void refreshUser();
   }, [refreshUser]);
+
+  useEffect(() => {
+    router.prefetch("/onboarding");
+  }, [router]);
+
+  // Offers stays mounted under onboarding. Without this, "Opening…" sticks
+  // after Get Started / Skip pops back.
+  useFocusEffect(
+    useCallback(() => {
+      setOpening(false);
+      return () => setOpening(false);
+    }, []),
+  );
 
   if (approval.canWork) return null;
 
@@ -56,8 +71,12 @@ export function ApprovalNotice() {
       ) : null}
 
       <SecondaryButton
-        label="See how a GRIDGO delivery works"
-        onPress={() => router.push("/onboarding")}
+        label={opening ? "Opening…" : "See how a GRIDGO delivery works"}
+        disabled={opening}
+        onPress={() => {
+          setOpening(true);
+          router.push({ pathname: "/onboarding", params: { from: "offers" } });
+        }}
       />
     </View>
   );

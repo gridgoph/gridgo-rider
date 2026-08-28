@@ -73,6 +73,7 @@ export default function StartDeliverySheet() {
       confirmLabel="Yes, I am leaving now"
       cancelLabel="Not yet"
       busy={busy}
+      busyLabel="Recording…"
       onConfirm={() => void start()}
       onCancel={() => router.back()}
     >

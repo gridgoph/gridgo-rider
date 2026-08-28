@@ -11,6 +11,7 @@
 export type AuthRedirect =
   | "/(auth)/welcome"
   | "/(auth)/login"
+  | "/(auth)/signup"
   | "/(tabs)/active"
   | null;
 
@@ -60,20 +61,38 @@ export function canGateNavigate(input: {
  *
  * @param isSignedIn - session has a rider user
  * @param segments - expo-router useSegments() result (e.g. ["(tabs)", "active"])
+ * @param showErrorOnLogin - a stored Clerk failure the login screen must render
+ * @param needsApplication - Clerk knows this person; GRIDGO has no rider record
  */
 export function resolveAuthRedirect(
   isSignedIn: boolean,
   segments: readonly string[],
   showErrorOnLogin = false,
+  needsApplication = false,
 ): AuthRedirect {
   const root = segments[0];
 
   // Still resolving the initial route — wait for a real segment.
   if (!root) return null;
 
+  /*
+    Signed in with Clerk, unknown to GRIDGO: the only thing this person can do
+    is apply, so that is where they go — whether they arrived by signing in with
+    an account that never applied, or by verifying a brand-new email.
+
+    This outranks the stored-error redirect below because it is not an error.
+    Sending them to the sign-in screen instead was the dead end: their password
+    was correct, and typing it again could not create the rider record they were
+    missing.
+  */
+  if (!isSignedIn && needsApplication) {
+    const alreadyApplying = root === "(auth)" && segments[1] === "signup";
+    return alreadyApplying ? null : "/(auth)/signup";
+  }
+
   // Browser SSO returns through a public callback route. If Clerk rejects the
-  // identity there (unassigned or meant for another GRIDGO app), carry that
-  // stored explanation back to the one auth screen that renders it.
+  // identity there (meant for another GRIDGO app), carry that stored
+  // explanation back to the one auth screen that renders it.
   const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
   if (!isSignedIn && showErrorOnLogin && !alreadyOnLogin) {
     return "/(auth)/login";

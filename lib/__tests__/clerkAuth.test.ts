@@ -1,10 +1,28 @@
 import {
+  clerkErrorMessage,
   clerkPublishableKey,
   readGridgoRole,
   resolveClerkPublishableKey,
   resolveGridgoRole,
   riderAccessError,
 } from "@/lib/clerkAuth";
+
+describe("clerkErrorMessage", () => {
+  it("prefers Clerk's structured copy", () => {
+    expect(
+      clerkErrorMessage(
+        { errors: [{ longMessage: "Password is incorrect." }] },
+        "Wrong email or password.",
+      ),
+    ).toBe("Password is incorrect.");
+  });
+
+  it("does not hide a thrown Error behind the password fallback", () => {
+    expect(
+      clerkErrorMessage(new Error("Additional verification is required."), "Wrong email or password."),
+    ).toBe("Additional verification is required.");
+  });
+});
 
 describe("Clerk rider role policy", () => {
   it("accepts only the rider role from public metadata", () => {
@@ -17,8 +35,11 @@ describe("Clerk rider role policy", () => {
     expect(readGridgoRole(null)).toBeNull();
   });
 
-  it("gives an invitation recovery path when access is unassigned", () => {
-    expect(riderAccessError(null)).toMatch(/Operations invite/i);
+  it("defers an unassigned account to /auth/me instead of rejecting it", () => {
+    // Enrollment writes a GRIDGO membership, not Clerk role metadata, so an
+    // approved rider and a brand-new applicant both arrive with no role.
+    // Rejecting here locked riders out and blocked self-signup.
+    expect(riderAccessError(null)).toBeNull();
   });
 
   it("names the correct app for a known role mismatch", () => {

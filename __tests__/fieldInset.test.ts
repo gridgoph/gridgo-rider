@@ -26,9 +26,10 @@ describe("gg-field native text inset", () => {
 
     expect(fields.length).toBeGreaterThan(0);
     for (const { path, input } of fields) {
-      const hasExplicitNativeInset = /style=\{(?:fieldInputStyle|\[[\s\S]*fieldInputStyle)/.test(
-        input,
-      );
+      const hasExplicitNativeInset =
+        /style=\{(?:fieldInputStyle|\[[\s\S]*fieldInputStyle|\{\s*\.\.\.fieldInputStyle)/.test(
+          input,
+        );
       expect({ path, input, hasExplicitNativeInset }).toMatchObject({
         hasExplicitNativeInset: true,
       });

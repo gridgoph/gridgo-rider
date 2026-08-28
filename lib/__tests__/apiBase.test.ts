@@ -1,4 +1,4 @@
-import { hostnameFromDevHostUri, resolveApiBase } from "@/lib/api";
+import { hostnameFromDevHostUri, notificationImageUrl, resolveApiBase } from "@/lib/api";
 
 describe("resolveApiBase", () => {
   const defaultPort = "8787";
@@ -71,6 +71,7 @@ describe("resolveApiBase", () => {
         envPort: null,
         devHostUri: "127.0.0.1:8081",
         platformOS: "android",
+        isDevice: false,
       }),
     ).toBe(`http://10.0.2.2:${defaultPort}`);
 
@@ -80,8 +81,21 @@ describe("resolveApiBase", () => {
         envPort: null,
         devHostUri: "localhost:8081",
         platformOS: "android",
+        isDevice: false,
       }),
     ).toBe(`http://10.0.2.2:${defaultPort}`);
+  });
+
+  it("3b. Android USB phone uses IPv4 loopback so a reverse reaches GRIDGO on any Wi-Fi", () => {
+    expect(
+      resolveApiBase({
+        envUrl: null,
+        envPort: null,
+        devHostUri: "localhost:8083",
+        platformOS: "android",
+        isDevice: true,
+      }),
+    ).toBe(`http://127.0.0.1:${defaultPort}`);
   });
 
   it("4. iOS simulator keeps loopback hostname from the dev server (not the Android alias)", () => {
@@ -140,5 +154,15 @@ describe("hostnameFromDevHostUri", () => {
   it("returns null for empty input", () => {
     expect(hostnameFromDevHostUri(null)).toBeNull();
     expect(hostnameFromDevHostUri("")).toBeNull();
+  });
+});
+
+describe("notificationImageUrl", () => {
+  it("leaves a public picture link alone and ignores blanks", () => {
+    expect(notificationImageUrl("https://cdn.gridgo.example/update.png")).toBe(
+      "https://cdn.gridgo.example/update.png",
+    );
+    expect(notificationImageUrl("  ")).toBeNull();
+    expect(notificationImageUrl(undefined)).toBeNull();
   });
 });

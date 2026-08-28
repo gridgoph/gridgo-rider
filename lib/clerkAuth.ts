@@ -30,9 +30,17 @@ export function resolveGridgoRole(
   return mismatch ?? claimRole ?? metadataRole;
 }
 
-/** Rider-facing recovery copy for a Clerk account that belongs elsewhere. */
+/**
+ * Rider-facing recovery copy for a Clerk account that belongs elsewhere.
+ *
+ * A *missing* role is not a rejection. Rider enrollment writes a GRIDGO
+ * membership, never Clerk `publicMetadata.gridgoRole`, so a legitimate rider —
+ * and every brand-new applicant — reaches this check with no role at all.
+ * Only `/auth/me` can tell those apart, so absence defers to it. Conflating
+ * the two is what locked riders out of their own app and blocked self-signup.
+ */
 export function riderAccessError(role: Role | null): string | null {
-  if (role === "rider") return null;
+  if (role == null || role === "rider") return null;
   switch (role) {
     case "client":
       return "This account belongs in the GRIDGO Client app.";
@@ -54,8 +62,86 @@ type ClerkErrorLike = {
 export function clerkErrorMessage(error: unknown, fallback: string): string {
   if (typeof error !== "object" || error === null) return fallback;
   const first = (error as ClerkErrorLike).errors?.[0];
-  const message = first?.longMessage ?? first?.message;
-  return typeof message === "string" && message.trim() ? message.trim() : fallback;
+  const structured = first?.longMessage ?? first?.message;
+  if (typeof structured === "string" && structured.trim()) return structured.trim();
+  // A thrown Error (incomplete factor, leftover session) used to collapse into
+  // "Wrong email or password" and hide the real reason.
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return fallback;
+}
+
+/**
+ * Clerk answers a duplicate sign-in attempt with an error rather than a
+ * no-op, and enrollment must treat that as success — the phone already holds
+ * the session the caller was trying to create.
+ */
+export function isAlreadySignedInError(error: unknown): boolean {
+  const message = clerkErrorMessage(error, "").toLowerCase();
+  return (
+    message.includes("already signed in") ||
+    message.includes("already logged in") ||
+    message.includes("currently signed in") ||
+    message.includes("currently logged in")
+  );
+}
+
+export type ClerkGetToken = (
+  options?: { skipCache?: boolean },
+) => Promise<string | null | undefined>;
+
+/**
+ * Fresh JWT for gridgo-api. A cached leftover is often expired or empty, and a
+ * signed-out Clerk throws rather than returning null — answer null either way.
+ */
+async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
+  try {
+    const token = await getToken({ skipCache: true });
+    return token?.trim() ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A session created moments ago does not always mint a token on the first ask,
+ * so enrollment waits briefly rather than sending an unauthenticated request.
+ */
+export async function awaitClerkSessionToken(
+  getToken: ClerkGetToken,
+  attempts = 5,
+  delayMs = 120,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const token = await clerkSessionToken(getToken);
+    if (token) return token;
+    if (attempt < attempts - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
+/** Clerk takes a first and last name; the form asks for one full name. */
+export function splitPersonName(value: string): { firstName: string; lastName?: string } {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() ?? "";
+  return parts.length ? { firstName, lastName: parts.join(" ") } : { firstName };
+}
+
+/**
+ * The person currently signed in, from Clerk.
+ *
+ * GRIDGO still stores a copy for Operations. Account prefers this live name so
+ * a rename is visible before the copy lands.
+ */
+export function clerkDisplayName(
+  user: { firstName?: string | null; lastName?: string | null } | null | undefined,
+): string | undefined {
+  const name = [user?.firstName, user?.lastName]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter(Boolean)
+    .join(" ");
+  return name || undefined;
 }
 
 /** Production builds must be configured explicitly with a live Clerk instance. */
