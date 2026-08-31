@@ -93,10 +93,17 @@ export type ClerkGetToken = (
  * Fresh JWT for gridgo-api. A cached leftover is often expired or empty, and a
  * signed-out Clerk throws rather than returning null — answer null either way.
  */
+const TOKEN_ATTEMPT_MS = 2500;
+
 async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
   try {
-    const token = await getToken({ skipCache: true });
-    return token?.trim() ? token : null;
+    const token = await Promise.race([
+      getToken({ skipCache: true }).then((value) => (value?.trim() ? value : null)),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), TOKEN_ATTEMPT_MS);
+      }),
+    ]);
+    return token ?? null;
   } catch {
     return null;
   }

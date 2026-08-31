@@ -60,7 +60,7 @@ export default function SignupScreen() {
   const loading = useSession((state) => state.loading);
   const storeError = useSession((state) => state.error);
   const clearError = useSession((state) => state.clearError);
-  const { signUp, fetchStatus } = useSignUp();
+  const { signUp } = useSignUp();
   const { isSignedIn, getToken } = useAuth();
   const { user: clerkUser } = useUser();
   const { setActive, signOut } = useClerk();
@@ -266,7 +266,7 @@ export default function SignupScreen() {
   const identityExists = Boolean(isSignedIn);
   const signedInEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
   const ready = canSubmitSignup(fields, { identityExists });
-  const sending = loading || busy || fetchStatus === "fetching";
+  const sending = busy;
 
   /*
     The phone belongs to the application, not the identity, so it is asked for

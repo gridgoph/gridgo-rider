@@ -1,4 +1,5 @@
 import {
+  awaitClerkSessionToken,
   clerkErrorMessage,
   clerkPublishableKey,
   readGridgoRole,
@@ -80,6 +81,24 @@ describe("Clerk publishable key policy", () => {
     } finally {
       if (original === undefined) delete process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
       else process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = original;
+    }
+  });
+});
+
+describe("awaitClerkSessionToken", () => {
+  it("returns a token when Clerk answers", async () => {
+    await expect(awaitClerkSessionToken(async () => "jwt", 1, 0)).resolves.toBe("jwt");
+  });
+
+  it("gives up when Clerk never returns a token", async () => {
+    jest.useFakeTimers();
+    try {
+      const hung = () => new Promise<string>(() => {});
+      const pending = awaitClerkSessionToken(hung, 1, 0);
+      await jest.advanceTimersByTimeAsync(2500);
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      jest.useRealTimers();
     }
   });
 });
