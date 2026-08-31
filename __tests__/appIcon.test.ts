@@ -4,10 +4,12 @@ import { join } from "node:path";
 import type { ExpoConfig } from "expo/config";
 
 /**
- * The home-screen icon is the printing_app 3×3 mark on cockpit-black
- * `#111111`. A leftover `react-logo*` asset, the Expo `#E6F4FE` plate,
- * a white plate, or the rejected charcoal-on-`#000000` mark would put
- * the wrong icon on the launcher.
+ * The home-screen icon is the GRIDGO RIDER wordmark lockup on a black
+ * plate, not the Expo chevron and not the 3×3 mark.
+ *
+ * `app.json` is the source of the paths Expo prebuild copies into the
+ * native project. A leftover `react-logo*` asset or the default Expo
+ * `#E6F4FE` plate would put the blue chevron back on the launcher.
  */
 
 const root = join(__dirname, "..");
@@ -107,7 +109,7 @@ describe("GRIDGO app icon", () => {
   it("points icon, adaptive layers, favicon and splash at the mark files", () => {
     expect(appJson.expo.icon).toBe("./assets/images/icon.png");
     expect(appJson.expo.android?.adaptiveIcon).toEqual({
-      backgroundColor: "#111111",
+      backgroundColor: "#000000",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -116,25 +118,20 @@ describe("GRIDGO app icon", () => {
 
     const splash = pluginOptions("expo-splash-screen");
     expect(splash.image).toBe("./assets/images/splash-icon.png");
-    expect(splash.backgroundColor).toBe("#111111");
+    expect(splash.backgroundColor).toBe("#000000");
     expect(splash.dark).toEqual({
       image: "./assets/images/splash-icon-dark.png",
-      backgroundColor: "#111111",
+      backgroundColor: "#000000",
     });
   });
 
-  it("does not keep the Expo blue plate or the rejected white plate", () => {
+  it("does not keep the Expo blue plate or a white plate", () => {
     const encoded = JSON.stringify(appJson);
     expect(encoded).not.toContain("#E6F4FE");
     expect(encoded).not.toContain("#e6f4fe");
+    expect(appJson.expo.android?.adaptiveIcon?.backgroundColor).toBe("#000000");
     expect(appJson.expo.android?.adaptiveIcon?.backgroundColor).not.toBe(
       "#FFFFFF",
-    );
-    expect(appJson.expo.android?.adaptiveIcon?.backgroundColor).not.toBe(
-      "#ffffff",
-    );
-    expect(appJson.expo.android?.adaptiveIcon?.backgroundColor).not.toBe(
-      "#000000",
     );
   });
 
@@ -158,8 +155,8 @@ describe("GRIDGO app icon", () => {
     });
   });
 
-  it("paints the cockpit-black #111111 plate, not white", () => {
-    const plate: [number, number, number] = [0x11, 0x11, 0x11];
+  it("paints a black plate, not white", () => {
+    const plate: [number, number, number] = [0, 0, 0];
     const icon = join(images, "icon.png");
     const background = join(images, "android-icon-background.png");
     expect(near(pngPixel(icon, 8, 8), plate)).toBe(true);
@@ -169,27 +166,20 @@ describe("GRIDGO app icon", () => {
     expect(near(pngPixel(background, 512, 512), plate)).toBe(true);
   });
 
-  it("paints yellow / muted / muted on the right column", () => {
+  it("paints the GRIDGO RIDER lockup, not the 3x3 mark", () => {
     const icon = join(images, "icon.png");
-    // 108-viewport centres 38/54/70 scaled onto 1024.
     const at = (cx: number, cy: number) =>
       pngPixel(icon, Math.round((cx / 108) * 1024), Math.round((cy / 108) * 1024));
-    expect(near(at(38, 38), [255, 255, 255])).toBe(true);
-    expect(near(at(54, 38), [255, 255, 255])).toBe(true);
-    expect(near(at(70, 38), [0xff, 0xde, 0x58])).toBe(true);
-    expect(near(at(38, 54), [255, 255, 255])).toBe(true);
-    expect(near(at(54, 54), [255, 255, 255])).toBe(true);
-    expect(near(at(70, 54), [0x8a, 0x8a, 0x8a])).toBe(true);
-    expect(near(at(38, 70), [255, 255, 255])).toBe(true);
-    expect(near(at(54, 70), [255, 255, 255])).toBe(true);
-    expect(near(at(70, 70), [0x8a, 0x8a, 0x8a])).toBe(true);
+    expect(near(at(70, 38), [0, 0, 0])).toBe(true);
+    expect(near(pngPixel(icon, 634, 491), [255, 222, 89], 12)).toBe(true);
+    expect(near(pngPixel(icon, 512, 573), [255, 255, 255], 8)).toBe(true);
 
     const generator = readFileSync(
       join(root, "scripts/generate-app-icon.py"),
       "utf8",
     );
-    expect(generator).not.toContain("5B5B5B");
-    expect(generator).not.toContain("0x5B");
+    expect(generator).toContain("wordmark lockup");
+    expect(generator).not.toContain("CENTRES = (38, 54, 70)");
   });
 
   it("drops leftover Expo react-logo assets", () => {
