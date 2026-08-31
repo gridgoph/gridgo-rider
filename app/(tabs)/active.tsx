@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { Dimensions, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
@@ -25,6 +25,7 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useRiderLocation } from "@/hooks/useRiderLocation";
 import { useRoute } from "@/hooks/useRoute";
+import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { classifyLocation } from "@/lib/locationFreshness";
@@ -32,25 +33,32 @@ import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
 import { approvalPresentation } from "@/lib/riderApproval";
 import {
-  activeStopKind,
-  dropoffLabel,
   issueWindowLabel,
   orderStateChip,
   owesSignOff,
-  pickupLabel,
   primaryActionLabel,
   signOffPrompt,
-  stopLatLng,
   zoneLabel,
 } from "@/lib/riderOrder";
+import { nextStop, tripDestination, tripShop } from "@/lib/tripNav";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
 
 /** How often the position age on screen is recomputed. */
 const FRESHNESS_TICK_MS = 5_000;
 
-/** Map height on the trip screen — enough to orient, not enough to bury the job. */
-const MAP_HEIGHT = 200;
+/**
+ * Map height on the trip screen.
+ *
+ * Most of the screen, because a rider on the road is reading the map and
+ * glancing at the job, not the other way round. At 268 it was a strip: enough
+ * to see a line, not enough to see the turn coming, and too small to pinch
+ * without fighting the page scrolling underneath it.
+ *
+ * Bounded so it cannot swallow the whole screen on a tall phone — the job's
+ * next action has to stay reachable without scrolling.
+ */
+const MAP_HEIGHT = Math.min(520, Math.max(320, Math.round(Dimensions.get("window").height * 0.52)));
 
 /**
  * The trip in hand.
@@ -83,18 +91,19 @@ export default function ActiveScreen() {
 
   const approval = approvalPresentation(user);
   const { phase } = useRiderAction();
-  const pickup = stopLatLng(trip?.pickup);
-  const dropoff = stopLatLng(trip?.dropoff);
-  const heading = activeStopKind(phase);
-
-  const { route } = useRoute({
-    from: heading === "pickup" ? dropoff : pickup,
-    to: heading === "pickup" ? pickup : dropoff,
-    enabled: Boolean(trip),
-  });
+  const shop = trip ? tripShop(trip) : null;
+  const destination = trip ? tripDestination(trip) : null;
+  const heading = trip ? nextStop(trip, phase) : null;
 
   const needsGps = focused && Boolean(trip) && phase !== "complete" && phase !== "idle";
   const riderLocation = useRiderLocation({ enabled: needsGps });
+  const routeFrom = useSnappedOrigin(riderLocation.coords);
+
+  const { route } = useRoute({
+    from: routeFrom,
+    to: heading?.point ?? null,
+    enabled: Boolean(trip) && Boolean(heading?.point) && Boolean(routeFrom),
+  });
 
   const { sharing } = useLocationSharing({
     orderId: trip?.id ?? null,
@@ -191,15 +200,6 @@ export default function ActiveScreen() {
   const chip = trip ? orderStateChip(trip) : null;
   const cta = primaryActionLabel(phase);
   const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
-  const stopAddress = trip
-    ? heading === "pickup"
-      ? pickupLabel(trip)
-      : dropoffLabel(trip)
-    : "";
-  const stopHeading =
-    heading === "pickup"
-      ? "Check the finished job at the counter before you carry it"
-      : "Hand the package to the client";
 
   return (
     <Screen edges={["top"]}>
@@ -262,10 +262,17 @@ export default function ActiveScreen() {
           <>
             {heading ? (
               <NextStopCard
-                kind={heading}
-                heading={stopHeading}
-                address={stopAddress}
-                routeSummary={route ? routeSummaryLabel(route) : "Measuring the route…"}
+                kind={heading.cardKind}
+                heading={heading.heading}
+                address={heading.label}
+                overline={heading.overline}
+                routeSummary={
+                  !routeFrom
+                    ? "Finding your position…"
+                    : route
+                      ? routeSummaryLabel(route)
+                      : "Measuring the route…"
+                }
                 zone={zoneLabel(trip.zone)}
               />
             ) : null}
@@ -318,17 +325,42 @@ export default function ActiveScreen() {
               </View>
             ) : null}
 
-            <View style={{ height: MAP_HEIGHT }}>
+            {/*
+              Tappable, because a map inside a scrolling page can never really
+              be panned: the page underneath claims the drag, and a rider
+              trying to look one street ahead scrolls the job instead. Full
+              screen the gesture is unambiguous, which is where a map should be
+              read anyway.
+            */}
+            <Pressable
+              onPress={() => router.push({ pathname: "/trip/map", params: { orderId: trip.id } })}
+              accessibilityRole="button"
+              accessibilityLabel="Open the map full screen"
+              style={{ height: MAP_HEIGHT }}
+            >
               <TripMap
-                pickup={pickup}
-                dropoff={dropoff}
-                pickupLabel={pickupLabel(trip)}
-                dropoffLabel={dropoffLabel(trip)}
+                pickup={shop?.point ?? null}
+                dropoff={destination?.point ?? null}
+                pickupLabel={shop?.label ?? "Shop"}
+                dropoffLabel={destination?.label ?? "Client"}
+                pickupKind="shop"
+                dropoffKind={destination?.kind === "office" ? "office" : "client"}
+                focus={heading?.cardKind ?? null}
                 routeCoordinates={route?.coordinates ?? []}
                 routeUnavailable={Boolean(route && !route.routed)}
                 rider={riderLocation.coords}
+                riderAccuracy={riderLocation.accuracy}
+                riderHeading={riderLocation.heading}
+                navTitle={heading?.navTitle ?? null}
+                navSummary={
+                  !routeFrom
+                    ? "Waiting for GPS"
+                    : route
+                      ? routeSummaryLabel(route)
+                      : "Measuring the road…"
+                }
               />
-            </View>
+            </Pressable>
 
             {route?.statusLabel ? (
               <Text className="text-caption text-text-muted">

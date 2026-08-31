@@ -27,6 +27,22 @@ describe("buildMapHtml", () => {
     expect(html).toMatch(/cartocdn|dark_all/i);
   });
 
+  it("draws a dispatch ticket and GPS pulse on a trip map", () => {
+    const html = buildMapHtml({
+      ...base,
+      navTitle: "TO THE SHOP",
+      navSummary: "4.2 km · 14 min",
+      pickupKind: "shop",
+      dropoffKind: "client",
+      focus: "pickup",
+      rider: { lat: 7.07, lng: 125.61 },
+    });
+    expect(html).toMatch(/nav-chip/);
+    expect(html).toMatch(/TO THE SHOP/);
+    expect(html).toMatch(/gps-pulse/);
+    expect(html).toMatch(/pin-halo/);
+  });
+
   it("surfaces the route-unavailable banner flag", () => {
     const html = buildMapHtml({ ...base, routeUnavailable: true });
     expect(html).toMatch(/Route unavailable/);

@@ -166,6 +166,11 @@ export type Order = {
   pickup?: OrderStop | null;
   /** Client drop-off stop with lat/lng from the API. */
   dropoff?: OrderStop | null;
+  /**
+   * How the client receives the job. `"pickup"` means the rider's second
+   * stop is GRIDGO Office, not a client door.
+   */
+  fulfillmentMode?: "delivery" | "pickup" | null;
 };
 
 export type Notification = {
@@ -810,6 +815,45 @@ export async function postLocation(
 export async function listNotifications(): Promise<Notification[]> {
   const result = await request<{ notifications: Notification[] }>("/notifications");
   return result.notifications;
+}
+
+/** Approved shop on the public catalog, with the pin a rider drives to. */
+export type CatalogShopPoint = {
+  lat: number;
+  lng: number;
+  label: string;
+};
+
+export type CatalogShopSummary = {
+  supplierId: string;
+  shopName: string;
+  shop: CatalogShopPoint | null;
+  categories: string[];
+  itemCount: number;
+};
+
+const CATALOG_SHOP_PAGE_CAP = 25;
+
+/**
+ * Every approved shop with a live listing.
+ *
+ * `GET /catalog/shops` pages; the Map tab needs the whole set so it follows
+ * `nextCursor` rather than stopping at the first page.
+ */
+export async function listCatalogShops(): Promise<CatalogShopSummary[]> {
+  const shops: CatalogShopSummary[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < CATALOG_SHOP_PAGE_CAP; page += 1) {
+    const query: string = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+    const pageBody = await request<{
+      shops?: CatalogShopSummary[];
+      nextCursor?: string | null;
+    }>(`/catalog/shops${query}`);
+    shops.push(...(pageBody.shops ?? []));
+    if (!pageBody.nextCursor) break;
+    cursor = pageBody.nextCursor;
+  }
+  return shops;
 }
 
 export type Health = {

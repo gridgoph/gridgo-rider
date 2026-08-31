@@ -1,5 +1,6 @@
+import { useFocusEffect } from "expo-router";
 import { LocateFixed, Search, X } from "lucide-react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -7,27 +8,26 @@ import { ApprovalChip } from "@/components/ApprovalChip";
 import { BrowseMap } from "@/components/BrowseMap";
 import { Screen } from "@/components/Screen";
 import { fieldInputStyle } from "@/constants/theme";
+import { DAVAO_MAP_CENTER, DAVAO_MAP_ZOOM } from "@/data/placeholderShops";
 import { useRiderLocation } from "@/hooks/useRiderLocation";
 import { useThemeColors } from "@/hooks/useTheme";
+import * as api from "@/lib/api";
 import { firstOpenView, shopsToMapPlaces, viewOn } from "@/lib/browseMap";
+import {
+  directoryShopsFromCatalog,
+  filterDirectoryShops,
+  type DirectoryShop,
+} from "@/lib/directoryShops";
 import type { MapView } from "@/lib/mapHtml";
 import { approvalPresentation } from "@/lib/riderApproval";
-import {
-  DAVAO_MAP_CENTER,
-  DAVAO_MAP_ZOOM,
-  filterPlaceholderShops,
-  PLACEHOLDER_SHOPS,
-  type PlaceholderShop,
-} from "@/data/placeholderShops";
 import { useSession } from "@/store/session";
 
 /**
  * The city. Not a trip, not a route builder.
  *
  * Riders already have a job map on Active. This tab is the whole of Davao so
- * they can find a shop before a dispatch exists — search, tap a pin, read
- * the name. The pins are local placeholders until the API publishes real
- * supplier coordinates; the screen does not pretend they are live jobs.
+ * they can find a GRIDGO shop before a dispatch exists — search, tap a pin,
+ * read the name. Pins are the live catalog, the same shop points pickup uses.
  */
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
@@ -37,11 +37,32 @@ export default function MapScreen() {
   const location = useRiderLocation();
   const centeredOnMe = useRef(false);
 
+  const [shops, setShops] = useState<DirectoryShop[]>([]);
+  const [shopsError, setShopsError] = useState<string | null>(null);
+  const [shopsLoaded, setShopsLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<MapView | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
+
+  const loadShops = useCallback(async () => {
+    try {
+      const catalog = await api.listCatalogShops();
+      setShops(directoryShopsFromCatalog(catalog));
+      setShopsError(null);
+    } catch {
+      setShopsError("Could not load print shops. Try again.");
+    } finally {
+      setShopsLoaded(true);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadShops();
+    }, [loadShops]),
+  );
 
   useEffect(() => {
     if (centeredOnMe.current || !location.coords) return;
@@ -50,15 +71,15 @@ export default function MapScreen() {
   }, [location.coords]);
 
   const matches = useMemo(
-    () => filterPlaceholderShops(PLACEHOLDER_SHOPS, query),
-    [query],
+    () => filterDirectoryShops(shops, query),
+    [shops, query],
   );
   const selected = useMemo(
-    () => PLACEHOLDER_SHOPS.find((shop) => shop.id === selectedId) ?? null,
-    [selectedId],
+    () => shops.find((shop) => shop.id === selectedId) ?? null,
+    [shops, selectedId],
   );
 
-  function focusShop(shop: PlaceholderShop) {
+  function focusShop(shop: DirectoryShop) {
     setSelectedId(shop.id);
     setView(viewOn({ lat: shop.lat, lng: shop.lng }, 16));
     setQuery(shop.name);
@@ -86,9 +107,10 @@ export default function MapScreen() {
           places={shopsToMapPlaces(matches)}
           selectedPlaceId={selectedId}
           rider={location.coords}
+          riderHeading={location.heading}
           view={view}
           onSelectPlace={(id) => {
-            const shop = PLACEHOLDER_SHOPS.find((entry) => entry.id === id);
+            const shop = shops.find((entry) => entry.id === id);
             if (shop) focusShop(shop);
           }}
         />
@@ -115,12 +137,12 @@ export default function MapScreen() {
                   setSearchOpen(true);
                 }}
                 onFocus={() => setSearchOpen(true)}
-                placeholder="Search shops or streets"
+                placeholder="Find a shop"
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
-                accessibilityLabel="Search shops or streets"
+                accessibilityLabel="Find a shop"
                 testID="map-search"
               />
             </View>
@@ -135,7 +157,7 @@ export default function MapScreen() {
               <View className="overflow-hidden rounded-card border border-outline bg-surface">
                 {matches.length === 0 ? (
                   <Text className="px-4 py-3 text-body text-text-secondary">
-                    No placeholder shop matches that.
+                    No GRIDGO shop matches that.
                   </Text>
                 ) : (
                   matches.map((shop, index) => (
@@ -149,9 +171,7 @@ export default function MapScreen() {
                       }
                     >
                       <Text className="text-body font-bold text-text-primary">{shop.name}</Text>
-                      <Text className="text-caption text-text-secondary">
-                        {shop.area} · {shop.address}
-                      </Text>
+                      <Text className="text-caption text-text-secondary">{shop.address}</Text>
                     </Pressable>
                   ))
                 )}
@@ -181,12 +201,7 @@ export default function MapScreen() {
                 <View className="flex-row items-start gap-3">
                   <View className="min-w-0 flex-1">
                     <Text className="text-h3 text-text-primary">{selected.name}</Text>
-                    <Text className="mt-0.5 text-body text-text-secondary">
-                      {selected.area} · {selected.address}
-                    </Text>
-                    <Text className="mt-2 text-caption text-text-muted">
-                      Directory placeholder. Live shop positions will land here.
-                    </Text>
+                    <Text className="mt-0.5 text-body text-text-secondary">{selected.address}</Text>
                   </View>
                   <Pressable
                     onPress={closeCard}
@@ -202,10 +217,31 @@ export default function MapScreen() {
             ) : cardOpen ? (
               <View className="w-full rounded-card border border-outline bg-surface px-4 py-3">
                 <View className="flex-row items-start gap-3">
-                  <Text className="min-w-0 flex-1 text-body text-text-secondary">
-                    Yellow pins are stand-in print shops around Davao. Search or
-                    tap one — this is not a route builder.
-                  </Text>
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-body text-text-secondary">
+                      {!shopsLoaded
+                        ? "Loading GRIDGO print shops…"
+                        : shopsError
+                          ? shopsError
+                          : shops.length === 0
+                            ? "No print shops on the map yet."
+                            : "GRIDGO print shops. Tap a pin or search — this is not a route."}
+                    </Text>
+                    {shopsError ? (
+                      <Pressable
+                        onPress={() => {
+                          setShopsLoaded(false);
+                          void loadShops();
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Try loading shops again"
+                        className="mt-2 self-start"
+                        testID="map-shops-retry"
+                      >
+                        <Text className="text-body font-bold text-text-primary">Try again</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                   <Pressable
                     onPress={closeCard}
                     accessibilityRole="button"

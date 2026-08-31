@@ -27,6 +27,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   confirmSheetScreenOptions,
+  fullBleedScreenOptions,
   multiOriginPushedScreenOptions,
 } from "@/lib/navigationHeaders";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
@@ -249,6 +250,13 @@ function AppShell() {
               Confirmations are the platform's own sheet, not a drawn overlay —
               see `confirmSheetScreenOptions` for what that buys.
             */}
+            {/*
+              The map, full screen. A destination rather than a sheet: it is
+              the same trip seen properly, and a rider reading a road wants the
+              whole display and the back gesture, not a card they can dismiss
+              by dragging in the direction they are trying to pan.
+            */}
+            <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
             <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
             <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
           </Stack>

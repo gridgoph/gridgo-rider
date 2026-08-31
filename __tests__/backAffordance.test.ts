@@ -15,7 +15,11 @@ import { join } from "path";
  *    platform back control (iOS chevron, Android arrow) and — the part that
  *    matters — never lets the `(tabs)` route group become its label;
  *  - a `confirmSheetScreenOptions` sheet, which has no header and therefore
- *    has to carry a labelled cancel in its own body, in every state.
+ *    has to carry a labelled cancel in its own body, in every state;
+ *  - a `fullBleedScreenOptions` screen, which owns its whole surface because a
+ *    header would take the top of a display being read, and which carries its
+ *    own labelled close for the same reason a sheet does. That promise is
+ *    checked below rather than taken on trust.
  *
  * Everything else is a root of the app — the launch redirect, welcome,
  * and onboarding — where there is nothing behind to go back to. Auth
@@ -78,11 +82,28 @@ describe("every route is reachable and escapable", () => {
       .filter(
         ([, options]) =>
           !options.includes("multiOriginPushedScreenOptions") &&
-          !options.includes("confirmSheetScreenOptions"),
+          !options.includes("confirmSheetScreenOptions") &&
+          !options.includes("fullBleedScreenOptions"),
       )
       .map(([name]) => name);
 
     expect(missing).toEqual([]);
+  });
+
+  it("makes a headerless full-bleed screen carry its own way out", () => {
+    // The platform draws no back control on these, so the only escape is the
+    // one the screen draws itself. A screen that took the option and forgot
+    // the control would strand a rider on a map.
+    const fullBleed = [...screens.entries()]
+      .filter(([, options]) => options.includes("fullBleedScreenOptions"))
+      .map(([name]) => name);
+    expect(fullBleed.length).toBeGreaterThan(0);
+
+    for (const route of fullBleed) {
+      const source = readFileSync(join(APP, `${route}.tsx`), "utf8");
+      expect(source).toMatch(/accessibilityLabel="Close[^"]*"/);
+      expect(source).toMatch(/router\.back\(\)/);
+    }
   });
 
   it("titles the tab shell so iOS can never label a back control '(tabs)'", () => {

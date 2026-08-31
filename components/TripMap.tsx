@@ -4,16 +4,24 @@ import { Text, View } from "react-native";
 import { MapFrame, type MapFrameHandle } from "@/components/MapFrame";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { isValidLatLng, type LatLng, type LonLat } from "@/lib/geo";
-import { buildMapHtml, type MapModel } from "@/lib/mapHtml";
+import { buildMapHtml, type MapModel, type MapPinKind } from "@/lib/mapHtml";
 
 type Props = {
   pickup: LatLng | null;
   dropoff: LatLng | null;
   pickupLabel?: string;
   dropoffLabel?: string;
+  pickupKind?: MapPinKind;
+  dropoffKind?: MapPinKind;
+  focus?: "pickup" | "dropoff" | null;
   /** GeoJSON [lon, lat] route coordinates. */
   routeCoordinates?: LonLat[];
   rider?: LatLng | null;
+  riderAccuracy?: number | null;
+  /** Course in degrees, or null while stopped — the map draws a dot then. */
+  riderHeading?: number | null;
+  navTitle?: string | null;
+  navSummary?: string | null;
   routeUnavailable?: boolean;
   /** Fixed height for offer cards; omit for flex fill on Active. */
   height?: number;
@@ -22,19 +30,26 @@ type Props = {
 };
 
 /**
- * Leaflet map over OpenStreetMap tiles.
+ * Leaflet map over OpenStreetMap (light) and Carto (dark) tiles.
  *
- * No Google Maps, no API key. Attribution is always visible (licence).
- * When tiles fail to load the surrounding addresses and actions still work —
- * this component never gates trip completion.
+ * Attribution is always visible (licence). When tiles fail to load the
+ * surrounding addresses and actions still work — this component never gates
+ * trip completion.
  */
 export function TripMap({
   pickup,
   dropoff,
   pickupLabel = "Pickup",
   dropoffLabel = "Drop-off",
+  pickupKind = "shop",
+  dropoffKind = "client",
+  focus = null,
   routeCoordinates = [],
   rider = null,
+  riderAccuracy = null,
+  riderHeading = null,
+  navTitle = null,
+  navSummary = null,
   routeUnavailable = false,
   height,
   compact = false,
@@ -51,9 +66,16 @@ export function TripMap({
       dropoff: isValidLatLng(dropoff) ? dropoff : null,
       pickupLabel,
       dropoffLabel,
+      pickupKind,
+      dropoffKind,
+      focus,
       routeCoordinates,
       routeColor: colors.actionYellow,
       rider: isValidLatLng(rider) ? rider : null,
+      riderAccuracy,
+      riderHeading,
+      navTitle,
+      navSummary,
       routeUnavailable,
     }),
     [
@@ -62,9 +84,16 @@ export function TripMap({
       dropoff,
       pickupLabel,
       dropoffLabel,
+      pickupKind,
+      dropoffKind,
+      focus,
       routeCoordinates,
       colors.actionYellow,
       rider,
+      riderAccuracy,
+      riderHeading,
+      navTitle,
+      navSummary,
       routeUnavailable,
     ],
   );
@@ -77,7 +106,7 @@ export function TripMap({
     frameRef.current?.post(JSON.stringify(model));
   }, [model]);
 
-  const hasStops = model.pickup || model.dropoff;
+  const hasStops = model.pickup || model.dropoff || model.rider;
 
   return (
     <View

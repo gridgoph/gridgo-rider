@@ -8,9 +8,11 @@
  * theme without reloading the whole document when possible.
  */
 
+import { cartoDarkTileUrl } from "@/lib/cartoTiles";
 import type { LatLng, LonLat } from "@/lib/geo";
 
 export type MapTheme = "light" | "dark";
+export type MapPinKind = "shop" | "client" | "office";
 
 export type MapPlace = {
   id: string;
@@ -31,16 +33,32 @@ export type MapModel = {
   dropoff: LatLng | null;
   pickupLabel: string;
   dropoffLabel: string;
+  pickupKind?: MapPinKind;
+  dropoffKind?: MapPinKind;
+  /** Which stop the rider is heading to — that pin gets the live ring. */
+  focus?: "pickup" | "dropoff" | null;
   /** GeoJSON LineString coordinates [lon, lat][]. */
   routeCoordinates: LonLat[];
   /** Route stroke — design system actionYellow. */
   routeColor: string;
   rider: LatLng | null;
+  riderAccuracy?: number | null;
+  /**
+   * Course over ground in degrees from true north, or null while stopped.
+   *
+   * Null draws a plain dot. The phone reports no course when it is not moving,
+   * and pointing anyway would aim the arrow at the last direction of travel —
+   * confidently wrong exactly when somebody has stopped to work out where to
+   * go next.
+   */
+  riderHeading?: number | null;
+  /** Dispatch ticket on the map: "TO THE SHOP". */
+  navTitle?: string | null;
+  navSummary?: string | null;
   /** When true, show an on-map note that routing failed. */
   routeUnavailable: boolean;
   /**
    * Supplier / shop pins for the city Map tab. Absent on trip maps.
-   * A later live directory fills the same shape.
    */
   places?: readonly MapPlace[] | null;
   selectedPlaceId?: string | null;
@@ -50,8 +68,6 @@ export type MapModel = {
 
 const LIGHT_TILES =
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const DARK_TILES =
-  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 
 /**
  * Build the full HTML document for the WebView.
@@ -88,21 +104,72 @@ export function buildMapHtml(model: MapModel): string {
     .pin-mark {
       width: 28px; height: 28px;
       display: flex; align-items: center; justify-content: center;
-      font: 700 11px/1 system-ui, sans-serif;
+      font: 700 10px/1 "IBM Plex Sans", system-ui, sans-serif;
+      letter-spacing: 0.04em;
       border: 2px solid #1a1a1a;
       box-shadow: 0 1px 3px rgba(0,0,0,0.35);
     }
-    .pin-pickup .pin-mark {
+    .pin-pickup .pin-mark, .pin-shop-stop .pin-mark {
       background: #FFDE58; color: #1a1a1a;
-      border-radius: 4px; /* square — pickup */
+      border-radius: 3px;
     }
-    .pin-dropoff .pin-mark {
+    .pin-dropoff .pin-mark, .pin-client .pin-mark {
       background: #F0F0F0; color: #1a1a1a;
-      border-radius: 999px; /* circle — drop-off */
+      border-radius: 999px;
+    }
+    .pin-office .pin-mark {
+      background: #1a1a1a; color: #FFDE58;
+      border: 2px solid #FFDE58;
+      border-radius: 3px;
+    }
+    .pin.is-focus .pin-mark {
+      box-shadow: 0 0 0 3px #FFDE58, 0 1px 3px rgba(0,0,0,0.35);
+    }
+    .pin-rider {
+      position: relative;
+      width: 28px; height: 28px;
+    }
+    .pin-rider .pin-halo {
+      position: absolute; inset: 0;
+      border-radius: 999px;
+      background: rgba(255, 222, 88, 0.35);
+      animation: gps-pulse 1.8s ease-out infinite;
     }
     .pin-rider .pin-mark {
-      width: 16px; height: 16px; border-radius: 999px;
-      background: #1565C0; border: 3px solid #fff;
+      position: relative;
+      width: 14px; height: 14px; border-radius: 999px;
+      background: #FFDE58; border: 3px solid #1a1a1a;
+      margin: 7px auto 0;
+    }
+    /*
+      The rider, pointing.
+
+      A dot says where somebody is; a rider following a route also needs to
+      know which way they are facing, and reads it off the map rather than off
+      a compass reading in words. This is the shape every navigation app has
+      taught people: a disc with a cone of direction thrown ahead of it.
+
+      Rotation is applied to a wrapper rather than the disc, so the disc itself
+      never distorts and the cone is what turns.
+    */
+    .pin-rider .pin-cone {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 0; height: 0;
+      margin-left: -9px; margin-top: -20px;
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+      border-bottom: 15px solid rgba(255, 222, 88, 0.9);
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.45));
+      transform-origin: 9px 20px;
+    }
+    .pin-rider.is-pointing .pin-halo { animation: none; opacity: 0.22; }
+    @keyframes gps-pulse {
+      0% { transform: scale(0.55); opacity: 0.8; }
+      100% { transform: scale(2.1); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pin-rider .pin-halo { animation: none; opacity: 0.35; }
     }
     /* Teardrop — a pin, not a plate. Head is the circle; tip is the diamond. */
     .pin-shop { width: 32px; }
@@ -135,32 +202,55 @@ export function buildMapHtml(model: MapModel): string {
     .dark-attr .pin-label {
       background: rgba(20,20,20,0.92); color: #f0f0f0;
     }
+    .route-banner, .nav-chip {
+      position: absolute; left: 8px; right: 8px; z-index: 1000;
+      padding: 7px 10px; border-radius: 2px;
+      font: 600 12px/1.3 "IBM Plex Sans", system-ui, sans-serif;
+      display: none;
+    }
+    .nav-chip {
+      top: 8px;
+      background: #FFDE58; color: #1a1a1a;
+      border: 1px solid #1a1a1a;
+      box-shadow: 0 2px 0 #1a1a1a;
+    }
+    .nav-chip .kicker {
+      font: 700 10px/1 "IBM Plex Sans", system-ui, sans-serif;
+      letter-spacing: 0.12em;
+    }
+    .nav-chip .line { margin-top: 2px; font-weight: 600; }
     .route-banner {
-      position: absolute; top: 8px; left: 8px; right: 8px; z-index: 1000;
-      padding: 6px 10px; border-radius: 8px;
-      font: 600 12px/1.3 system-ui, sans-serif;
+      top: 8px;
       background: rgba(255,255,255,0.95); color: #1a1a1a;
       border: 1px solid #dcdcdc;
-      display: none;
     }
     .dark-attr .route-banner {
       background: rgba(20,20,20,0.95); color: #f0f0f0; border-color: #2e2e2e;
     }
-    .route-banner.show { display: block; }
+    .route-banner.show, .nav-chip.show { display: block; }
+    .nav-chip.show + .route-banner.show { top: 58px; }
   </style>
 </head>
 <body>
+  <div id="nav-chip" class="nav-chip" role="status">
+    <div class="kicker" id="nav-kicker"></div>
+    <div class="line" id="nav-line"></div>
+  </div>
   <div id="route-banner" class="route-banner" role="status">Route unavailable — straight line shown</div>
   <div id="map"></div>
   <script>
     var MODEL = ${safe};
     var map = null;
     var tileLayer = null;
+    var lastTileUrl = '';
     var routeLayer = null;
+    var accuracyCircle = null;
     var markers = [];
     var cameraReady = false;
     var lastViewKey = '';
     var lastTripKey = '';
+    var DARK_TILES = ${JSON.stringify(cartoDarkTileUrl())};
+    var LIGHT_TILES = ${JSON.stringify(LIGHT_TILES)};
 
     function clearMarkers() {
       markers.forEach(function (m) { map.removeLayer(m); });
@@ -185,11 +275,14 @@ export function buildMapHtml(model: MapModel): string {
     }
 
     function pinIcon(kind, shortLabel, selected, longLabel) {
-      var cls = kind === 'pickup' ? 'pin-pickup'
+      var cls = kind === 'pickup' || kind === 'shop-stop' ? 'pin-pickup'
         : kind === 'rider' ? 'pin-rider'
         : kind === 'shop' ? 'pin-shop'
+        : kind === 'office' ? 'pin-office'
         : 'pin-dropoff';
-      if (selected) cls += ' is-selected';
+      if (kind === 'shop-stop') cls += ' pin-shop-stop';
+      if (kind === 'client') cls += ' pin-client';
+      if (selected) cls += ' is-selected is-focus';
       var mark = kind === 'rider' ? '' : escapeHtml(shortLabel);
       var caption = longLabel === '' ? '' : (longLabel || shortLabel);
       var labelHtml = kind === 'rider' || !caption
@@ -205,6 +298,25 @@ export function buildMapHtml(model: MapModel): string {
             + '</div>',
           iconSize: [32, 44],
           iconAnchor: [16, 40]
+        });
+      }
+      if (kind === 'rider') {
+        /*
+          Pointing only when the phone actually knows the course. Stationary,
+          the platform reports none, and an arrow aimed at whichever way the
+          rider last moved is worse than no arrow: it is confidently wrong at
+          exactly the moment somebody is standing still working out where to go.
+        */
+        var pointing = typeof MODEL.riderHeading === 'number';
+        var cone = pointing
+          ? '<div class="pin-cone" style="transform: rotate(' + MODEL.riderHeading + 'deg)"></div>'
+          : '';
+        return L.divIcon({
+          className: '',
+          html: '<div class="pin pin-rider' + (pointing ? ' is-pointing' : '') + '">'
+            + '<div class="pin-halo"></div>' + cone + '<div class="pin-mark"></div></div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
         });
       }
       return L.divIcon({
@@ -230,15 +342,29 @@ export function buildMapHtml(model: MapModel): string {
         L.control.zoom({ position: 'bottomright' }).addTo(map);
       }
 
-      if (tileLayer) map.removeLayer(tileLayer);
-      var url = isDark ? ${JSON.stringify(DARK_TILES)} : ${JSON.stringify(LIGHT_TILES)};
+      var url = isDark ? DARK_TILES : LIGHT_TILES;
       var attr = isDark
         ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-      tileLayer = L.tileLayer(url, {
-        maxZoom: 19,
-        attribution: attr
-      }).addTo(map);
+      if (url !== lastTileUrl) {
+        if (tileLayer) map.removeLayer(tileLayer);
+        tileLayer = L.tileLayer(url, {
+          maxZoom: 19,
+          attribution: attr
+        }).addTo(map);
+        lastTileUrl = url;
+      }
+
+      var chip = document.getElementById('nav-chip');
+      var kicker = document.getElementById('nav-kicker');
+      var line = document.getElementById('nav-line');
+      if (m.navTitle) {
+        kicker.textContent = m.navTitle;
+        line.textContent = m.navSummary || '';
+        chip.className = 'nav-chip show';
+      } else {
+        chip.className = 'nav-chip';
+      }
 
       if (routeLayer) map.removeLayer(routeLayer);
       routeLayer = null;
@@ -247,29 +373,69 @@ export function buildMapHtml(model: MapModel): string {
         var latlngs = m.routeCoordinates.map(function (c) {
           return [c[1], c[0]];
         });
-        routeLayer = L.polyline(latlngs, {
-          color: m.routeColor || '#FFDE58',
-          weight: 5,
-          opacity: 0.95,
-          lineJoin: 'round',
-          lineCap: 'round'
+        routeLayer = L.featureGroup([
+          L.polyline(latlngs, {
+            color: '#1a1a1a',
+            weight: 8,
+            opacity: 0.9,
+            lineJoin: 'round',
+            lineCap: 'round'
+          }),
+          L.polyline(latlngs, {
+            color: m.routeColor || '#FFDE58',
+            weight: 4,
+            opacity: 1,
+            lineJoin: 'round',
+            lineCap: 'round'
+          })
+        ]).addTo(map);
+      }
+
+      if (accuracyCircle) {
+        map.removeLayer(accuracyCircle);
+        accuracyCircle = null;
+      }
+      if (m.rider && m.riderAccuracy && m.riderAccuracy > 0) {
+        accuracyCircle = L.circle([m.rider.lat, m.rider.lng], {
+          radius: Math.min(m.riderAccuracy, 80),
+          color: '#FFDE58',
+          weight: 1,
+          fillColor: '#FFDE58',
+          fillOpacity: 0.12
         }).addTo(map);
       }
 
       clearMarkers();
       var bounds = [];
+      function stopKind(role, fallback) {
+        var raw = role === 'pickup' ? m.pickupKind : m.dropoffKind;
+        if (raw === 'office') return 'office';
+        if (raw === 'client') return 'client';
+        if (raw === 'shop') return 'shop-stop';
+        return fallback;
+      }
+      function stopLetter(kind, fallback) {
+        if (kind === 'office') return 'GO';
+        if (kind === 'client') return 'C';
+        if (kind === 'shop-stop' || kind === 'pickup') return 'S';
+        return fallback;
+      }
       if (m.pickup) {
+        var pickupKind = stopKind('pickup', 'pickup');
         var p = L.marker([m.pickup.lat, m.pickup.lng], {
-          icon: pinIcon('pickup', 'P'),
-          title: m.pickupLabel || 'Pickup'
+          icon: pinIcon(pickupKind, stopLetter(pickupKind, 'P'), m.focus === 'pickup', m.pickupLabel || 'Shop'),
+          title: m.pickupLabel || 'Shop',
+          zIndexOffset: m.focus === 'pickup' ? 600 : 200
         }).addTo(map);
         markers.push(p);
         bounds.push([m.pickup.lat, m.pickup.lng]);
       }
       if (m.dropoff) {
+        var dropKind = stopKind('dropoff', 'dropoff');
         var d = L.marker([m.dropoff.lat, m.dropoff.lng], {
-          icon: pinIcon('dropoff', 'D'),
-          title: m.dropoffLabel || 'Drop-off'
+          icon: pinIcon(dropKind, stopLetter(dropKind, 'D'), m.focus === 'dropoff', m.dropoffLabel || 'Client'),
+          title: m.dropoffLabel || 'Client',
+          zIndexOffset: m.focus === 'dropoff' ? 600 : 200
         }).addTo(map);
         markers.push(d);
         bounds.push([m.dropoff.lat, m.dropoff.lng]);
@@ -277,7 +443,8 @@ export function buildMapHtml(model: MapModel): string {
       if (m.rider) {
         var r = L.marker([m.rider.lat, m.rider.lng], {
           icon: pinIcon('rider', ''),
-          title: 'You'
+          title: 'You',
+          zIndexOffset: 800
         }).addTo(map);
         markers.push(r);
         bounds.push([m.rider.lat, m.rider.lng]);
