@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { X } from "lucide-react-native";
+import { Minimize2 } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -64,6 +64,7 @@ export default function TripMapScreen() {
           riderAccuracy={riderLocation.accuracy}
           riderHeading={riderLocation.heading}
           navTitle={heading?.navTitle ?? null}
+          safeTop={insets.top}
           navSummary={
             !routeFrom
               ? "Waiting for GPS"
@@ -75,9 +76,11 @@ export default function TripMapScreen() {
 
         {/*
           One way out, top left, clear of the map's own zoom controls at the
-          bottom right. Nothing else is drawn over the map: the job's actions
-          are one tap behind this and putting them here would be a second place
-          to do the same thing.
+          bottom right. It is the inverse of the card's expand control and
+          keeps that action's name: open full screen, close full screen.
+          Nothing else is drawn over the map — the job's actions are one tap
+          behind this and putting them here would be a second place to do the
+          same thing.
         */}
         <View
           pointerEvents="box-none"
@@ -87,15 +90,15 @@ export default function TripMapScreen() {
           <Pressable
             onPress={() => router.back()}
             accessibilityRole="button"
-            accessibilityLabel="Close the map"
+            accessibilityLabel="Close the full screen map"
             hitSlop={8}
-            className="gg-touch h-11 w-11 items-center justify-center rounded-pill"
+            className="gg-touch h-11 w-11 items-center justify-center rounded-pill border border-outline"
             style={({ pressed }) => ({
               backgroundColor: colors.surface,
               opacity: pressed ? 0.8 : 1,
             })}
           >
-            <X size={22} color={colors.textPrimary} strokeWidth={2} />
+            <Minimize2 size={20} color={colors.textPrimary} strokeWidth={2.25} />
           </Pressable>
         </View>
 

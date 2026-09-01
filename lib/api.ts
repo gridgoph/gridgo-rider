@@ -366,6 +366,27 @@ export function getToken(): string | null {
 }
 
 /**
+ * The bearer every authenticated call must send.
+ *
+ * Clerk never writes {@link getToken}'s memory. It installs a provider that
+ * mints a fresh JWT. JSON `request()` already waits on that provider; file
+ * uploads used to read memory and went out with no Authorization, which the
+ * Android stack then reported as a dead connection.
+ */
+export async function resolveBearer(): Promise<string | null> {
+  if (tokenProvider) {
+    try {
+      const token = await tokenProvider();
+      const trimmed = token?.trim() || "";
+      if (trimmed) return trimmed;
+    } catch {
+      // Fall through to any leftover memory token.
+    }
+  }
+  return tokenMemory;
+}
+
+/**
  * Whether this phone currently has a GRIDGO bearer — a stored demo token *or*
  * a live Clerk session that can mint one.
  *
@@ -420,7 +441,7 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  const bearer = tokenProvider ? await tokenProvider() : tokenMemory;
+  const bearer = await resolveBearer();
   const sentBearer = Boolean(bearer);
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
 
@@ -815,6 +836,17 @@ export async function postLocation(
 export async function listNotifications(): Promise<Notification[]> {
   const result = await request<{ notifications: Notification[] }>("/notifications");
   return result.notifications;
+}
+
+/**
+ * Soft-delete one of the caller's own inbox rows.
+ *
+ * `GET /notifications` never returns a deleted row again. Retrying the same
+ * owner delete is a success — the platform keeps the record as evidence and
+ * only hides it from this inbox.
+ */
+export async function deleteNotification(id: string): Promise<{ id: string; deletedAt: string }> {
+  return request(`/notifications/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /** Approved shop on the public catalog, with the pin a rider drives to. */

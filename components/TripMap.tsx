@@ -1,5 +1,6 @@
+import { Maximize2 } from "lucide-react-native";
 import { useEffect, useMemo, useRef } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { MapFrame, type MapFrameHandle } from "@/components/MapFrame";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
@@ -22,11 +23,27 @@ type Props = {
   riderHeading?: number | null;
   navTitle?: string | null;
   navSummary?: string | null;
+  /**
+   * Status-bar height to keep the on-map banner clear of, in pixels.
+   *
+   * Only the full-screen map needs it: inside a page the map has a header above
+   * it and nothing of the phone's own is drawn over it.
+   */
+  safeTop?: number;
   routeUnavailable?: boolean;
   /** Fixed height for offer cards; omit for flex fill on Active. */
   height?: number;
   /** Compact mode for list cards. */
   compact?: boolean;
+  /**
+   * Turns the map into a preview with one expand control.
+   *
+   * A map on a scrolling page cannot really be driven — the page claims the
+   * drag, and a rider trying to look one street ahead scrolls the job instead.
+   * So the card shows the trip and hands over the one gesture that helps:
+   * expand, and read it where the gesture is unambiguous.
+   */
+  onExpand?: () => void;
 };
 
 /**
@@ -50,9 +67,11 @@ export function TripMap({
   riderHeading = null,
   navTitle = null,
   navSummary = null,
+  safeTop = 0,
   routeUnavailable = false,
   height,
   compact = false,
+  onExpand,
 }: Props) {
   const theme = useThemeName();
   const colors = useThemeColors();
@@ -76,7 +95,9 @@ export function TripMap({
       riderHeading,
       navTitle,
       navSummary,
+      safeTop,
       routeUnavailable,
+      controls: !onExpand,
     }),
     [
       theme,
@@ -94,7 +115,9 @@ export function TripMap({
       riderHeading,
       navTitle,
       navSummary,
+      safeTop,
       routeUnavailable,
+      onExpand,
     ],
   );
 
@@ -119,15 +142,40 @@ export function TripMap({
       accessibilityLabel="Trip map"
     >
       {hasStops ? (
-        <MapFrame
-          ref={frameRef}
-          html={html}
-          accessibilityLabel="Map showing pickup, drop-off, and route"
-          onReady={() => {
-            readyRef.current = true;
-            frameRef.current?.post(JSON.stringify(model));
-          }}
-        />
+        <>
+          <View className="flex-1" pointerEvents={onExpand ? "none" : "auto"}>
+            <MapFrame
+              ref={frameRef}
+              html={html}
+              accessibilityLabel="Map showing pickup, drop-off, and route"
+              onReady={() => {
+                readyRef.current = true;
+                frameRef.current?.post(JSON.stringify(model));
+              }}
+            />
+          </View>
+
+          {/*
+            Bottom right, where the map's own zoom sits when the map is
+            driveable — the same corner means the same thing, and the licence
+            line moves to the other one so nothing is covered.
+          */}
+          {onExpand ? (
+            <Pressable
+              onPress={onExpand}
+              accessibilityRole="button"
+              accessibilityLabel="Open the map full screen"
+              hitSlop={8}
+              className="gg-touch absolute bottom-2 right-2 h-11 w-11 items-center justify-center rounded-pill border border-outline"
+              style={({ pressed }) => ({
+                backgroundColor: colors.surface,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Maximize2 size={18} color={colors.textPrimary} strokeWidth={2.25} />
+            </Pressable>
+          ) : null}
+        </>
       ) : (
         <View className="flex-1 items-center justify-center bg-surface-variant p-4">
           <Text className="text-center text-body text-text-secondary">

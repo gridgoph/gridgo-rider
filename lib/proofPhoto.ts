@@ -1,4 +1,4 @@
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 
 import { evidenceFileName, type ProofEvidence } from "@/lib/proofEvidence";
@@ -22,6 +22,26 @@ function fileSize(uri: string): number | null {
     return typeof size === "number" && Number.isFinite(size) ? size : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Copy a capture into app cache as a real `file://` the upload stack can open.
+ *
+ * Camera URIs on Android 14+ are often `content://` grants the network stack
+ * cannot read. XMLHttpRequest then fires `onerror` and the rider sees "No
+ * connection" even though the API is reachable — JSON fetches still work.
+ */
+export function persistCaptureUri(uri: string, fileName: string): string {
+  try {
+    const source = new File(uri);
+    if (!source.exists) return uri;
+    const dest = new File(Paths.cache, fileName);
+    if (dest.exists) dest.delete();
+    source.copy(dest);
+    return dest.uri || uri;
+  } catch {
+    return uri;
   }
 }
 
@@ -64,16 +84,18 @@ export async function captureProofPhoto(step: CaptureStep): Promise<CaptureOutco
     asset.fileName?.split(".").pop()?.toLowerCase() ||
     (asset.mimeType?.includes("png") ? "png" : "jpg");
   const capturedAtMs = Date.now();
+  const fileName = evidenceFileName(step, "photo", capturedAtMs, extension);
+  const uri = persistCaptureUri(asset.uri, fileName);
 
   return {
     ok: true,
     evidence: {
       kind: "photo",
-      uri: asset.uri,
-      fileName: evidenceFileName(step, "photo", capturedAtMs, extension),
+      uri,
+      fileName,
       mimeType: asset.mimeType || (extension === "png" ? "image/png" : "image/jpeg"),
       capturedAt: new Date(capturedAtMs).toISOString(),
-      sizeBytes: asset.fileSize ?? fileSize(asset.uri),
+      sizeBytes: asset.fileSize ?? fileSize(uri),
     },
   };
 }
@@ -94,12 +116,14 @@ export function captureFailureMessage(
 
 /** Wrap a rendered signature file as evidence. */
 export function signatureEvidence(uri: string, capturedAtMs: number): ProofEvidence {
+  const fileName = evidenceFileName("delivery", "signature", capturedAtMs, "png");
+  const persisted = persistCaptureUri(uri, fileName);
   return {
     kind: "signature",
-    uri,
-    fileName: evidenceFileName("delivery", "signature", capturedAtMs, "png"),
+    uri: persisted,
+    fileName,
     mimeType: "image/png",
     capturedAt: new Date(capturedAtMs).toISOString(),
-    sizeBytes: fileSize(uri),
+    sizeBytes: fileSize(persisted),
   };
 }

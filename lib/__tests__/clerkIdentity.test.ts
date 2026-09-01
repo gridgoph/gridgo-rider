@@ -7,6 +7,9 @@ import * as ImagePicker from "expo-image-picker";
 import {
   changeRiderPortrait,
   changeRiderSignInName,
+  changeSignInPassword,
+  passwordProblems,
+  passwordReady,
   portraitFile,
 } from "@/lib/clerkIdentity";
 
@@ -86,5 +89,77 @@ describe("the name on the sign-in", () => {
       lastName: "Dela Cruz",
     });
     expect(user.reload).toHaveBeenCalled();
+  });
+});
+
+describe("passwordProblems", () => {
+  it("passes a real change", () => {
+    const draft = { current: "oldpassword", next: "newpassword", confirm: "newpassword" };
+    expect(passwordProblems(draft)).toEqual({});
+    expect(passwordReady(draft)).toBe(true);
+  });
+
+  it("asks for the current password before anything else", () => {
+    expect(
+      passwordProblems({ current: "", next: "newpassword", confirm: "newpassword" }).current,
+    ).toMatch(/sign in with now/i);
+  });
+
+  it("holds the new one to sign-up's own bar, in sign-up's own words", () => {
+    expect(
+      passwordProblems({ current: "oldpassword", next: "short", confirm: "short" }).next,
+    ).toMatch(/at least 8 characters/i);
+  });
+
+  it("refuses the password the rider already has", () => {
+    expect(
+      passwordProblems({ current: "samepassword", next: "samepassword", confirm: "samepassword" })
+        .next,
+    ).toMatch(/already have/i);
+  });
+
+  it("catches a typo in the confirmation, on the confirmation", () => {
+    const problems = passwordProblems({
+      current: "oldpassword",
+      next: "newpassword",
+      confirm: "newpasswrod",
+    });
+    expect(problems.confirm).toMatch(/do not match/i);
+    expect(problems.next).toBeUndefined();
+  });
+});
+
+describe("changeSignInPassword", () => {
+  const draft = { current: "oldpassword", next: "newpassword", confirm: "newpassword" };
+
+  it("signs every other session out, and does not offer not to", async () => {
+    const user = { updatePassword: jest.fn(async () => undefined) };
+    expect(await changeSignInPassword(user, draft)).toEqual({ status: "ok" });
+    expect(user.updatePassword).toHaveBeenCalledWith({
+      currentPassword: "oldpassword",
+      newPassword: "newpassword",
+      signOutOfOtherSessions: true,
+    });
+  });
+
+  it("points a wrong current password at the current-password field", async () => {
+    const user = {
+      updatePassword: jest.fn(async () => {
+        throw clerkError("form_password_incorrect");
+      }),
+    };
+    expect(await changeSignInPassword(user, draft)).toEqual({ status: "wrong_current" });
+  });
+
+  it("puts a pwned or weak new password on the new-password field", async () => {
+    const user = {
+      updatePassword: jest.fn(async () => {
+        throw clerkError("form_password_pwned", "This password has been found in a breach.");
+      }),
+    };
+    expect(await changeSignInPassword(user, draft)).toEqual({
+      status: "invalid_new",
+      message: "This password has been found in a breach.",
+    });
   });
 });

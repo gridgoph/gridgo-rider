@@ -12,6 +12,7 @@ import { AlertListSkeleton } from "@/components/SkeletonScreens";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { useNotifications } from "@/store/notifications";
+import { askConfirm } from "@/store/sheets";
 
 /**
  * What dispatch has said, newest first, and where each job stands now.
@@ -24,6 +25,9 @@ import { useNotifications } from "@/store/notifications";
  * real stage. A failure to load them is not a failure to load the alerts: the
  * list still renders, just without the bars, because a message a rider has not
  * read yet matters more than the diagram under it.
+ *
+ * "Clear notifications" asks first, then deletes each row on GRIDGO. The
+ * button is only drawn while there is something to clear.
  */
 export default function AlertsScreen() {
   const router = useRouter();
@@ -32,6 +36,7 @@ export default function AlertsScreen() {
   const adopt = useNotifications((s) => s.adopt);
   const markRead = useNotifications((s) => s.markRead);
   const markAllRead = useNotifications((s) => s.markAllRead);
+  const clear = useNotifications((s) => s.clear);
   const readIds = useNotifications((s) => s.readIds);
   const hydrate = useNotifications((s) => s.hydrate);
 
@@ -39,6 +44,8 @@ export default function AlertsScreen() {
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     void hydrate();
@@ -52,6 +59,7 @@ export default function AlertsScreen() {
         setItems(list);
         adopt(list);
         setError(null);
+        setClearError(null);
       } catch (e) {
         setError(
           api.apiErrorMessage(
@@ -91,6 +99,36 @@ export default function AlertsScreen() {
 
   const unreadOnScreen = items?.filter((item) => !isRead(item)).length ?? 0;
 
+  async function confirmClear() {
+    if (!items?.length || clearing) return;
+    const confirmed = await askConfirm({
+      question: "Clear these notifications?",
+      consequence:
+        "They leave this list. The jobs they are about stay where they are — you can still open them from Offers and Active.",
+      confirmLabel: "Clear notifications",
+      cancelLabel: "Keep them",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setClearing(true);
+    setClearError(null);
+    try {
+      const outcome = await clear(items);
+      const remaining = items.filter((item) => !outcome.cleared.includes(item.id));
+      setItems(remaining);
+      adopt(remaining);
+      if (outcome.failed) {
+        setClearError(
+          outcome.cleared.length
+            ? "GRIDGO could not clear every notification. Pull down to refresh, then try the ones that are still here."
+            : "GRIDGO could not clear these notifications. Check the connection and try again.",
+        );
+      }
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <Screen edges={["bottom"]}>
       <ScrollView
@@ -117,6 +155,15 @@ export default function AlertsScreen() {
           />
         ) : null}
 
+        {clearError ? (
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="Could not clear notifications"
+            body={clearError}
+          />
+        ) : null}
+
         {items === null ? <AlertListSkeleton /> : null}
 
         {items?.length ? (
@@ -127,6 +174,12 @@ export default function AlertsScreen() {
                 onPress={() => markAllRead(items)}
               />
             ) : null}
+
+            <SecondaryButton
+              label="Clear notifications"
+              disabled={clearing}
+              onPress={() => void confirmClear()}
+            />
 
             <View>
               {items.map((item) => (

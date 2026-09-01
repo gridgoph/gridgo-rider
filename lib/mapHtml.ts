@@ -55,6 +55,15 @@ export type MapModel = {
   /** Dispatch ticket on the map: "TO THE SHOP". */
   navTitle?: string | null;
   navSummary?: string | null;
+  /**
+   * Status-bar height, in CSS pixels, when the map runs under it.
+   *
+   * A full-screen map is drawn edge to edge on purpose, which puts the phone's
+   * own clock and battery over the top of anything the map draws there. The
+   * host is the only side that knows how deep that is, so it says, and the
+   * overlays start below it.
+   */
+  safeTop?: number | null;
   /** When true, show an on-map note that routing failed. */
   routeUnavailable: boolean;
   /**
@@ -64,6 +73,15 @@ export type MapModel = {
   selectedPlaceId?: string | null;
   /** When set, the camera goes here instead of fitting markers. */
   view?: MapView | null;
+  /**
+   * Whether the map is something to drive, or something to glance at.
+   *
+   * A map on a card is a picture of the trip: the page owns the drag, and a
+   * zoom control the finger can never reach is clutter. False drops the
+   * control, stops the gestures, and moves attribution clear of the card's own
+   * expand button. Defaults to a full map.
+   */
+  controls?: boolean;
 };
 
 const LIGHT_TILES =
@@ -88,42 +106,84 @@ export function buildMapHtml(model: MapModel): string {
   <style>
     html, body, #map { margin: 0; padding: 0; height: 100%; width: 100%; background: #1a1a1a; }
     .leaflet-control-attribution {
-      font-size: 10px !important;
-      background: rgba(255,255,255,0.85) !important;
-      color: #1a1a1a !important;
+      font-size: 9px !important;
+      padding: 1px 6px !important;
+      background: rgba(255,255,255,0.88) !important;
+      color: #4a4a4a !important;
       max-width: 70%;
     }
+    .leaflet-control-attribution a { color: #4a4a4a !important; }
     .dark-attr .leaflet-control-attribution {
-      background: rgba(20,20,20,0.9) !important;
-      color: #f0f0f0 !important;
+      background: rgba(18,18,18,0.9) !important;
+      color: #a8a8a8 !important;
     }
+    .dark-attr .leaflet-control-attribution a { color: #a8a8a8 !important; }
+    /* Leaflet's default control is a white box with a hard border. Match it to
+       the rest of the map furniture: same radius, same float, same theme. */
+    .leaflet-control-zoom {
+      border: none !important;
+      border-radius: 11px !important;
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.28) !important;
+    }
+    .leaflet-control-zoom a {
+      width: 34px !important; height: 34px !important; line-height: 34px !important;
+      font-size: 18px !important;
+      background: rgba(255,255,255,0.95) !important;
+      color: #1a1a1a !important;
+      border-bottom-color: rgba(0,0,0,0.08) !important;
+    }
+    .dark-attr .leaflet-control-zoom a {
+      background: rgba(18,18,18,0.94) !important;
+      color: #f0f0f0 !important;
+      border-bottom-color: rgba(255,255,255,0.12) !important;
+    }
+    /*
+      A destination is a pin, not a plate.
+
+      A square floating over the tiles is ambiguous about which doorway it
+      means, and every stop on this map is a doorway somebody has to walk
+      through. One teardrop silhouette that touches its own coordinate, with a
+      blurred contact shadow so it stands on the street instead of hovering
+      over it. Three fills, one meaning each: yellow is a print shop, paper is
+      a client's door, ink and gold is GRIDGO's own counter.
+    */
     .pin {
       display: flex; flex-direction: column; align-items: center;
-      transform: translateY(-4px);
+      width: 34px;
     }
-    .pin-mark {
-      width: 28px; height: 28px;
-      display: flex; align-items: center; justify-content: center;
-      font: 700 10px/1 "IBM Plex Sans", system-ui, sans-serif;
-      letter-spacing: 0.04em;
-      border: 2px solid #1a1a1a;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    .pin-stack { position: relative; width: 34px; height: 48px; }
+    .pin-head {
+      position: relative; z-index: 2;
+      display: block; width: 34px; height: 48px;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,0.30));
+      transform-origin: 50% 94%;
     }
-    .pin-pickup .pin-mark, .pin-shop-stop .pin-mark {
-      background: #FFDE58; color: #1a1a1a;
-      border-radius: 3px;
-    }
-    .pin-dropoff .pin-mark, .pin-client .pin-mark {
-      background: #F0F0F0; color: #1a1a1a;
+    /* Where the pin meets the ground. */
+    .pin-tip {
+      position: absolute; z-index: 1;
+      left: 50%; bottom: 1px;
+      width: 16px; height: 5px; margin-left: -8px;
       border-radius: 999px;
+      background: rgba(0,0,0,0.32);
+      filter: blur(2px);
     }
-    .pin-office .pin-mark {
-      background: #1a1a1a; color: #FFDE58;
-      border: 2px solid #FFDE58;
-      border-radius: 3px;
+    .dark-attr .pin-tip { background: rgba(0,0,0,0.6); }
+    /* The stop being ridden to, and only that one. */
+    .pin-ring {
+      position: absolute; z-index: 0;
+      left: 50%; top: 17px;
+      width: 46px; height: 46px; margin-left: -23px; margin-top: -23px;
+      border-radius: 999px;
+      border: 3px solid #FFDE58;
+      opacity: 0;
     }
-    .pin.is-focus .pin-mark {
-      box-shadow: 0 0 0 3px #FFDE58, 0 1px 3px rgba(0,0,0,0.35);
+    .pin.is-focus .pin-ring { opacity: 1; animation: pin-focus 2.4s ease-out infinite; }
+    .pin.is-focus .pin-head { transform: scale(1.07); }
+    @keyframes pin-focus {
+      0% { transform: scale(0.7); opacity: 0.9; }
+      70% { transform: scale(1.15); opacity: 0; }
+      100% { transform: scale(1.15); opacity: 0; }
     }
     .pin-rider {
       position: relative;
@@ -170,71 +230,113 @@ export function buildMapHtml(model: MapModel): string {
     }
     @media (prefers-reduced-motion: reduce) {
       .pin-rider .pin-halo { animation: none; opacity: 0.35; }
+      .pin.is-focus .pin-ring { animation: none; opacity: 0.85; transform: scale(1); }
     }
-    /* Teardrop — a pin, not a plate. Head is the circle; tip is the diamond. */
-    .pin-shop { width: 32px; }
-    .pin-shop .pin-head {
-      width: 30px; height: 30px; border-radius: 999px;
-      background: #FFDE58; color: #1a1a1a;
-      border: 2px solid #1a1a1a;
-      display: flex; align-items: center; justify-content: center;
-      font: 700 12px/1 system-ui, sans-serif;
-      position: relative; z-index: 1;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
-    }
-    .pin-shop .pin-tip {
-      width: 12px; height: 12px;
-      background: #FFDE58;
-      border-right: 2px solid #1a1a1a;
-      border-bottom: 2px solid #1a1a1a;
-      transform: translateY(-7px) rotate(45deg);
-    }
-    .pin-shop.is-selected .pin-head {
-      box-shadow: 0 0 0 3px #ffffff, 0 1px 3px rgba(0,0,0,0.35);
-    }
+    /* Names a place, never an address — the street lines are on the card. */
     .pin-label {
-      margin-top: 2px; padding: 1px 4px;
-      font: 600 9px/1.2 system-ui, sans-serif;
-      background: rgba(255,255,255,0.92); color: #1a1a1a;
-      border-radius: 3px; white-space: nowrap;
-      max-width: 90px; overflow: hidden; text-overflow: ellipsis;
+      margin-top: 3px; padding: 3px 7px;
+      font: 700 10px/1.25 system-ui, -apple-system, sans-serif;
+      background: rgba(255,255,255,0.96); color: #1a1a1a;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 7px; white-space: nowrap;
+      max-width: 132px; overflow: hidden; text-overflow: ellipsis;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.20);
     }
     .dark-attr .pin-label {
-      background: rgba(20,20,20,0.92); color: #f0f0f0;
+      background: rgba(18,18,18,0.94); color: #f0f0f0;
+      border-color: rgba(255,255,255,0.14);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.5);
     }
-    .route-banner, .nav-chip {
-      position: absolute; left: 8px; right: 8px; z-index: 1000;
-      padding: 7px 10px; border-radius: 2px;
-      font: 600 12px/1.3 "IBM Plex Sans", system-ui, sans-serif;
-      display: none;
-    }
+    /*
+      The heading strip.
+
+      Yellow means one thing on this map — the way through the city — so the
+      strip that describes the route does not wear it. It floats clear of the
+      edges as an ink card and spends its yellow on one arrow tile, and the
+      glance target is the distance rather than the destination: mid-ride a
+      rider already knows where they are going.
+    */
     .nav-chip {
-      top: 8px;
-      background: #FFDE58; color: #1a1a1a;
-      border: 1px solid #1a1a1a;
-      box-shadow: 0 2px 0 #1a1a1a;
+      position: absolute; z-index: 1000;
+      left: 10px; right: 10px;
+      top: calc(8px + var(--safe-top, 0px));
+      display: none;
+      align-items: center; gap: 10px;
+      padding: 9px 13px 9px 9px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid rgba(0,0,0,0.10);
+      box-shadow: 0 8px 22px rgba(0,0,0,0.20);
+      color: #1a1a1a;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     }
-    .nav-chip .kicker {
-      font: 700 10px/1 "IBM Plex Sans", system-ui, sans-serif;
-      letter-spacing: 0.12em;
+    .dark-attr .nav-chip {
+      background: rgba(18,18,18,0.94);
+      border-color: rgba(255,255,255,0.14);
+      box-shadow: 0 10px 26px rgba(0,0,0,0.55);
+      color: #f0f0f0;
     }
-    .nav-chip .line { margin-top: 2px; font-weight: 600; }
+    .nav-chip.show { display: flex; }
+    .nav-glyph {
+      flex: none;
+      width: 34px; height: 34px; border-radius: 11px;
+      background: #FFDE58;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nav-glyph svg { width: 17px; height: 17px; display: block; }
+    .nav-body { flex: 1; min-width: 0; }
+    .nav-eyebrow {
+      font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em;
+      text-transform: uppercase; color: #6b6b6b;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .dark-attr .nav-eyebrow { color: #9a9a9a; }
+    .nav-line {
+      margin-top: 2px;
+      display: flex; align-items: center; gap: 9px;
+      white-space: nowrap; overflow: hidden;
+    }
+    .nav-lead {
+      font-size: 17px; font-weight: 800; line-height: 1.1;
+      letter-spacing: -0.01em;
+    }
+    /* Distance and time are two measurements, so a rule divides them. */
+    .nav-rule { flex: none; width: 1px; height: 13px; background: currentColor; opacity: 0.22; }
+    .nav-rest { font-size: 12.5px; font-weight: 600; opacity: 0.7; }
+    /* "Waiting for GPS" is a state, not a measurement — it is not shouted. */
+    .nav-state { font-size: 12.5px; font-weight: 600; opacity: 0.75; }
     .route-banner {
-      top: 8px;
-      background: rgba(255,255,255,0.95); color: #1a1a1a;
-      border: 1px solid #dcdcdc;
+      position: absolute; z-index: 1000;
+      left: 10px; right: 10px;
+      top: calc(8px + var(--safe-top, 0px));
+      display: none;
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,0.10);
+      border-left: 3px solid #FFDE58;
+      background: rgba(255,255,255,0.95);
+      color: #1a1a1a;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+      font: 600 11.5px/1.35 system-ui, -apple-system, sans-serif;
     }
     .dark-attr .route-banner {
-      background: rgba(20,20,20,0.95); color: #f0f0f0; border-color: #2e2e2e;
+      background: rgba(18,18,18,0.94); color: #f0f0f0;
+      border-color: rgba(255,255,255,0.14); border-left-color: #FFDE58;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.5);
     }
-    .route-banner.show, .nav-chip.show { display: block; }
-    .nav-chip.show + .route-banner.show { top: 58px; }
+    .route-banner.show { display: block; }
+    .nav-chip.show + .route-banner.show { top: calc(74px + var(--safe-top, 0px)); }
   </style>
 </head>
 <body>
   <div id="nav-chip" class="nav-chip" role="status">
-    <div class="kicker" id="nav-kicker"></div>
-    <div class="line" id="nav-line"></div>
+    <div class="nav-glyph" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 2.4 21 21.4 12 16.9 3 21.4Z" fill="#1a1a1a"/></svg>
+    </div>
+    <div class="nav-body">
+      <div class="nav-eyebrow" id="nav-kicker"></div>
+      <div class="nav-line" id="nav-line"></div>
+    </div>
   </div>
   <div id="route-banner" class="route-banner" role="status">Route unavailable — straight line shown</div>
   <div id="map"></div>
@@ -274,32 +376,54 @@ export function buildMapHtml(model: MapModel): string {
         .replace(/"/g, '&quot;');
     }
 
+    /*
+      One silhouette for every destination, filled three ways.
+
+      Yellow is a print shop, paper is a client's door, and GRIDGO's own
+      counter wears the mark's ink and gold so it can never be mistaken for a
+      supplier. The tip is the coordinate: the anchor sits on it, and the
+      contact shadow underneath is what makes the pin read as standing on the
+      street rather than floating over it.
+    */
+    var PIN_SKIN = {
+      shop:   { cls: 'pin-shop',   fill: '#FFDE58', stroke: '#1a1a1a', ink: '#1a1a1a', width: 2 },
+      client: { cls: 'pin-client', fill: '#FFFFFF', stroke: '#1a1a1a', ink: '#1a1a1a', width: 2 },
+      office: { cls: 'pin-office', fill: '#1a1a1a', stroke: '#FFDE58', ink: '#FFDE58', width: 2.5 }
+    };
+
+    var PIN_PATH = 'M17 45.6C17 45.6 3.2 27.9 3.2 17.6A13.8 13.8 0 1 1 30.8 17.6C30.8 27.9 17 45.6 17 45.6Z';
+
+    function pinSkinFor(kind) {
+      if (kind === 'office') return 'office';
+      if (kind === 'client' || kind === 'dropoff') return 'client';
+      return 'shop';
+    }
+
+    /** A pin names a place; the street lines belong on the card below it. */
+    function pinCaption(value) {
+      var text = String(value == null ? '' : value).trim();
+      if (!text) return '';
+      var comma = text.indexOf(',');
+      return comma > 0 ? text.slice(0, comma).trim() : text;
+    }
+
+    function pinHead(skin, glyph) {
+      var wide = glyph.length > 1;
+      var glyphHtml = glyph
+        ? '<text x="17" y="17" dy="0.35em" text-anchor="middle"'
+          + ' font-family="system-ui, -apple-system, sans-serif"'
+          + ' font-size="' + (wide ? 12 : 14) + '" font-weight="800"'
+          + ' letter-spacing="' + (wide ? '0.3' : '0') + '"'
+          + ' fill="' + skin.ink + '">' + escapeHtml(glyph) + '</text>'
+        : '';
+      return '<svg class="pin-head" viewBox="0 0 34 48" xmlns="http://www.w3.org/2000/svg">'
+        + '<path d="' + PIN_PATH + '" fill="' + skin.fill + '" stroke="' + skin.stroke
+        + '" stroke-width="' + skin.width + '" stroke-linejoin="round"/>'
+        + glyphHtml
+        + '</svg>';
+    }
+
     function pinIcon(kind, shortLabel, selected, longLabel) {
-      var cls = kind === 'pickup' || kind === 'shop-stop' ? 'pin-pickup'
-        : kind === 'rider' ? 'pin-rider'
-        : kind === 'shop' ? 'pin-shop'
-        : kind === 'office' ? 'pin-office'
-        : 'pin-dropoff';
-      if (kind === 'shop-stop') cls += ' pin-shop-stop';
-      if (kind === 'client') cls += ' pin-client';
-      if (selected) cls += ' is-selected is-focus';
-      var mark = kind === 'rider' ? '' : escapeHtml(shortLabel);
-      var caption = longLabel === '' ? '' : (longLabel || shortLabel);
-      var labelHtml = kind === 'rider' || !caption
-        ? ''
-        : '<div class="pin-label">' + escapeHtml(caption) + '</div>';
-      if (kind === 'shop') {
-        return L.divIcon({
-          className: '',
-          html: '<div class="pin pin-shop' + (selected ? ' is-selected' : '') + '">'
-            + '<div class="pin-head">' + mark + '</div>'
-            + '<div class="pin-tip"></div>'
-            + labelHtml
-            + '</div>',
-          iconSize: [32, 44],
-          iconAnchor: [16, 40]
-        });
-      }
       if (kind === 'rider') {
         /*
           Pointing only when the phone actually knows the course. Stationary,
@@ -319,12 +443,45 @@ export function buildMapHtml(model: MapModel): string {
           iconAnchor: [14, 14]
         });
       }
+
+      var skin = PIN_SKIN[pinSkinFor(kind)];
+      var cls = 'pin ' + skin.cls + (selected ? ' is-focus is-selected' : '');
+      var caption = pinCaption(longLabel === '' ? '' : (longLabel || shortLabel));
+      var labelHtml = caption ? '<div class="pin-label">' + escapeHtml(caption) + '</div>' : '';
       return L.divIcon({
         className: '',
-        html: '<div class="pin ' + cls + '"><div class="pin-mark">' + mark + '</div>' + labelHtml + '</div>',
-        iconSize: [40, 44],
-        iconAnchor: [20, 36]
+        html: '<div class="' + cls + '">'
+          + '<div class="pin-stack">'
+          + '<div class="pin-ring"></div>'
+          + '<div class="pin-tip"></div>'
+          + pinHead(skin, String(shortLabel == null ? '' : shortLabel))
+          + '</div>'
+          + labelHtml
+          + '</div>',
+        iconSize: [34, 48],
+        iconAnchor: [17, 45]
       });
+    }
+
+    /*
+      Distance and time are two different measurements pushed through one
+      string, so the strip splits them and rules between them. Anything with no
+      separator is a state ("Waiting for GPS"), and states are not shouted.
+    */
+    /** How lib/osrm.ts joins the two halves of a route summary. */
+    var SUMMARY_SEP = ' \u00b7 ';
+
+    function renderNavSummary(value) {
+      var text = String(value == null ? '' : value).trim();
+      if (!text) return '';
+      var parts = text.split(SUMMARY_SEP);
+      if (parts.length < 2) {
+        return '<span class="nav-state">' + escapeHtml(text) + '</span>';
+      }
+      var lead = parts.shift();
+      return '<span class="nav-lead">' + escapeHtml(lead) + '</span>'
+        + '<span class="nav-rule"></span>'
+        + '<span class="nav-rest">' + escapeHtml(parts.join(SUMMARY_SEP)) + '</span>';
     }
 
     function applyModel(m) {
@@ -335,11 +492,25 @@ export function buildMapHtml(model: MapModel): string {
         'route-banner' + (m.routeUnavailable ? ' show' : '');
 
       if (!map) {
+        var driveable = m.controls !== false;
         map = L.map('map', {
           zoomControl: false,
-          attributionControl: true
+          attributionControl: false
         });
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        // Attribution is a licence condition and always drawn. On a card it
+        // moves to the other corner so the expand control has that one clear.
+        L.control.attribution({ position: driveable ? 'bottomright' : 'bottomleft' }).addTo(map);
+        if (driveable) {
+          L.control.zoom({ position: 'bottomright' }).addTo(map);
+        } else {
+          // A picture of the trip: the page underneath owns the drag.
+          map.dragging.disable();
+          map.touchZoom.disable();
+          map.doubleClickZoom.disable();
+          map.scrollWheelZoom.disable();
+          map.boxZoom.disable();
+          map.keyboard.disable();
+        }
       }
 
       var url = isDark ? DARK_TILES : LIGHT_TILES;
@@ -355,12 +526,17 @@ export function buildMapHtml(model: MapModel): string {
         lastTileUrl = url;
       }
 
+      document.documentElement.style.setProperty(
+        '--safe-top',
+        (typeof m.safeTop === 'number' && m.safeTop > 0 ? Math.round(m.safeTop) : 0) + 'px'
+      );
+
       var chip = document.getElementById('nav-chip');
       var kicker = document.getElementById('nav-kicker');
       var line = document.getElementById('nav-line');
       if (m.navTitle) {
         kicker.textContent = m.navTitle;
-        line.textContent = m.navSummary || '';
+        line.innerHTML = renderNavSummary(m.navSummary);
         chip.className = 'nav-chip show';
       } else {
         chip.className = 'nav-chip';

@@ -17,7 +17,10 @@ const CARD_MAP_HEIGHT = 120;
 
 type Props = {
   offer: Order;
-  busy: boolean;
+  /** True only while this card's accept request is in flight. */
+  accepting?: boolean;
+  /** Already carrying a job, or another card is accepting. */
+  disabled?: boolean;
   onAccept: () => void;
 };
 
@@ -35,7 +38,7 @@ type Props = {
  * captioned with the distance it was set from. Without that a rider sees two
  * different numbers on two jobs and no reason for either.
  */
-export function OfferCard({ offer, busy, onAccept }: Props) {
+export function OfferCard({ offer, accepting = false, disabled = false, onAccept }: Props) {
   const colors = useThemeColors();
   const pickup = stopLatLng(offer.pickup);
   const destination = tripDestination(offer);
@@ -90,9 +93,9 @@ export function OfferCard({ offer, busy, onAccept }: Props) {
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
 
       <PrimaryButton
-        label={busy ? "Accepting…" : "Accept this job"}
+        label={accepting ? "Accepting…" : "Accept this job"}
         onPress={onAccept}
-        disabled={busy}
+        disabled={accepting || disabled}
         size="large"
       />
     </View>

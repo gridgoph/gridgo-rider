@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Dimensions, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
@@ -33,6 +33,7 @@ import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
 import { approvalPresentation } from "@/lib/riderApproval";
 import {
+  endsAtOffice,
   issueWindowLabel,
   orderStateChip,
   owesSignOff,
@@ -198,7 +199,7 @@ export default function ActiveScreen() {
   }
 
   const chip = trip ? orderStateChip(trip) : null;
-  const cta = primaryActionLabel(phase);
+  const cta = primaryActionLabel(phase, trip ? endsAtOffice(trip) : false);
   const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
 
   return (
@@ -326,18 +327,13 @@ export default function ActiveScreen() {
             ) : null}
 
             {/*
-              Tappable, because a map inside a scrolling page can never really
-              be panned: the page underneath claims the drag, and a rider
-              trying to look one street ahead scrolls the job instead. Full
-              screen the gesture is unambiguous, which is where a map should be
-              read anyway.
+              A picture of the trip with one control on it. A map inside a
+              scrolling page can never really be panned — the page underneath
+              claims the drag, and a rider trying to look one street ahead
+              scrolls the job instead — so the card does not pretend to be
+              driveable. Expand opens it where the gesture is unambiguous.
             */}
-            <Pressable
-              onPress={() => router.push({ pathname: "/trip/map", params: { orderId: trip.id } })}
-              accessibilityRole="button"
-              accessibilityLabel="Open the map full screen"
-              style={{ height: MAP_HEIGHT }}
-            >
+            <View style={{ height: MAP_HEIGHT }}>
               <TripMap
                 pickup={shop?.point ?? null}
                 dropoff={destination?.point ?? null}
@@ -359,8 +355,11 @@ export default function ActiveScreen() {
                       ? routeSummaryLabel(route)
                       : "Measuring the road…"
                 }
+                onExpand={() =>
+                  router.push({ pathname: "/trip/map", params: { orderId: trip.id } })
+                }
               />
-            </Pressable>
+            </View>
 
             {route?.statusLabel ? (
               <Text className="text-caption text-text-muted">

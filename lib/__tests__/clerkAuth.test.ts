@@ -1,5 +1,6 @@
 import {
   awaitClerkSessionToken,
+  clerkErrorCode,
   clerkErrorMessage,
   clerkPublishableKey,
   readGridgoRole,
@@ -22,6 +23,15 @@ describe("clerkErrorMessage", () => {
     expect(
       clerkErrorMessage(new Error("Additional verification is required."), "Wrong email or password."),
     ).toBe("Additional verification is required.");
+  });
+});
+
+describe("clerkErrorCode", () => {
+  it("reads Clerk's structured code so a refusal can be routed to a field", () => {
+    expect(clerkErrorCode({ errors: [{ code: "form_password_incorrect" }] })).toBe(
+      "form_password_incorrect",
+    );
+    expect(clerkErrorCode(new Error("Password is incorrect."))).toBeNull();
   });
 });
 

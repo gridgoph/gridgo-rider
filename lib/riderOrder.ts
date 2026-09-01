@@ -41,6 +41,8 @@ export function orderStateLabel(state: string): string {
       return "Package with you";
     case "out_for_delivery":
       return "Out for delivery";
+    case "awaiting_collection":
+      return "Left at GRIDGO Office";
     case "delivered":
       return "Delivered";
     case "issue_window_open":
@@ -84,6 +86,8 @@ export function orderStateChip(order: Pick<Order, "state" | "pickupChecklist">):
       return { label: "Package with you", tone: "info", icon: "circle-check" };
     case "out_for_delivery":
       return { label: "Out for delivery", tone: "info", icon: "clock" };
+    case "awaiting_collection":
+      return { label: "Left at GRIDGO Office", tone: "success", icon: "circle-check" };
     case "issue_window_open":
     case "delivered":
     case "completed":
@@ -107,6 +111,19 @@ export function zoneLabel(zone: string): string {
  * amount is deliberately not part of this: no money changes hands at the door
  * any more, so a peso figure here would only invite a rider to ask for it.
  */
+/**
+ * Whether this job ends on GRIDGO's own counter rather than in someone's hands.
+ *
+ * A collected job still travels — the client fetches it from GRIDGO Office, so
+ * a rider carries it there from the shop. The difference is the ending: nobody
+ * receives it at the far end, so nothing about the client's money is the
+ * rider's business. Operations settles that at the counter, whenever the client
+ * comes for it.
+ */
+export function endsAtOffice(order: Pick<Order, "fulfillmentMode">): boolean {
+  return order.fulfillmentMode === "pickup";
+}
+
 export function isBalanceConfirmed(order: Pick<Order, "payments">): boolean {
   const status = order.payments?.balance?.status;
   return status === "confirmed" || status === "legacy_confirmed";
@@ -177,6 +194,9 @@ export function tripPhase(order: Order | null): TripPhase {
       return "start_delivery";
     case "out_for_delivery":
       return "delivery_proof";
+    // A collected job leaves the rider here: it is on GRIDGO's shelf and the
+    // client fetches it in their own time. Nothing further is theirs to do.
+    case "awaiting_collection":
     case "issue_window_open":
     case "delivered":
     case "completed":
@@ -187,7 +207,7 @@ export function tripPhase(order: Order | null): TripPhase {
 }
 
 /** Primary CTA copy for the current phase — verb says what will happen. */
-export function primaryActionLabel(phase: TripPhase): string | null {
+export function primaryActionLabel(phase: TripPhase, toOffice = false): string | null {
   switch (phase) {
     case "pickup_checks":
       return "Run the six pickup checks";
@@ -196,7 +216,7 @@ export function primaryActionLabel(phase: TripPhase): string | null {
     case "start_delivery":
       return "Start delivery";
     case "delivery_proof":
-      return "Confirm delivery";
+      return toOffice ? "Confirm drop-off" : "Confirm delivery";
     default:
       return null;
   }

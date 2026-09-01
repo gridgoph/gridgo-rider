@@ -15,7 +15,7 @@ import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { DELIVERY_TARGETS } from "@/lib/attachments";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
-import { dropoffLabel, isBalanceConfirmed } from "@/lib/riderOrder";
+import { dropoffLabel, endsAtOffice, isBalanceConfirmed } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 
 /**
@@ -32,9 +32,15 @@ import { useActiveTrip } from "@/store/activeTrip";
  * milestone. The server binds a file to one purpose only, so the alternative
  * was asking a rider to photograph the same doorstep twice.
  *
- * No money is handled here and none is shown. The client's final 25% is
- * digital and confirmed by Operations before this screen will let anything
- * through — which is a status the rider needs, not an amount.
+ * No money is handled here and none is shown. On a delivery the client's final
+ * 25% is confirmed by Operations before this screen will let anything through —
+ * which is a status the rider needs, not an amount.
+ *
+ * A collected job is the other shape entirely: the far end is GRIDGO's own
+ * counter, so there is nobody to hand it to and nothing to be paid. Holding a
+ * rider there against the client's balance stranded them at our office waiting
+ * on something no one present could do. The screen drops the money out of it
+ * and asks only for proof the package reached the shelf.
  */
 export default function DeliveryProofScreen() {
   const router = useRouter();
@@ -68,7 +74,8 @@ export default function DeliveryProofScreen() {
     targets: DELIVERY_TARGETS,
   });
 
-  const balanceHeld = order ? !isBalanceConfirmed(order) : false;
+  const toOffice = order ? endsAtOffice(order) : false;
+  const balanceHeld = order ? !toOffice && !isBalanceConfirmed(order) : false;
   const evidenceFileId = evidence.stored.delivery_photo ?? null;
 
   const blocked = !order
@@ -78,7 +85,9 @@ export default function DeliveryProofScreen() {
       : evidenceBlockReason(
           evidence.evidence,
           evidence.upload,
-          "Photograph the package at the door. If the camera will not open, capture a signature instead.",
+          toOffice
+            ? "Photograph the package where you left it at the office. If the camera will not open, capture a signature instead."
+            : "Photograph the package at the door. If the camera will not open, capture a signature instead.",
         );
 
   async function confirmDelivery() {
@@ -96,7 +105,9 @@ export default function DeliveryProofScreen() {
       setSubmitError(
         api.apiErrorMessage(
           e,
-          "The delivery was not recorded. Do not leave until it shows as recorded — try again.",
+            toOffice
+            ? "The drop-off was not recorded. Do not leave until it shows as recorded — try again."
+            : "The delivery was not recorded. Do not leave until it shows as recorded — try again.",
         ),
       );
     } finally {
@@ -142,13 +153,21 @@ export default function DeliveryProofScreen() {
                 tone="error"
                 icon="circle-x"
                 title="Photo storage is offline"
-                body="Evidence cannot reach the server, so this delivery cannot be proven yet. Do not hand the package over — tell Operations."
+                body={
+                  toOffice
+                    ? "Evidence cannot reach the server, so this drop-off cannot be proven yet. Do not leave the package — tell Operations."
+                    : "Evidence cannot reach the server, so this delivery cannot be proven yet. Do not hand the package over — tell Operations."
+                }
               />
             ) : null}
 
             <EvidenceCapture
-              title="Evidence at the door"
-              instruction="Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
+              title={toOffice ? "Evidence at the office" : "Evidence at the door"}
+              instruction={
+                toOffice
+                  ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."
+                  : "Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
+              }
               evidence={evidence.evidence}
               upload={evidence.upload}
               captureError={evidence.captureError}
@@ -164,7 +183,7 @@ export default function DeliveryProofScreen() {
               <InlineNotice
                 tone="error"
                 icon="circle-x"
-                title="Delivery not recorded"
+                title={toOffice ? "Drop-off not recorded" : "Delivery not recorded"}
                 body={submitError}
               />
             ) : null}
@@ -175,7 +194,9 @@ export default function DeliveryProofScreen() {
       {order ? (
         <StickyActionBar>
           <PrimaryButton
-            label={busy ? "Recording…" : "Confirm delivery"}
+            label={
+              busy ? "Recording…" : toOffice ? "Confirm drop-off" : "Confirm delivery"
+            }
             onPress={() => void confirmDelivery()}
             disabled={busy || Boolean(blocked)}
             size="large"
@@ -186,7 +207,10 @@ export default function DeliveryProofScreen() {
         </StickyActionBar>
       ) : null}
 
-      <BlockingOverlay visible={busy} label="Recording the delivery…" />
+      <BlockingOverlay
+        visible={busy}
+        label={toOffice ? "Recording the drop-off…" : "Recording the delivery…"}
+      />
     </Screen>
   );
 }

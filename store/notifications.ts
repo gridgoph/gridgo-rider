@@ -18,20 +18,24 @@ type NotificationsState = {
   adopt: (items: api.Notification[]) => void;
   markRead: (id: string) => void;
   markAllRead: (items: api.Notification[]) => void;
+  /**
+   * Soft-delete these rows on GRIDGO, then drop their local read marks.
+   * Succeeded ids leave the inbox; failed ones stay so the screen can retry.
+   */
+  clear: (items: api.Notification[]) => Promise<{ cleared: string[]; failed: boolean }>;
   isRead: (item: api.Notification) => boolean;
 };
 
 /**
  * The Alerts badge, and which alerts the rider has already dealt with.
  *
- * The demo API returns `read` but has no route to set it, so marking one read
- * can only happen on this phone. That is worth doing anyway — an alert list
- * where nothing can ever be cleared stops being a list and becomes wallpaper —
- * but it must not be dressed up as something the server knows, so the screen
- * says where the marks live and a fresh install starts over.
+ * Marking one read still happens on this phone: `GET /notifications` returns
+ * `read`, but this app has not yet wired `PATCH /notifications/:id`. A mark is
+ * only ever added, never removed, so the server's own `read` still wins.
  *
- * A mark is only ever added, never removed: the server's own `read` still wins
- * when it is true, so an alert cannot come back unread because a phone forgot.
+ * Clearing the inbox is different. `DELETE /notifications/:id` is a durable
+ * soft delete — those rows never come back on the next list — so Clear must
+ * wait for GRIDGO, not just hide the cards locally.
  */
 export const useNotifications = create<NotificationsState>((set, get) => {
   let writeQueue: Promise<void> = Promise.resolve();
@@ -85,6 +89,26 @@ export const useNotifications = create<NotificationsState>((set, get) => {
       const next = [...new Set([...get().readIds, ...items.map((item) => item.id)])];
       set({ readIds: next, unread: 0 });
       persist(next);
+    },
+
+    clear: async (items) => {
+      if (!items.length) return { cleared: [], failed: false };
+      const results = await Promise.allSettled(
+        items.map((item) => api.deleteNotification(item.id)),
+      );
+      const cleared: string[] = [];
+      let failed = false;
+      items.forEach((item, index) => {
+        if (results[index]?.status === "fulfilled") cleared.push(item.id);
+        else failed = true;
+      });
+      if (cleared.length) {
+        const drop = new Set(cleared);
+        const next = get().readIds.filter((id) => !drop.has(id));
+        set({ readIds: next });
+        persist(next);
+      }
+      return { cleared, failed };
     },
 
     refreshUnread: async () => {

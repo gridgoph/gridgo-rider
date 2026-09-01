@@ -3,6 +3,21 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Notification } from "@/lib/api";
 import { useNotifications } from "@/store/notifications";
 
+jest.mock("@/lib/api", () => {
+  const actual = jest.requireActual("@/lib/api");
+  return {
+    ...actual,
+    listNotifications: jest.fn(),
+    deleteNotification: jest.fn(),
+  };
+});
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const api = require("@/lib/api") as {
+  listNotifications: jest.Mock;
+  deleteNotification: jest.Mock;
+};
+
 function alert(patch: Partial<Notification> & Pick<Notification, "id">): Notification {
   return {
     userId: "user_rider",
@@ -21,6 +36,8 @@ async function flush() {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  api.deleteNotification.mockReset();
+  api.deleteNotification.mockResolvedValue({ id: "a", deletedAt: "2026-09-01T04:00:00.000Z" });
   useNotifications.setState({ unread: 0, readIds: [], hydrated: false });
 });
 
@@ -74,5 +91,40 @@ describe("read marks live on this phone", () => {
     await useNotifications.getState().hydrate();
     expect(useNotifications.getState().hydrated).toBe(true);
     expect(useNotifications.getState().readIds).toEqual([]);
+  });
+});
+
+describe("clearing the inbox", () => {
+  it("deletes every row on GRIDGO and drops the local marks", async () => {
+    const items = [alert({ id: "a" }), alert({ id: "b" })];
+    useNotifications.getState().adopt(items);
+    useNotifications.getState().markRead("a");
+
+    const outcome = await useNotifications.getState().clear(items);
+
+    expect(api.deleteNotification).toHaveBeenCalledWith("a");
+    expect(api.deleteNotification).toHaveBeenCalledWith("b");
+    expect(outcome).toEqual({ cleared: ["a", "b"], failed: false });
+    expect(useNotifications.getState().readIds).not.toContain("a");
+  });
+
+  it("keeps a row that GRIDGO would not delete", async () => {
+    api.deleteNotification
+      .mockResolvedValueOnce({ id: "a", deletedAt: "2026-09-01T04:00:00.000Z" })
+      .mockRejectedValueOnce(new Error("offline"));
+
+    const items = [alert({ id: "a" }), alert({ id: "b" })];
+    const outcome = await useNotifications.getState().clear(items);
+
+    expect(outcome.cleared).toEqual(["a"]);
+    expect(outcome.failed).toBe(true);
+  });
+
+  it("does nothing when the list is already empty", async () => {
+    await expect(useNotifications.getState().clear([])).resolves.toEqual({
+      cleared: [],
+      failed: false,
+    });
+    expect(api.deleteNotification).not.toHaveBeenCalled();
   });
 });

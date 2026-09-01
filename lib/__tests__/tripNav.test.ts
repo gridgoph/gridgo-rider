@@ -64,7 +64,7 @@ describe("tripShop / tripDestination", () => {
     const stop = tripDestination(order({ fulfillmentMode: "pickup", dropoff: null }));
     expect(stop.kind).toBe("office");
     expect(stop.point).toEqual({ lat: GRIDGO_OFFICE.lat, lng: GRIDGO_OFFICE.lng });
-    expect(stop.label).toBe("GRIDGO Office");
+    expect(stop.label).toBe(GRIDGO_OFFICE.label);
     expect(stop.navTitle).toBe("TO GRIDGO OFFICE");
   });
 
