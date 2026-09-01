@@ -5,7 +5,7 @@
  * envelope: shop pins, a camera, and the one message a pin tap sends back.
  */
 
-import type { PlaceholderShop } from "@/data/placeholderShops";
+import type { DirectoryShop } from "@/lib/directoryShops";
 import type { LatLng } from "@/lib/geo";
 import type { MapPlace, MapView } from "@/lib/mapHtml";
 
@@ -14,7 +14,7 @@ export type BrowseMapTap = {
   id: string;
 };
 
-export function shopsToMapPlaces(shops: readonly PlaceholderShop[]): MapPlace[] {
+export function shopsToMapPlaces(shops: readonly DirectoryShop[]): MapPlace[] {
   return shops.map((shop) => ({
     id: shop.id,
     name: shop.name,

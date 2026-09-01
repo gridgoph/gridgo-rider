@@ -1,4 +1,6 @@
 import {
+  awaitClerkSessionToken,
+  clerkErrorCode,
   clerkErrorMessage,
   clerkPublishableKey,
   readGridgoRole,
@@ -21,6 +23,15 @@ describe("clerkErrorMessage", () => {
     expect(
       clerkErrorMessage(new Error("Additional verification is required."), "Wrong email or password."),
     ).toBe("Additional verification is required.");
+  });
+});
+
+describe("clerkErrorCode", () => {
+  it("reads Clerk's structured code so a refusal can be routed to a field", () => {
+    expect(clerkErrorCode({ errors: [{ code: "form_password_incorrect" }] })).toBe(
+      "form_password_incorrect",
+    );
+    expect(clerkErrorCode(new Error("Password is incorrect."))).toBeNull();
   });
 });
 
@@ -80,6 +91,24 @@ describe("Clerk publishable key policy", () => {
     } finally {
       if (original === undefined) delete process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
       else process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = original;
+    }
+  });
+});
+
+describe("awaitClerkSessionToken", () => {
+  it("returns a token when Clerk answers", async () => {
+    await expect(awaitClerkSessionToken(async () => "jwt", 1, 0)).resolves.toBe("jwt");
+  });
+
+  it("gives up when Clerk never returns a token", async () => {
+    jest.useFakeTimers();
+    try {
+      const hung = () => new Promise<string>(() => {});
+      const pending = awaitClerkSessionToken(hung, 1, 0);
+      await jest.advanceTimersByTimeAsync(2500);
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      jest.useRealTimers();
     }
   });
 });

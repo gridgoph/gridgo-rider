@@ -53,12 +53,20 @@ export function useClerkSessionBridge(): boolean {
       return;
     }
 
+    const sessionId = typeof sessionClaims?.sid === "string" ? sessionClaims.sid : "active";
+    // Applying already owns this Clerk session. Restarting adoption here
+    // clears the token provider mid-submit and leaves Apply stuck on sending.
+    if (needsApplication) {
+      settledUnassigned.current = sessionId;
+      setIdentityReady(true);
+      return;
+    }
+
     if (isClerkAdoptionBlocked()) {
       setIdentityReady(true);
       return;
     }
 
-    const sessionId = typeof sessionClaims?.sid === "string" ? sessionClaims.sid : "active";
     // A restored Clerk session owns the door immediately. Clear an older demo
     // bearer before waiting for user metadata, so a slow metadata fetch cannot
     // expose the previous session when the bounded launch deadline expires.

@@ -407,6 +407,7 @@ export const useSession = create<SessionState>((set, get) => ({
       if (decisionAtStart !== sessionDecisionVersion) {
         if (get().user) return "adopted";
         if (clerkAdoptionBlocked) return "rejected";
+        set({ loading: false });
         return "unassigned";
       }
       if (user.role !== APP_ROLE) {
@@ -445,6 +446,7 @@ export const useSession = create<SessionState>((set, get) => ({
       if (decisionAtStart !== sessionDecisionVersion) {
         if (get().user) return "adopted";
         if (clerkAdoptionBlocked) return "rejected";
+        set({ loading: false });
         return "unassigned";
       }
       if (clerkAdoptionBlocked) {

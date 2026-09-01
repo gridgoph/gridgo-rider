@@ -57,3 +57,23 @@ export const confirmSheetScreenOptions = {
   // the rider should be reaching past.
   sheetLargestUndimmedDetentIndex: "none" as const,
 };
+
+
+/**
+ * A screen that owns its whole surface.
+ *
+ * One case so far: the trip map. A header would take the top of a display a
+ * rider is reading a road on, and the map has to be the display — inside a
+ * scrolling page it cannot even be panned, because the page claims the drag.
+ *
+ * The trade is that the platform draws no back control, so a screen using this
+ * carries its own labelled close in its body, in every state, the same
+ * contract a confirmation sheet keeps. `__tests__/backAffordance.test.ts`
+ * holds it to that rather than taking the promise on trust.
+ */
+export const fullBleedScreenOptions = {
+  headerShown: false,
+  // The gesture still works, so the close control is the second way out
+  // rather than the only one.
+  gestureEnabled: true,
+};

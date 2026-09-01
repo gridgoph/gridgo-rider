@@ -1,4 +1,4 @@
-import { getApiBase, getToken } from "@/lib/api";
+import { getApiBase, resolveBearer } from "@/lib/api";
 import type { EvidenceUpload, ProofEvidence } from "@/lib/proofEvidence";
 
 /**
@@ -212,7 +212,7 @@ export function uploadEvidence({
       );
     }
 
-    const token = getToken();
+    const token = await resolveBearer();
     const base = getApiBase();
     const stored: StoredEvidence = {};
 
@@ -234,6 +234,7 @@ export function uploadEvidence({
         } as unknown as Blob);
 
         xhr.open("POST", `${base}/files`);
+        xhr.responseType = "text";
         xhr.setRequestHeader("Accept", "application/json");
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         // Content-Type is left alone on purpose: React Native supplies the

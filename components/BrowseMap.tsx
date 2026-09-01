@@ -11,6 +11,8 @@ type Props = {
   places: readonly MapPlace[];
   selectedPlaceId?: string | null;
   rider?: LatLng | null;
+  /** Course in degrees, or null while stopped — a dot is drawn then. */
+  riderHeading?: number | null;
   view?: MapView | null;
   onSelectPlace?: (id: string) => void;
 };
@@ -25,6 +27,7 @@ export function BrowseMap({
   places,
   selectedPlaceId = null,
   rider = null,
+  riderHeading = null,
   view = null,
   onSelectPlace,
 }: Props) {
@@ -43,12 +46,13 @@ export function BrowseMap({
       routeCoordinates: [],
       routeColor: colors.actionYellow,
       rider: isValidLatLng(rider) ? rider : null,
+      riderHeading,
       routeUnavailable: false,
       places,
       selectedPlaceId,
       view,
     }),
-    [theme, colors.actionYellow, rider, places, selectedPlaceId, view],
+    [theme, colors.actionYellow, rider, riderHeading, places, selectedPlaceId, view],
   );
 
   const html = useMemo(() => buildMapHtml(model), [model.theme]); // eslint-disable-line react-hooks/exhaustive-deps

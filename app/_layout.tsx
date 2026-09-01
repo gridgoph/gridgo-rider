@@ -20,6 +20,7 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
+import { useArrivalAlert } from "@/hooks/useArrivalAlert";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
@@ -27,6 +28,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   confirmSheetScreenOptions,
+  fullBleedScreenOptions,
   multiOriginPushedScreenOptions,
 } from "@/lib/navigationHeaders";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
@@ -84,6 +86,9 @@ function AppShell() {
   // only `PushEnableCard` does that. Expo Go throws from the native module;
   // the hook wraps every call so that costs push, never the first frame.
   usePushNotifications();
+  // Same seat as push: arrival is about where the phone is, not which screen
+  // is open, so the geofence lives here rather than on the Active tab.
+  useArrivalAlert();
 
   // Read the stored session here, not in the gate: the gate lives inside the
   // tree that this component refuses to render until hydration finishes.
@@ -222,6 +227,13 @@ function AppShell() {
               }}
             />
             <Stack.Screen
+              name="change-password"
+              options={{
+                title: "Password",
+                ...multiOriginPushedScreenOptions,
+              }}
+            />
+            <Stack.Screen
               name="design-system"
               options={{
                 title: "Design system",
@@ -249,6 +261,13 @@ function AppShell() {
               Confirmations are the platform's own sheet, not a drawn overlay —
               see `confirmSheetScreenOptions` for what that buys.
             */}
+            {/*
+              The map, full screen. A destination rather than a sheet: it is
+              the same trip seen properly, and a rider reading a road wants the
+              whole display and the back gesture, not a card they can dismiss
+              by dragging in the direction they are trying to pan.
+            */}
+            <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
             <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
             <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
           </Stack>

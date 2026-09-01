@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import { join } from "path";
+
 import { MAX_EVIDENCE_BYTES, storageErrorMessage } from "@/lib/attachments";
 
 /** Every error code the storage contract documents for a rider upload. */
@@ -62,6 +65,14 @@ describe("storageErrorMessage", () => {
   it("falls back without guessing when the server sends no code", () => {
     expect(storageErrorMessage(undefined, 500)).toMatch(/again/i);
     expect(storageErrorMessage(undefined, 418)).toMatch(/again/i);
+  });
+});
+
+describe("uploadEvidence auth", () => {
+  it("sends the Clerk bearer, not the empty memory token", () => {
+    const source = readFileSync(join(__dirname, "../attachments.ts"), "utf8");
+    expect(source).toContain("resolveBearer");
+    expect(source).not.toMatch(/const token = getToken\(\)/);
   });
 });
 

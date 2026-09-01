@@ -1,6 +1,20 @@
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+
+const mockListCatalogShops = jest.fn();
+
+jest.mock("expo-router", () => ({
+  useFocusEffect: (callback: () => void) => {
+    const { useEffect } = require("react") as typeof import("react");
+    useEffect(callback, [callback]);
+  },
+}));
+
+jest.mock("@/lib/api", () => ({
+  ...jest.requireActual("@/lib/api"),
+  listCatalogShops: (...args: unknown[]) => mockListCatalogShops(...args),
+}));
 
 jest.mock("@/components/BrowseMap", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
@@ -13,7 +27,7 @@ jest.mock("@/components/BrowseMap", () => {
       <Pressable
         testID="browse-map"
         accessibilityLabel="City map"
-        onPress={() => onSelectPlace?.("shop-vicenta")}
+        onPress={() => onSelectPlace?.("user_lovis_printshop")}
       />
     ),
   };
@@ -30,7 +44,31 @@ jest.mock("@/hooks/useRiderLocation", () => ({
 }));
 
 import MapScreen from "@/app/(tabs)/map";
-import { PLACEHOLDER_SHOPS } from "@/data/placeholderShops";
+
+const LIVE_SHOPS = [
+  {
+    supplierId: "user_lovis_printshop",
+    shopName: "Lovis Printshop",
+    shop: {
+      lat: 7.086767242919336,
+      lng: 125.61613995306057,
+      label: "Iñigo, Corner Cervantes St, Poblacion, Davao City",
+    },
+    categories: ["marketing_collateral"],
+    itemCount: 8,
+  },
+  {
+    supplierId: "user_jopal_davao",
+    shopName: "Jopal Davao",
+    shop: {
+      lat: 7.0729598559850615,
+      lng: 125.62065833216744,
+      label: "Door 2 Calderon Bldg., J. Luna St, Poblacion, Davao City",
+    },
+    categories: ["corporate_event_merch"],
+    itemCount: 3,
+  },
+];
 
 function renderMap(ui: ReactElement) {
   return render(ui, {
@@ -48,52 +86,67 @@ function renderMap(ui: ReactElement) {
 }
 
 describe("Map tab", () => {
-  it("is a city map with search, not a route builder", async () => {
-    await renderMap(<MapScreen />);
-
-    expect(screen.getByLabelText("City map")).toBeTruthy();
-    expect(screen.getByLabelText("Search shops or streets")).toBeTruthy();
-    expect(screen.getByLabelText("Center the map on you")).toBeTruthy();
-    expect(screen.getByText(/stand-in print shops/i)).toBeTruthy();
-    expect(screen.getByLabelText("Close map details")).toBeTruthy();
-    expect(screen.queryByText(/create route/i)).toBeNull();
-    expect(screen.queryByText(/^Routes$/)).toBeNull();
+  beforeEach(() => {
+    mockListCatalogShops.mockReset();
+    mockListCatalogShops.mockResolvedValue(LIVE_SHOPS);
   });
 
-  it("lists placeholder shops from the local directory as you type", async () => {
-    await renderMap(<MapScreen />);
+  it("is a city map with search, not a route builder", async () => {
+    renderMap(<MapScreen />);
 
-    await act(async () => {
-      fireEvent.changeText(screen.getByLabelText("Search shops or streets"), "Vicenta");
+    await waitFor(() => {
+      expect(screen.getByText(/GRIDGO print shops/i)).toBeTruthy();
     });
 
-    expect(screen.getByLabelText("Vicenta Print House")).toBeTruthy();
-    expect(
-      screen.queryByLabelText(
-        PLACEHOLDER_SHOPS.find((shop) => shop.id === "shop-buhangin-wide")?.name ?? "",
-      ),
-    ).toBeNull();
+    expect(screen.getByLabelText("City map")).toBeTruthy();
+    expect(screen.getByLabelText("Find a shop")).toBeTruthy();
+    expect(screen.getByLabelText("Center the map on you")).toBeTruthy();
+    expect(screen.queryByText(/stand-in print shops/i)).toBeNull();
+    expect(screen.queryByText(/placeholder/i)).toBeNull();
+    expect(screen.queryByText(/create route/i)).toBeNull();
   });
 
-  it("opens a placeholder shop from the map", async () => {
-    await renderMap(<MapScreen />);
+  it("lists live catalog shops as you type", async () => {
+    renderMap(<MapScreen />);
+    await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText("Find a shop"), "Lovis");
+    });
+
+    expect(screen.getByLabelText("Lovis Printshop")).toBeTruthy();
+    expect(screen.queryByLabelText("Jopal Davao")).toBeNull();
+  });
+
+  it("opens a live shop from the map", async () => {
+    renderMap(<MapScreen />);
+    await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
 
     await act(async () => {
       fireEvent.press(screen.getByTestId("browse-map"));
     });
 
-    expect(screen.getByText("Vicenta Print House")).toBeTruthy();
-    expect(screen.getByText(/Directory placeholder/)).toBeTruthy();
+    expect(screen.getByText("Lovis Printshop")).toBeTruthy();
+    expect(screen.getByText(/Cervantes St/)).toBeTruthy();
+    expect(screen.queryByText(/Directory placeholder/)).toBeNull();
 
     await act(async () => {
       fireEvent.press(screen.getByLabelText("Close shop details"));
     });
 
-    expect(screen.queryByText(/Directory placeholder/)).toBeNull();
-    expect(screen.queryByText(/stand-in print shops/i)).toBeNull();
-    expect(screen.getByLabelText("Search shops or streets").props.value).toBe("");
+    expect(screen.queryByText("Lovis Printshop")).toBeNull();
+    expect(screen.getByLabelText("Find a shop").props.value).toBe("");
     expect(screen.getByLabelText("City map")).toBeTruthy();
-    // Closing also recenters on the rider — same control the locate button uses.
     expect(screen.getByLabelText("Center the map on you")).toBeTruthy();
+  });
+
+  it("says so when the catalog cannot be loaded", async () => {
+    mockListCatalogShops.mockRejectedValueOnce(new Error("offline"));
+    renderMap(<MapScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load print shops/i)).toBeTruthy();
+    });
+    expect(screen.getByLabelText("Try loading shops again")).toBeTruthy();
   });
 });

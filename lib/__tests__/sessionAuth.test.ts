@@ -59,6 +59,13 @@ describe("session clear + 401 wiring", () => {
     });
   });
 
+  it("resolveBearer reads the Clerk provider when memory is empty", async () => {
+    api.setToken(null);
+    api.setTokenProvider(async () => "clerk_jwt");
+    expect(api.getToken()).toBeNull();
+    expect(await api.resolveBearer()).toBe("clerk_jwt");
+  });
+
   it("reads a fresh Clerk bearer for every domain request", async () => {
     const originalFetch = global.fetch;
     const getToken = jest

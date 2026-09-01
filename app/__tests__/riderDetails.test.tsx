@@ -67,6 +67,8 @@ describe("the rider's own details", () => {
     expect(screen.getByLabelText("Plate number").props.value).toBe("ABC 1234");
     expect(screen.getByText("carlo@example.com")).toBeTruthy();
     expect(screen.queryByDisplayValue("carlo@example.com")).toBeNull();
+    expect(screen.getByText("Change password")).toBeTruthy();
+    expect(screen.getByText("••••••••")).toBeTruthy();
     await view.unmount();
   });
 

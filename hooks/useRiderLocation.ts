@@ -12,6 +12,17 @@ export type RiderLocationState = {
   coords: LatLng | null;
   accuracy: number | null;
   /**
+   * Course over ground in degrees from true north, or null.
+   *
+   * Null is the ordinary case while stopped: a phone that is not moving has no
+   * course to report, and the platform says so rather than guessing. A map
+   * given null draws a plain dot, because an arrow pointing whichever way the
+   * rider last happened to move is worse than no arrow at all.
+   */
+  heading: number | null;
+  /** Metres per second, or null. Only ever used to decide whether to point. */
+  speed: number | null;
+  /**
    * Epoch ms of the fix these coordinates came from, so the UI can age them.
    * A position without its age cannot be labelled stale, and an unlabelled
    * stale position is a lie about where the rider is.
@@ -28,6 +39,10 @@ export type RiderLocationState = {
 export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationState {
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  /** Degrees from true north, or null while the phone cannot tell. */
+  const [heading, setHeading] = useState<number | null>(null);
+  /** Metres per second, or null. Used only to decide whether to point. */
+  const [speed, setSpeed] = useState<number | null>(null);
   const [fixAtMs, setFixAtMs] = useState<number | null>(null);
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">(
     "unknown",
@@ -74,6 +89,11 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
               lng: last.coords.longitude,
             });
             setAccuracy(last.coords.accuracy);
+            setHeading(
+              typeof last.coords.heading === "number" && last.coords.heading >= 0
+                ? last.coords.heading
+                : null,
+            );
             // Age the cached fix from when it was taken, not from now — a
             // last-known position can be minutes old and must read as stale.
             setFixAtMs(last.timestamp ?? Date.now());
@@ -96,6 +116,26 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
               lng: pos.coords.longitude,
             });
             setAccuracy(pos.coords.accuracy);
+            /*
+              Which way the rider is pointing, and how fast.
+
+              The platform reports heading as degrees from true north, and
+              gives -1 or null when it cannot tell — which is most of the time
+              while stationary, because a phone sitting still has no course to
+              report. Passed through as null in that case so the map can draw a
+              plain dot rather than an arrow pointing at whatever direction the
+              rider last happened to move in.
+            */
+            setHeading(
+              typeof pos.coords.heading === "number" && pos.coords.heading >= 0
+                ? pos.coords.heading
+                : null,
+            );
+            setSpeed(
+              typeof pos.coords.speed === "number" && pos.coords.speed >= 0
+                ? pos.coords.speed
+                : null,
+            );
             setFixAtMs(pos.timestamp ?? Date.now());
           },
         );
@@ -112,5 +152,5 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
     };
   }, [enabled]);
 
-  return { coords, accuracy, fixAtMs, permission, error };
+  return { coords, accuracy, heading, speed, fixAtMs, permission, error };
 }

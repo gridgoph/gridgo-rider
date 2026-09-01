@@ -55,7 +55,7 @@ export function riderAccessError(role: Role | null): string | null {
 }
 
 type ClerkErrorLike = {
-  errors?: Array<{ longMessage?: string; message?: string }>;
+  errors?: { code?: string; longMessage?: string; message?: string }[];
 };
 
 /** Clerk errors are structured; never leak codes or response internals. */
@@ -68,6 +68,18 @@ export function clerkErrorMessage(error: unknown, fallback: string): string {
   // "Wrong email or password" and hide the real reason.
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   return fallback;
+}
+
+/**
+ * Clerk's own name for what it refused, or null.
+ *
+ * The code is the half that survives translation, so anything deciding what to
+ * *do* about a refusal reads this; the sentence is only for showing.
+ */
+export function clerkErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const code = (error as ClerkErrorLike).errors?.[0]?.code;
+  return typeof code === "string" && code.trim() ? code.trim() : null;
 }
 
 /**
@@ -93,10 +105,17 @@ export type ClerkGetToken = (
  * Fresh JWT for gridgo-api. A cached leftover is often expired or empty, and a
  * signed-out Clerk throws rather than returning null — answer null either way.
  */
+const TOKEN_ATTEMPT_MS = 2500;
+
 async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
   try {
-    const token = await getToken({ skipCache: true });
-    return token?.trim() ? token : null;
+    const token = await Promise.race([
+      getToken({ skipCache: true }).then((value) => (value?.trim() ? value : null)),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), TOKEN_ATTEMPT_MS);
+      }),
+    ]);
+    return token ?? null;
   } catch {
     return null;
   }

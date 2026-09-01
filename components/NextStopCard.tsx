@@ -14,6 +14,8 @@ type Props = {
   routeSummary: string;
   /** Zone name, quietly. */
   zone?: string | null;
+  /** Overrides the default NEXT STOP · PICKUP / DROP-OFF overline. */
+  overline?: string;
 };
 
 /**
@@ -25,7 +27,14 @@ type Props = {
  * address, body-large distance — is what makes the hierarchy read at arm's
  * length on a bike.
  */
-export function NextStopCard({ kind, heading, address, routeSummary, zone }: Props) {
+export function NextStopCard({
+  kind,
+  heading,
+  address,
+  routeSummary,
+  zone,
+  overline,
+}: Props) {
   const colors = useThemeColors();
   const Icon = kind === "pickup" ? Package : MapPin;
 
@@ -34,7 +43,7 @@ export function NextStopCard({ kind, heading, address, routeSummary, zone }: Pro
       <View className="flex-row items-center gap-2">
         <Icon size={16} color={colors.textMuted} strokeWidth={2} />
         <Text className="text-overline text-text-muted">
-          {kind === "pickup" ? "NEXT STOP · PICKUP" : "NEXT STOP · DROP-OFF"}
+          {overline ?? (kind === "pickup" ? "NEXT STOP · PICKUP" : "NEXT STOP · DROP-OFF")}
         </Text>
       </View>
 

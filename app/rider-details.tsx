@@ -1,6 +1,7 @@
 import { useUser } from "@clerk/expo";
+import { ChevronRight } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
@@ -14,6 +15,7 @@ import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonText } from "@/components/Skeleton";
 import { TextField } from "@/components/TextField";
+import { useThemeColors } from "@/hooks/useTheme";
 import type { RiderSelfProfile } from "@/lib/api";
 import { clerkDisplayName } from "@/lib/clerkAuth";
 import { changeRiderPortrait, changeRiderSignInName } from "@/lib/clerkIdentity";
@@ -45,6 +47,8 @@ import { useSession } from "@/store/session";
  * holds the phone, vehicle, plate and licence, and those are fields with one
  * Save. The picture belongs to the account, so it is not a keystroke — it
  * opens the camera roll. Email is the GRIDGO sign-in and is not typed here.
+ * Password is Clerk's too: a tappable card that opens its own screen, because
+ * three boxes and a consequence is a commitment.
  *
  * Nothing is drawn to press until something has actually changed, and a save
  * carries the version the details were read at.
@@ -53,6 +57,7 @@ export default function RiderDetailsScreen() {
   const refreshUser = useSession((s) => s.refreshUser);
   const sessionUser = useSession((s) => s.user);
   const { user: clerkUser } = useUser();
+  const colors = useThemeColors();
   const clerkName = clerkDisplayName(clerkUser);
   const [portraitBusy, setPortraitBusy] = useState(false);
   const [portraitError, setPortraitError] = useState<string | null>(null);
@@ -347,6 +352,11 @@ export default function RiderDetailsScreen() {
                   This is what you sign in with. It is not changed from this screen.
                 </Text>
               </View>
+
+              <SignInPasswordRow
+                chevronColor={colors.textMuted}
+                onPress={() => router.push("/change-password")}
+              />
             </View>
 
             {saveNotice ? (
@@ -376,10 +386,61 @@ export default function RiderDetailsScreen() {
               )}
             </View>
           </>
+        ) : !loading ? (
+          <View className="mt-8">
+            <SignInPasswordRow
+              chevronColor={colors.textMuted}
+              onPress={() => router.push("/change-password")}
+            />
+          </View>
         ) : null}
       </FormScroll>
 
       <BlockingOverlay visible={saving} label="Saving your details…" />
     </Screen>
+  );
+}
+
+/**
+ * The sign-in password, as a card that leads somewhere.
+ *
+ * Same visual language as the email field above it — label, dark rounded
+ * card, helper — with the in-card "Change password >" the shop-details email
+ * uses. Not a field: typing here would promise that a keystroke changes it.
+ */
+function SignInPasswordRow({
+  chevronColor,
+  onPress,
+}: {
+  chevronColor: string;
+  onPress: () => void;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-caption text-text-muted">Password</Text>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="Password, hidden"
+        accessibilityHint="Set a new password for your GRIDGO sign-in"
+        className="gg-touch rounded-field border border-outline bg-surface px-3 py-3"
+        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      >
+        <Text className="text-body text-text-primary">••••••••</Text>
+        <View className="mt-1 flex-row items-center">
+          <Text className="flex-1 text-body text-text-secondary">Change password</Text>
+          <ChevronRight
+            size={20}
+            color={chevronColor}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+        </View>
+      </Pressable>
+      <Text className="text-caption text-text-muted">
+        This is the password you sign in with. Changing it signs you out everywhere
+        else you are signed in.
+      </Text>
+    </View>
   );
 }

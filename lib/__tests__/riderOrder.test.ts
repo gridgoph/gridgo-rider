@@ -2,6 +2,7 @@ import {
   ACTIVE_TRIP_STATES,
   activeStopKind,
   dropoffLabel,
+  endsAtOffice,
   feeDistanceLabel,
   formatRelativeAt,
   isActiveTripState,
@@ -352,5 +353,41 @@ describe("stop coordinates and labels", () => {
     expect(pickupLabel(order({ id: "2", state: "ready_for_dispatch" }))).toBe(
       "Supplier print shop",
     );
+  });
+});
+
+/**
+ * A collected job ends on GRIDGO's own shelf, not in anybody's hands.
+ *
+ * The rider still carries it — from the shop to the office counter — but there
+ * is nobody at the far end to hand it to, so nothing about the client's money
+ * is theirs to wait on. Held against the balance, a rider stood at our own
+ * office with a package and no way to put it down.
+ */
+describe("a collected job", () => {
+  const collected = (state: string) =>
+    order({ id: "ord_office", state, fulfillmentMode: "pickup" });
+
+  it("is recognised by where it ends, not by who is carrying it", () => {
+    expect(endsAtOffice(collected("out_for_delivery"))).toBe(true);
+    expect(endsAtOffice(order({ id: "ord_door", state: "out_for_delivery" }))).toBe(false);
+  });
+
+  it("names the drop-off as our counter rather than a delivery", () => {
+    expect(orderStateLabel("awaiting_collection")).toBe("Left at GRIDGO Office");
+    expect(orderStateLabel("awaiting_collection")).not.toMatch(/_/);
+    expect(orderStateChip(collected("awaiting_collection")).tone).toBe("success");
+  });
+
+  it("finishes the rider's trip once it is on the shelf", () => {
+    // The order is not over — the client has not collected it — but the
+    // rider's part of it is, and leaving them on an active trip would keep
+    // them from taking the next job.
+    expect(tripPhase(collected("awaiting_collection"))).toBe("complete");
+  });
+
+  it("asks the rider to confirm a drop-off, not a delivery", () => {
+    expect(primaryActionLabel("delivery_proof", true)).toBe("Confirm drop-off");
+    expect(primaryActionLabel("delivery_proof")).toBe("Confirm delivery");
   });
 });

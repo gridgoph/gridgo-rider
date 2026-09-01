@@ -7,10 +7,16 @@ import { useThemeColors } from "@/hooks/useTheme";
 
 type Props = Omit<TextInputProps, "secureTextEntry"> & {
   testID?: string;
+  /**
+   * Noun the show/hide control names. Defaults to "password" so login's
+   * "Show password" / "Hide password" labels stay put. A screen with three
+   * fields passes a distinct noun so each eye is its own control.
+   */
+  visibilityLabel?: string;
 };
 
 export const PasswordField = forwardRef<TextInput, Props>(function PasswordField(
-  { testID = "password-visibility", ...props },
+  { testID = "password-visibility", visibilityLabel = "password", ...props },
   ref,
 ) {
   const colors = useThemeColors();
@@ -29,7 +35,7 @@ export const PasswordField = forwardRef<TextInput, Props>(function PasswordField
       <Pressable
         onPress={() => setVisible((current) => !current)}
         accessibilityRole="button"
-        accessibilityLabel={visible ? "Hide password" : "Show password"}
+        accessibilityLabel={visible ? `Hide ${visibilityLabel}` : `Show ${visibilityLabel}`}
         accessibilityState={{ selected: visible }}
         testID={testID}
         className="absolute right-0 top-0 h-12 w-12 items-center justify-center"

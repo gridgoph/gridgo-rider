@@ -15,16 +15,14 @@ describe("browse map messages", () => {
     expect(
       shopsToMapPlaces([
         {
-          id: "shop-a",
-          name: "Talasora Press",
-          area: "Bajada",
-          address: "J. P. Laurel Avenue",
+          id: "user_lovis_printshop",
+          name: "Lovis Printshop",
+          address: "Iñigo, Corner Cervantes St, Poblacion, Davao City",
           lat: 7.1,
           lng: 125.6,
-          placeholder: true,
         },
       ]),
-    ).toEqual([{ id: "shop-a", name: "Talasora Press", lat: 7.1, lng: 125.6 }]);
+    ).toEqual([{ id: "user_lovis_printshop", name: "Lovis Printshop", lat: 7.1, lng: 125.6 }]);
     expect(viewOn({ lat: 7.19, lng: 125.45 }, 14)).toEqual({
       lat: 7.19,
       lng: 125.45,

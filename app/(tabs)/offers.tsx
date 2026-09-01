@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
 import { AlertsButton } from "@/components/AlertsButton";
@@ -36,6 +36,7 @@ export default function OffersScreen() {
 
   const [offers, setOffers] = useState<api.Order[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const acceptingIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -89,6 +90,8 @@ export default function OffersScreen() {
   );
 
   async function accept(id: string) {
+    if (hasActive || acceptingIdRef.current) return;
+    acceptingIdRef.current = id;
     setBusyId(id);
     setError(null);
     try {
@@ -103,6 +106,7 @@ export default function OffersScreen() {
       );
       void reload();
     } finally {
+      acceptingIdRef.current = null;
       setBusyId(null);
     }
   }
@@ -176,7 +180,8 @@ export default function OffersScreen() {
               <OfferCard
                 key={job.id}
                 offer={job}
-                busy={busyId === job.id || hasActive}
+                accepting={busyId === job.id}
+                disabled={hasActive || (busyId != null && busyId !== job.id)}
                 onAccept={() => void accept(job.id)}
               />
             ))}

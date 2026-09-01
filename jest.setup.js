@@ -95,6 +95,17 @@ jest.mock("react-native-keyboard-controller", () =>
 // reported undetermined, which is the state a fresh phone is in — so a screen
 // rendering PushEnableCard renders the ask, and no test accidentally asserts
 // against a granted phone it never granted.
+// Location is native. Arrival and the trip map read it; tests supply a fix
+// only when they are about that. Default is "no permission asked yet, no fix".
+jest.mock("expo-location", () => ({
+  Accuracy: { Balanced: 3 },
+  PermissionStatus: { GRANTED: "granted", DENIED: "denied", UNDETERMINED: "undetermined" },
+  getForegroundPermissionsAsync: jest.fn(async () => ({ status: "undetermined" })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: "denied" })),
+  getLastKnownPositionAsync: jest.fn(async () => null),
+  watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
+}));
+
 jest.mock("expo-notifications", () => ({
   __esModule: true,
   AndroidImportance: { HIGH: 4 },
@@ -111,6 +122,7 @@ jest.mock("expo-notifications", () => ({
     canAskAgain: true,
   })),
   getDevicePushTokenAsync: jest.fn(async () => ({ type: "android", data: "test-fcm-token" })),
+  scheduleNotificationAsync: jest.fn(async () => "arrival-test"),
   getLastNotificationResponseAsync: jest.fn(async () => null),
   addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
