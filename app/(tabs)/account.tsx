@@ -1,5 +1,5 @@
 import { useUser } from "@clerk/expo";
-import { Bell, ChevronRight, Settings2 } from "lucide-react-native";
+import { Bell, ChevronRight, History, Settings2 } from "lucide-react-native";
 import { useCallback } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -125,6 +125,12 @@ export default function AccountScreen() {
             detail="Everything dispatch has sent you"
             value={unread > 0 ? `${unread} unread` : null}
             onPress={() => router.push("/alerts")}
+          />
+          <DestinationRow
+            icon={History}
+            label="Past jobs"
+            detail="Jobs you already carried, and their trail"
+            onPress={() => router.push("/past-jobs")}
           />
           <DestinationRow
             icon={Settings2}

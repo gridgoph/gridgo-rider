@@ -44,6 +44,13 @@ type Props = {
    * expand, and read it where the gesture is unambiguous.
    */
   onExpand?: () => void;
+  /**
+   * How far in from the left edge the map's own overlays must start.
+   *
+   * A screen that draws its own control over this map says so, or the map
+   * draws the heading strip straight underneath it.
+   */
+  chromeLeft?: number;
 };
 
 /**
@@ -53,6 +60,14 @@ type Props = {
  * surrounding addresses and actions still work — this component never gates
  * trip completion.
  */
+/*
+  The expand control's footprint, so the map starts its heading strip beside it
+  rather than underneath: the card's 8px inset, the 44px control, and 8px of
+  air. It sits in the same corner as the full-screen map's close control, so
+  one corner opens the map and the same corner closes it again.
+*/
+const CARD_CHROME_LEFT = 8 + 44 + 8;
+
 export function TripMap({
   pickup,
   dropoff,
@@ -72,6 +87,7 @@ export function TripMap({
   height,
   compact = false,
   onExpand,
+  chromeLeft,
 }: Props) {
   const theme = useThemeName();
   const colors = useThemeColors();
@@ -97,7 +113,11 @@ export function TripMap({
       navSummary,
       safeTop,
       routeUnavailable,
-      controls: !onExpand,
+      // A card keeps its zoom — a button tap and a pinch cost the page
+      // nothing — and gives up only the drag the page itself needs.
+      pan: !onExpand,
+      zoom: true,
+      chromeLeft: chromeLeft ?? (onExpand ? CARD_CHROME_LEFT : null),
     }),
     [
       theme,
@@ -118,6 +138,7 @@ export function TripMap({
       safeTop,
       routeUnavailable,
       onExpand,
+      chromeLeft,
     ],
   );
 
@@ -143,7 +164,7 @@ export function TripMap({
     >
       {hasStops ? (
         <>
-          <View className="flex-1" pointerEvents={onExpand ? "none" : "auto"}>
+          <View className="flex-1">
             <MapFrame
               ref={frameRef}
               html={html}
@@ -156,9 +177,9 @@ export function TripMap({
           </View>
 
           {/*
-            Bottom right, where the map's own zoom sits when the map is
-            driveable — the same corner means the same thing, and the licence
-            line moves to the other one so nothing is covered.
+            Top left, the corner the full-screen map puts its close control in,
+            so the same corner opens the map and closes it again. The bottom
+            right belongs to the map's own zoom and the licence line.
           */}
           {onExpand ? (
             <Pressable
@@ -166,7 +187,7 @@ export function TripMap({
               accessibilityRole="button"
               accessibilityLabel="Open the map full screen"
               hitSlop={8}
-              className="gg-touch absolute bottom-2 right-2 h-11 w-11 items-center justify-center rounded-pill border border-outline"
+              className="gg-touch absolute left-2 top-2 h-11 w-11 items-center justify-center rounded-pill border border-outline"
               style={({ pressed }) => ({
                 backgroundColor: colors.surface,
                 opacity: pressed ? 0.85 : 1,

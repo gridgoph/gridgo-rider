@@ -38,9 +38,30 @@ describe("where a job actually is", () => {
     expect(orderStage({ state: "rider_assigned", pickupChecklist: null }).index).toBe(0);
     expect(orderStage({ state: "picked_up", pickupChecklist: checklist("passed") }).index).toBe(1);
     expect(orderStage({ state: "out_for_delivery", pickupChecklist: null }).index).toBe(2);
-    for (const state of ["delivered", "issue_window_open", "completed", "payout_released"]) {
+    for (const state of [
+      "awaiting_collection",
+      "delivered",
+      "issue_window_open",
+      "completed",
+      "payout_released",
+    ]) {
       expect(orderStage({ state, pickupChecklist: null }).index).toBe(3);
     }
+  });
+
+  it("marks a cancelled job as blocked at the last rider step it reached", () => {
+    const cancelled = orderStage({
+      state: "cancelled",
+      pickupChecklist: null,
+      timeline: [
+        { state: "rider_assigned" },
+        { state: "picked_up" },
+        { state: "cancelled" },
+      ],
+    });
+    expect(cancelled.blocked).toBe(true);
+    expect(cancelled.index).toBe(1);
+    expect(cancelled.summary).toBe("Cancelled");
   });
 
   it("claims no step at all before the job reaches a rider", () => {
@@ -67,6 +88,8 @@ describe("where a job actually is", () => {
       "out_for_delivery",
       "delivered",
       "completed",
+      "cancelled",
+      "awaiting_collection",
       "something_new",
     ]) {
       expect(orderStage({ state, pickupChecklist: null }).summary).not.toMatch(/_/);

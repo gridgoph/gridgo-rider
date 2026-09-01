@@ -36,6 +36,12 @@ export type EvidenceUpload =
 
 export const UPLOAD_IDLE: EvidenceUpload = { phase: "idle" };
 
+/**
+ * The camera handed us a URI the upload stack cannot open. That is a retake,
+ * not a dropped connection — Android camera grants are often `content://`.
+ */
+export const UNREADABLE_CAPTURE_MESSAGE = "Could not read that photo. Retake it.";
+
 /** True only once the server has confirmed the file and returned its id. */
 export function isEvidenceStored(upload: EvidenceUpload): upload is {
   phase: "stored";

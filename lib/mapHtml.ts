@@ -19,6 +19,8 @@ export type MapPlace = {
   name: string;
   lat: number;
   lng: number;
+  /** Browse-map pin fill. Trip maps use pickupKind / dropoffKind instead. */
+  kind?: MapPinKind;
 };
 
 export type MapView = {
@@ -74,14 +76,25 @@ export type MapModel = {
   /** When set, the camera goes here instead of fitting markers. */
   view?: MapView | null;
   /**
-   * Whether the map is something to drive, or something to glance at.
+   * Whether the rider can drag the map around.
    *
-   * A map on a card is a picture of the trip: the page owns the drag, and a
-   * zoom control the finger can never reach is clutter. False drops the
-   * control, stops the gestures, and moves attribution clear of the card's own
-   * expand button. Defaults to a full map.
+   * False on a card, where the page underneath owns the vertical drag: a
+   * rider trying to look one street ahead would scroll the job instead. Zoom
+   * is a separate question because a tap on a button and a two-finger pinch
+   * take nothing away from the page.
    */
-  controls?: boolean;
+  pan?: boolean;
+  /** Whether the map draws its zoom control and accepts pinch and double-tap. */
+  zoom?: boolean;
+  /**
+   * How far in from the left edge the map's own overlays must start, in CSS
+   * pixels.
+   *
+   * The host draws its close control over this map, and only the host knows
+   * where. Without this the strip's arrow tile is drawn underneath it and both
+   * disappear into each other.
+   */
+  chromeLeft?: number | null;
 };
 
 const LIGHT_TILES =
@@ -154,10 +167,19 @@ export function buildMapHtml(model: MapModel): string {
     }
     .pin-stack { position: relative; width: 34px; height: 48px; }
     .pin-head {
-      position: relative; z-index: 2;
+      position: relative; z-index: 3;
       display: block; width: 34px; height: 48px;
       filter: drop-shadow(0 2px 3px rgba(0,0,0,0.30));
       transform-origin: 50% 94%;
+    }
+    /*
+      Night tiles are nearly the same ink as GRIDGO's own pin, which would
+      leave the counter as an outline with no body. A hairline casing — the
+      cartographer's trick — separates every fill from whatever it lands on.
+    */
+    .dark-attr .pin-head {
+      filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.45))
+              drop-shadow(0 2px 4px rgba(0,0,0,0.6));
     }
     /* Where the pin meets the ground. */
     .pin-tip {
@@ -169,21 +191,30 @@ export function buildMapHtml(model: MapModel): string {
       filter: blur(2px);
     }
     .dark-attr .pin-tip { background: rgba(0,0,0,0.6); }
-    /* The stop being ridden to, and only that one. */
+    /*
+      The stop being ridden to, marked on the ground rather than around the
+      head.
+
+      A ring drawn around the head cuts through the pin's own shoulders and,
+      on GRIDGO's gold-edged counter pin, reads as a second outline. Marking
+      the ground instead puts the emphasis where the coordinate actually is:
+      the pin, its contact shadow and its pulse all agree about where the
+      street is, and the silhouette stays whole.
+    */
     .pin-ring {
-      position: absolute; z-index: 0;
-      left: 50%; top: 17px;
-      width: 46px; height: 46px; margin-left: -23px; margin-top: -23px;
+      position: absolute; z-index: 2;
+      left: 50%; bottom: -4px;
+      width: 32px; height: 10px; margin-left: -16px;
       border-radius: 999px;
-      border: 3px solid #FFDE58;
+      border: 2px solid #FFDE58;
       opacity: 0;
     }
-    .pin.is-focus .pin-ring { opacity: 1; animation: pin-focus 2.4s ease-out infinite; }
+    .pin.is-focus .pin-ring { opacity: 1; animation: pin-focus 2.2s ease-out infinite; }
     .pin.is-focus .pin-head { transform: scale(1.07); }
     @keyframes pin-focus {
-      0% { transform: scale(0.7); opacity: 0.9; }
-      70% { transform: scale(1.15); opacity: 0; }
-      100% { transform: scale(1.15); opacity: 0; }
+      0% { transform: scale(0.45); opacity: 0.95; }
+      75% { transform: scale(1.4); opacity: 0; }
+      100% { transform: scale(1.4); opacity: 0; }
     }
     .pin-rider {
       position: relative;
@@ -230,11 +261,11 @@ export function buildMapHtml(model: MapModel): string {
     }
     @media (prefers-reduced-motion: reduce) {
       .pin-rider .pin-halo { animation: none; opacity: 0.35; }
-      .pin.is-focus .pin-ring { animation: none; opacity: 0.85; transform: scale(1); }
+      .pin.is-focus .pin-ring { animation: none; opacity: 0.9; transform: scale(1.15); }
     }
     /* Names a place, never an address — the street lines are on the card. */
     .pin-label {
-      margin-top: 3px; padding: 3px 7px;
+      margin-top: 6px; padding: 3px 7px;
       font: 700 10px/1.25 system-ui, -apple-system, sans-serif;
       background: rgba(255,255,255,0.96); color: #1a1a1a;
       border: 1px solid rgba(0,0,0,0.08);
@@ -258,7 +289,7 @@ export function buildMapHtml(model: MapModel): string {
     */
     .nav-chip {
       position: absolute; z-index: 1000;
-      left: 10px; right: 10px;
+      left: var(--chrome-left, 10px); right: 10px;
       top: calc(8px + var(--safe-top, 0px));
       display: none;
       align-items: center; gap: 10px;
@@ -307,7 +338,7 @@ export function buildMapHtml(model: MapModel): string {
     .nav-state { font-size: 12.5px; font-weight: 600; opacity: 0.75; }
     .route-banner {
       position: absolute; z-index: 1000;
-      left: 10px; right: 10px;
+      left: var(--chrome-left, 10px); right: 10px;
       top: calc(8px + var(--safe-top, 0px));
       display: none;
       padding: 8px 12px;
@@ -351,6 +382,8 @@ export function buildMapHtml(model: MapModel): string {
     var cameraReady = false;
     var lastViewKey = '';
     var lastTripKey = '';
+    var followRider = true;
+    var RIDER_ZOOM = 16;
     var DARK_TILES = ${JSON.stringify(cartoDarkTileUrl())};
     var LIGHT_TILES = ${JSON.stringify(LIGHT_TILES)};
 
@@ -412,7 +445,7 @@ export function buildMapHtml(model: MapModel): string {
       var glyphHtml = glyph
         ? '<text x="17" y="17" dy="0.35em" text-anchor="middle"'
           + ' font-family="system-ui, -apple-system, sans-serif"'
-          + ' font-size="' + (wide ? 12 : 14) + '" font-weight="800"'
+          + ' font-size="' + (wide ? 11 : 14) + '" font-weight="800"'
           + ' letter-spacing="' + (wide ? '0.3' : '0') + '"'
           + ' fill="' + skin.ink + '">' + escapeHtml(glyph) + '</text>'
         : '';
@@ -492,22 +525,41 @@ export function buildMapHtml(model: MapModel): string {
         'route-banner' + (m.routeUnavailable ? ' show' : '');
 
       if (!map) {
-        var driveable = m.controls !== false;
+        var canPan = m.pan !== false;
+        var canZoom = m.zoom !== false;
         map = L.map('map', {
           zoomControl: false,
           attributionControl: false
         });
-        // Attribution is a licence condition and always drawn. On a card it
-        // moves to the other corner so the expand control has that one clear.
-        L.control.attribution({ position: driveable ? 'bottomright' : 'bottomleft' }).addTo(map);
-        if (driveable) {
+        /*
+          A view, before a single layer goes on.
+
+          A Leaflet map with no view is not "loaded", and every layer added
+          before that is parked on a load event instead of attached. The first
+          real view is set at the end of this function, from the rider or the
+          stops -- and anything that stops that line being reached leaves the
+          parked layers parked forever. The result is the worst possible
+          failure: a map that draws its streets perfectly and has no rider and
+          no destination on it. Opening on Davao costs nothing and means every
+          layer attaches the moment it is added.
+        */
+        map.setView([7.1907, 125.4553], 12);
+        // Attribution is a licence condition and always drawn.
+        L.control.attribution({ position: 'bottomright' }).addTo(map);
+        if (canZoom) {
           L.control.zoom({ position: 'bottomright' }).addTo(map);
         } else {
-          // A picture of the trip: the page underneath owns the drag.
-          map.dragging.disable();
           map.touchZoom.disable();
           map.doubleClickZoom.disable();
           map.scrollWheelZoom.disable();
+        }
+        if (canPan) {
+          // Panning is a rider saying "let me look over there". Nothing yanks
+          // the camera back off them after that.
+          map.on('dragstart', function () { followRider = false; });
+        } else {
+          // The page underneath owns the vertical drag; only that is given up.
+          map.dragging.disable();
           map.boxZoom.disable();
           map.keyboard.disable();
         }
@@ -529,6 +581,10 @@ export function buildMapHtml(model: MapModel): string {
       document.documentElement.style.setProperty(
         '--safe-top',
         (typeof m.safeTop === 'number' && m.safeTop > 0 ? Math.round(m.safeTop) : 0) + 'px'
+      );
+      document.documentElement.style.setProperty(
+        '--chrome-left',
+        (typeof m.chromeLeft === 'number' && m.chromeLeft > 10 ? Math.round(m.chromeLeft) : 10) + 'px'
       );
 
       var chip = document.getElementById('nav-chip');
@@ -631,10 +687,13 @@ export function buildMapHtml(model: MapModel): string {
         var place = places[i];
         if (!place || !isFinite(place.lat) || !isFinite(place.lng)) continue;
         var selected = Boolean(m.selectedPlaceId && place.id === m.selectedPlaceId);
-        var letter = (place.name || '?').charAt(0).toUpperCase();
+        var placeKind = place.kind === 'office' ? 'office' : 'shop';
+        var letter = placeKind === 'office' ? 'GO' : (place.name || '?').charAt(0).toUpperCase();
+        var placeTitle = place.name || (placeKind === 'office' ? 'GRIDGO Office' : 'Shop');
         var shop = L.marker([place.lat, place.lng], {
-          icon: pinIcon('shop', letter, selected, selected ? (place.name || 'Shop') : ''),
-          title: place.name || 'Shop'
+          icon: pinIcon(placeKind, letter, selected, selected ? placeTitle : ''),
+          title: placeTitle,
+          zIndexOffset: selected ? 400 : (placeKind === 'office' ? 300 : 0)
         }).addTo(map);
         shop.on('click', (function (id) {
           return function () { notifyHost({ type: 'place', id: id }); };
@@ -650,9 +709,40 @@ export function buildMapHtml(model: MapModel): string {
         + '|' + (m.dropoff ? m.dropoff.lat + ',' + m.dropoff.lng : '')
         + '|' + ((m.routeCoordinates && m.routeCoordinates.length) || 0);
       var shouldFitTrip = Boolean(m.pickup || m.dropoff || routeLayer) && tripKey !== lastTripKey;
+      var hasRider = Boolean(m.rider) && isFinite(m.rider.lat) && isFinite(m.rider.lng);
       if (viewKey && viewKey !== lastViewKey) {
         map.setView([m.view.lat, m.view.lng], m.view.zoom || 15);
         lastViewKey = viewKey;
+        cameraReady = true;
+      } else if (hasRider && followRider) {
+        /*
+          The rider is the centre of their own map.
+
+          Fitting the two stops instead put the rider wherever the geometry
+          left them — often off the bottom of a card that is only tall enough
+          for one thing. The camera sits on them and stays there as they move.
+
+          The opening zoom still frames the stop they are riding to: mirroring
+          that stop across the rider gives a box the rider is genuinely in the
+          middle of, so nothing is cut off by the centring itself.
+        */
+        var zoom;
+        if (cameraReady) {
+          zoom = map.getZoom();
+        } else {
+          var stop = m.focus === 'pickup' ? m.pickup : (m.dropoff || m.pickup);
+          if (stop) {
+            var mirrored = L.latLngBounds([
+              [stop.lat, stop.lng],
+              [2 * m.rider.lat - stop.lat, 2 * m.rider.lng - stop.lng]
+            ]).pad(0.25);
+            zoom = Math.min(map.getBoundsZoom(mirrored), 17);
+          } else {
+            zoom = RIDER_ZOOM;
+          }
+        }
+        map.setView([m.rider.lat, m.rider.lng], zoom);
+        lastTripKey = tripKey;
         cameraReady = true;
       } else if (!cameraReady || shouldFitTrip) {
         if (routeLayer) {

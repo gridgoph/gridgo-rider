@@ -2,10 +2,14 @@
  * Live print-shop directory for the Map tab.
  *
  * Pins come from `GET /catalog/shops` — the same shop points the API stores
- * for pickup. Shops without a usable lat/lng are dropped rather than guessed.
+ * for pickup — plus GRIDGO Office, which is not a catalog shop. Shops
+ * without a usable lat/lng are dropped rather than guessed.
  */
 import type { CatalogShopSummary } from "@/lib/api";
 import { isValidLatLng, type LatLng } from "@/lib/geo";
+import { GRIDGO_OFFICE } from "@/lib/gridgoOffice";
+
+export type DirectoryPlaceKind = "shop" | "office";
 
 export type DirectoryShop = {
   id: string;
@@ -13,7 +17,30 @@ export type DirectoryShop = {
   address: string;
   lat: number;
   lng: number;
+  kind?: DirectoryPlaceKind;
 };
+
+/** Stable Map-tab id so a pin tap and search hit the same place. */
+export const GRIDGO_OFFICE_PLACE_ID = "gridgo-office";
+
+export function gridgoOfficeDirectoryPlace(): DirectoryShop {
+  return {
+    id: GRIDGO_OFFICE_PLACE_ID,
+    name: "GRIDGO Office",
+    address: "Poblacion District, Davao City",
+    lat: GRIDGO_OFFICE.lat,
+    lng: GRIDGO_OFFICE.lng,
+    kind: "office",
+  };
+}
+
+/** Office first, then catalog shops. Never a second office pin. */
+export function withGridgoOffice(shops: readonly DirectoryShop[]): DirectoryShop[] {
+  const rest = shops.filter(
+    (shop) => shop.id !== GRIDGO_OFFICE_PLACE_ID && shop.kind !== "office",
+  );
+  return [gridgoOfficeDirectoryPlace(), ...rest];
+}
 
 export function directoryShopFromCatalog(
   shop: CatalogShopSummary,

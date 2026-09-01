@@ -213,6 +213,14 @@ function AppShell() {
               options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
             />
             <Stack.Screen
+              name="past-jobs"
+              options={{ title: "Past jobs", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="past-job"
+              options={{ title: "Past job", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
               name="settings"
               options={{
                 title: "Settings",

@@ -24,11 +24,18 @@ jest.mock("@/components/BrowseMap", () => {
     }: {
       onSelectPlace?: (id: string) => void;
     }) => (
-      <Pressable
-        testID="browse-map"
-        accessibilityLabel="City map"
-        onPress={() => onSelectPlace?.("user_lovis_printshop")}
-      />
+      <>
+        <Pressable
+          testID="browse-map"
+          accessibilityLabel="City map"
+          onPress={() => onSelectPlace?.("user_lovis_printshop")}
+        />
+        <Pressable
+          testID="browse-map-office"
+          accessibilityLabel="GRIDGO Office pin"
+          onPress={() => onSelectPlace?.("gridgo-office")}
+        />
+      </>
     ),
   };
 });
@@ -99,7 +106,7 @@ describe("Map tab", () => {
     });
 
     expect(screen.getByLabelText("City map")).toBeTruthy();
-    expect(screen.getByLabelText("Find a shop")).toBeTruthy();
+    expect(screen.getByLabelText("Find a shop or the office")).toBeTruthy();
     expect(screen.getByLabelText("Center the map on you")).toBeTruthy();
     expect(screen.queryByText(/stand-in print shops/i)).toBeNull();
     expect(screen.queryByText(/placeholder/i)).toBeNull();
@@ -111,7 +118,7 @@ describe("Map tab", () => {
     await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
 
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText("Find a shop"), "Lovis");
+      fireEvent.changeText(screen.getByLabelText("Find a shop or the office"), "Lovis");
     });
 
     expect(screen.getByLabelText("Lovis Printshop")).toBeTruthy();
@@ -135,9 +142,39 @@ describe("Map tab", () => {
     });
 
     expect(screen.queryByText("Lovis Printshop")).toBeNull();
-    expect(screen.getByLabelText("Find a shop").props.value).toBe("");
+    expect(screen.getByLabelText("Find a shop or the office").props.value).toBe("");
     expect(screen.getByLabelText("City map")).toBeTruthy();
     expect(screen.getByLabelText("Center the map on you")).toBeTruthy();
+  });
+
+  it("opens GRIDGO Office from its own pin", async () => {
+    renderMap(<MapScreen />);
+    await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("browse-map-office"));
+    });
+
+    expect(screen.getByText("GRIDGO Office")).toBeTruthy();
+    expect(screen.getByText(/Poblacion District/)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Close office details"));
+    });
+
+    expect(screen.queryByText("GRIDGO Office")).toBeNull();
+  });
+
+  it("lists the office when you search for it", async () => {
+    renderMap(<MapScreen />);
+    await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText("Find a shop or the office"), "office");
+    });
+
+    expect(screen.getByLabelText("GRIDGO Office")).toBeTruthy();
+    expect(screen.queryByLabelText("Lovis Printshop")).toBeNull();
   });
 
   it("says so when the catalog cannot be loaded", async () => {

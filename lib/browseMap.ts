@@ -2,7 +2,8 @@
  * City-map helpers for the Map tab.
  *
  * Trip maps stay on pickup / drop-off / route. This file is the browse
- * envelope: shop pins, a camera, and the one message a pin tap sends back.
+ * envelope: shop pins, the office pin, a camera, and the one message a pin
+ * tap sends back.
  */
 
 import type { DirectoryShop } from "@/lib/directoryShops";
@@ -20,6 +21,7 @@ export function shopsToMapPlaces(shops: readonly DirectoryShop[]): MapPlace[] {
     name: shop.name,
     lat: shop.lat,
     lng: shop.lng,
+    kind: shop.kind === "office" ? "office" : "shop",
   }));
 }
 
