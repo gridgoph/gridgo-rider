@@ -26,6 +26,14 @@ import { useActiveTrip } from "@/store/activeTrip";
  * It reads the trip from the store rather than taking it through the route, so
  * a position arriving while this is open moves the rider here as well.
  */
+/*
+  The close control's own footprint, so the map can start its overlays clear of
+  it: the page's 16px gutter, the 44px control, and 8px of air.
+*/
+const CLOSE_CONTROL_WIDTH = 44;
+const CLOSE_CONTROL_GUTTER = 16;
+const MAP_CHROME_LEFT = CLOSE_CONTROL_GUTTER + CLOSE_CONTROL_WIDTH + 8;
+
 export default function TripMapScreen() {
   const router = useRouter();
   const colors = useThemeColors();
@@ -65,6 +73,7 @@ export default function TripMapScreen() {
           riderHeading={riderLocation.heading}
           navTitle={heading?.navTitle ?? null}
           safeTop={insets.top}
+          chromeLeft={MAP_CHROME_LEFT}
           navSummary={
             !routeFrom
               ? "Waiting for GPS"
@@ -76,11 +85,14 @@ export default function TripMapScreen() {
 
         {/*
           One way out, top left, clear of the map's own zoom controls at the
-          bottom right. It is the inverse of the card's expand control and
-          keeps that action's name: open full screen, close full screen.
-          Nothing else is drawn over the map — the job's actions are one tap
-          behind this and putting them here would be a second place to do the
-          same thing.
+          bottom right. The map is told how much room this takes so it starts
+          its heading strip beside the control rather than underneath it —
+          both are dark, and stacked they cancel each other out.
+
+          It is the inverse of the card's expand control and keeps that
+          action's name: open full screen, close full screen. Nothing else is
+          drawn over the map — the job's actions are one tap behind this and
+          putting them here would be a second place to do the same thing.
         */}
         <View
           pointerEvents="box-none"

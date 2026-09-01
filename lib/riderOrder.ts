@@ -51,6 +51,8 @@ export function orderStateLabel(state: string): string {
       return "Closed";
     case "payout_released":
       return "Settled";
+    case "cancelled":
+      return "Cancelled";
     default:
       return "In progress";
   }
@@ -92,6 +94,8 @@ export function orderStateChip(order: Pick<Order, "state" | "pickupChecklist">):
     case "delivered":
     case "completed":
       return { label: "Delivery complete", tone: "success", icon: "circle-check" };
+    case "cancelled":
+      return { label: "Cancelled", tone: "error", icon: "circle-x" };
     default:
       return { label: orderStateLabel(order.state), tone: "neutral", icon: "clock" };
   }
@@ -275,6 +279,30 @@ export function issueWindowLabel(hours: number | null | undefined): string {
     return days === 1 ? "24 hours" : `${days} days`;
   }
   return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
+/**
+ * Newest event first, by timestamp.
+ *
+ * The API stores oldest-first. A live trip log has to open on the current
+ * status, so we sort here rather than trusting array order. Equal times keep
+ * the later original index first (the API appends, so that index is newer).
+ */
+export function sortTimelineNewestFirst<T extends { at: string }>(
+  timeline: readonly T[],
+): T[] {
+  return timeline
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const ta = Date.parse(a.entry.at);
+      const tb = Date.parse(b.entry.at);
+      const aOk = !Number.isNaN(ta);
+      const bOk = !Number.isNaN(tb);
+      if (aOk && bOk && ta !== tb) return tb - ta;
+      if (aOk !== bOk) return aOk ? -1 : 1;
+      return b.index - a.index;
+    })
+    .map(({ entry }) => entry);
 }
 
 /** Actor label for timeline rows. Never show raw user ids. */

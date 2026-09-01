@@ -173,6 +173,85 @@ export function AlertListSkeleton({ count = 3 }: { count?: number }) {
   );
 }
 
+/** The past-jobs ledger while it loads — same row height the list will take. */
+export function PastJobsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <Loading label="Loading past jobs">
+      <View className="gg-card-flush">
+        {Array.from({ length: rows }).map((_, index) => (
+          <View
+            key={index}
+            className={
+              index === rows - 1
+                ? "min-h-14 flex-row items-start justify-between gap-4 p-4"
+                : "min-h-14 flex-row items-start justify-between gap-4 border-b border-outline-subtle p-4"
+            }
+          >
+            <View className="min-w-0 flex-1 gap-0.5">
+              <SkeletonText width="70%" height={24} />
+              <SkeletonText width="85%" height={20} />
+              <SkeletonText width="40%" height={16} />
+            </View>
+            <View className="items-end gap-1">
+              <SkeletonText width={72} height={24} />
+              <SkeletonText width={64} height={16} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </Loading>
+  );
+}
+
+/**
+ * One past job while its record loads: title, progress, the facts, then HISTORY.
+ */
+export function PastJobDetailSkeleton() {
+  return (
+    <Loading label="Loading this job">
+      <View className="gap-2">
+        <SkeletonText width="80%" height={30} />
+        <SkeletonText width={120} height={26} />
+      </View>
+
+      <View className="gg-card">
+        <View className="flex-row gap-2">
+          {Array.from({ length: 4 }).map((_, step) => (
+            <View key={step} className="flex-1 items-center gap-2">
+              <SkeletonCircle size={42} />
+              <SkeletonText width="70%" height={16} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View className="gg-card-flush px-4">
+        <View className="flex-row justify-between py-3">
+          <SkeletonText width={72} height={20} />
+          <SkeletonText width="45%" height={20} />
+        </View>
+        <View className="flex-row justify-between py-3">
+          <SkeletonText width={80} height={20} />
+          <SkeletonText width="50%" height={20} />
+        </View>
+        <View className="flex-row justify-between py-3">
+          <SkeletonText width={64} height={20} />
+          <SkeletonText width={80} height={20} />
+        </View>
+      </View>
+
+      <View className="gap-3">
+        <SkeletonText width={80} height={16} />
+        <View className="gap-4">
+          <SkeletonText width="55%" height={20} />
+          <SkeletonText width="70%" height={16} />
+          <SkeletonText width="50%" height={20} />
+        </View>
+      </View>
+    </Loading>
+  );
+}
+
 /** Today's total, then the deliveries behind it. */
 export function EarningsSkeleton({ rows = 3 }: { rows?: number }) {
   return (

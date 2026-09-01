@@ -82,6 +82,13 @@ describe("the rider's account", () => {
     expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/rider-details");
   });
 
+  it("opens past jobs from the account destinations", async () => {
+    view = await render(<AccountScreen />);
+
+    await fireEvent.press(screen.getByText("Past jobs"));
+    expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/past-jobs");
+  });
+
   it("asks before signing out", async () => {
     view = await render(<AccountScreen />);
 

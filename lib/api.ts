@@ -161,6 +161,8 @@ export type Order = {
   artworkName: string | null;
   createdAt: string;
   updatedAt: string;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   timeline: { at: string; state: string; by: string; note: string }[];
   /** Supplier pickup stop with lat/lng from the API. */
   pickup?: OrderStop | null;

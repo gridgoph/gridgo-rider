@@ -5,6 +5,7 @@ import {
   isEvidenceStored,
   isUploadInFlight,
   type ProofEvidence,
+  UNREADABLE_CAPTURE_MESSAGE,
   UPLOAD_IDLE,
   uploadProgressFraction,
   uploadStatusLine,
@@ -127,5 +128,12 @@ describe("file names", () => {
     expect(evidenceFileName("delivery", "signature", 1754784000000, ".PNG")).toBe(
       "delivery-signature-1754784000000.png",
     );
+  });
+});
+
+describe("unreadable camera grants", () => {
+  it("asks for a retake, not a better signal", () => {
+    expect(UNREADABLE_CAPTURE_MESSAGE).toMatch(/retake/i);
+    expect(UNREADABLE_CAPTURE_MESSAGE).not.toMatch(/connection|signal/i);
   });
 });

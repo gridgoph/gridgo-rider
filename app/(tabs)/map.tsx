@@ -16,6 +16,7 @@ import { firstOpenView, shopsToMapPlaces, viewOn } from "@/lib/browseMap";
 import {
   directoryShopsFromCatalog,
   filterDirectoryShops,
+  withGridgoOffice,
   type DirectoryShop,
 } from "@/lib/directoryShops";
 import type { MapView } from "@/lib/mapHtml";
@@ -26,8 +27,9 @@ import { useSession } from "@/store/session";
  * The city. Not a trip, not a route builder.
  *
  * Riders already have a job map on Active. This tab is the whole of Davao so
- * they can find a GRIDGO shop before a dispatch exists — search, tap a pin,
- * read the name. Pins are the live catalog, the same shop points pickup uses.
+ * they can find a GRIDGO shop or the office before a dispatch exists — search,
+ * tap a pin, read the name. Shop pins are the live catalog. The office pin is
+ * GRIDGO's own counter, not a catalog shop.
  */
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
@@ -37,7 +39,7 @@ export default function MapScreen() {
   const location = useRiderLocation();
   const centeredOnMe = useRef(false);
 
-  const [shops, setShops] = useState<DirectoryShop[]>([]);
+  const [shops, setShops] = useState<DirectoryShop[]>(() => withGridgoOffice([]));
   const [shopsError, setShopsError] = useState<string | null>(null);
   const [shopsLoaded, setShopsLoaded] = useState(false);
   const [query, setQuery] = useState("");
@@ -49,9 +51,10 @@ export default function MapScreen() {
   const loadShops = useCallback(async () => {
     try {
       const catalog = await api.listCatalogShops();
-      setShops(directoryShopsFromCatalog(catalog));
+      setShops(withGridgoOffice(directoryShopsFromCatalog(catalog)));
       setShopsError(null);
     } catch {
+      setShops(withGridgoOffice([]));
       setShopsError("Could not load print shops. Try again.");
     } finally {
       setShopsLoaded(true);
@@ -137,12 +140,12 @@ export default function MapScreen() {
                   setSearchOpen(true);
                 }}
                 onFocus={() => setSearchOpen(true)}
-                placeholder="Find a shop"
+                placeholder="Find a shop or the office"
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
-                accessibilityLabel="Find a shop"
+                accessibilityLabel="Find a shop or the office"
                 testID="map-search"
               />
             </View>
@@ -157,7 +160,7 @@ export default function MapScreen() {
               <View className="overflow-hidden rounded-card border border-outline bg-surface">
                 {matches.length === 0 ? (
                   <Text className="px-4 py-3 text-body text-text-secondary">
-                    No GRIDGO shop matches that.
+                    No GRIDGO shop or office matches that.
                   </Text>
                 ) : (
                   matches.map((shop, index) => (
@@ -206,7 +209,9 @@ export default function MapScreen() {
                   <Pressable
                     onPress={closeCard}
                     accessibilityRole="button"
-                    accessibilityLabel="Close shop details"
+                    accessibilityLabel={
+                      selected.kind === "office" ? "Close office details" : "Close shop details"
+                    }
                     className="h-11 w-11 items-center justify-center rounded-field border border-outline"
                     testID="map-card-close"
                   >
@@ -223,9 +228,7 @@ export default function MapScreen() {
                         ? "Loading GRIDGO print shops…"
                         : shopsError
                           ? shopsError
-                          : shops.length === 0
-                            ? "No print shops on the map yet."
-                            : "GRIDGO print shops. Tap a pin or search — this is not a route."}
+                          : "GRIDGO print shops and the office. Tap a pin or search — this is not a route."}
                     </Text>
                     {shopsError ? (
                       <Pressable

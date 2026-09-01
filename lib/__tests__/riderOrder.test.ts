@@ -19,6 +19,7 @@ import {
   selectOffers,
   shouldShareLocation,
   signOffPrompt,
+  sortTimelineNewestFirst,
   stopLatLng,
   timelineActorLabel,
   tripPhase,
@@ -87,6 +88,32 @@ describe("orderStateLabel", () => {
 
   it("labels ready_for_dispatch as a pickup invitation", () => {
     expect(orderStateLabel("ready_for_dispatch")).toBe("Ready for pickup");
+  });
+
+  it("names a cancelled job Cancelled, never In progress", () => {
+    expect(orderStateLabel("cancelled")).toBe("Cancelled");
+    expect(orderStateChip({ state: "cancelled", pickupChecklist: null })).toMatchObject({
+      label: "Cancelled",
+      tone: "error",
+    });
+  });
+});
+
+describe("sortTimelineNewestFirst", () => {
+  it("puts the latest event first even when the API sent oldest-first", () => {
+    const rows = sortTimelineNewestFirst([
+      { at: "2026-08-31T15:24:00.000Z", state: "submitted" },
+      { at: "2026-08-31T16:05:00.000Z", state: "rider_assigned" },
+    ]);
+    expect(rows.map((row) => row.state)).toEqual(["rider_assigned", "submitted"]);
+  });
+
+  it("breaks a tied timestamp by original index, later first", () => {
+    const rows = sortTimelineNewestFirst([
+      { at: "2026-08-31T16:05:00.000Z", state: "rider_assigned" },
+      { at: "2026-08-31T16:05:00.000Z", state: "picked_up" },
+    ]);
+    expect(rows.map((row) => row.state)).toEqual(["picked_up", "rider_assigned"]);
   });
 });
 
