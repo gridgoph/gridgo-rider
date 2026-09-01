@@ -48,6 +48,23 @@ describe("buildMapHtml", () => {
     expect(html).toMatch(/Route unavailable/);
   });
 
+  it("draws the office pin on the city map, not a shop letter", () => {
+    const html = buildMapHtml({
+      ...base,
+      pickup: null,
+      dropoff: null,
+      routeCoordinates: [],
+      places: [
+        { id: "shop-vicenta", name: "Vicenta Print House", lat: 7.07, lng: 125.61, kind: "shop" },
+        { id: "gridgo-office", name: "GRIDGO Office", lat: 7.092, lng: 125.616, kind: "office" },
+      ],
+    });
+    expect(html).toMatch(/place\.kind === 'office'/);
+    expect(html).toMatch(/'GO'/);
+    expect(html).toMatch(/pin-office/);
+    expect(html).toMatch(/GRIDGO Office/);
+  });
+
   it("draws teardrop shop pins and tells the host when one is tapped", () => {
     const html = buildMapHtml({
       ...base,
@@ -97,16 +114,56 @@ describe("buildMapHtml", () => {
     expect(html).toMatch(/nav-state/);
   });
 
-  it("makes a card map a picture, and keeps attribution visible either way", () => {
-    // A map on a scrolling page cannot be driven — the page owns the drag — so
-    // the gestures and the unreachable zoom control go, and the licence line
-    // moves to the corner the expand control does not occupy.
-    const preview = buildMapHtml({ ...base, controls: false });
-    expect(preview).toMatch(/m\.controls !== false/);
-    expect(preview).toMatch(/map\.dragging\.disable\(\)/);
-    expect(preview).toMatch(/'bottomright' : 'bottomleft'/);
-    expect(preview).toMatch(/L\.control\.attribution/);
-    expect(preview).toMatch(/OpenStreetMap/);
+  it("gives up the drag on a card but keeps the zoom", () => {
+    // The page underneath owns the vertical drag, so a rider looking one
+    // street ahead would scroll the job instead. A zoom button and a pinch
+    // cost the page nothing, so those stay.
+    const card = buildMapHtml({ ...base, pan: false });
+    expect(card).toMatch(/m\.pan !== false/);
+    expect(card).toMatch(/m\.zoom !== false/);
+    expect(card).toMatch(/map\.dragging\.disable\(\)/);
+    expect(card).toMatch(/L\.control\.zoom/);
+    expect(card).toMatch(/L\.control\.attribution/);
+    expect(card).toMatch(/OpenStreetMap/);
+  });
+
+  it("gives the map a view before any layer is added to it", () => {
+    // A Leaflet map with no view is not loaded, and layers added before that
+    // are parked on a load event rather than attached. Anything that stops the
+    // real view being set then leaves them parked forever — streets drawn
+    // perfectly, with no rider and no destination on them.
+    const html = buildMapHtml(base);
+    const created = html.indexOf("map = L.map('map'");
+    const opened = html.indexOf("map.setView([7.1907, 125.4553], 12)");
+    const firstLayer = html.indexOf("L.control.attribution");
+    expect(created).toBeGreaterThan(-1);
+    expect(opened).toBeGreaterThan(created);
+    expect(opened).toBeLessThan(firstLayer);
+  });
+
+  it("starts its overlays clear of a control the screen draws over it", () => {
+    // The full-screen map puts a close control in the top-left corner. Both it
+    // and the heading strip are dark, so stacked they cancel out — the host
+    // says how much room it takes and the strip begins beside it.
+    const html = buildMapHtml({ ...base, navTitle: "TO GRIDGO OFFICE", chromeLeft: 68 });
+    expect(html).toMatch(/--chrome-left/);
+    expect(html).toMatch(/left: var\(--chrome-left, 10px\)/);
+    expect(html).toMatch(/m\.chromeLeft/);
+  });
+
+  it("centres on the rider and stops following once they pan", () => {
+    // Fitting the two stops left the rider wherever the geometry put them,
+    // often off a card only tall enough for one thing. The camera sits on the
+    // rider; a pan is them saying "let me look over there", and nothing drags
+    // it back afterwards.
+    const html = buildMapHtml({ ...base, rider: { lat: 7.0592, lng: 125.6 } });
+    expect(html).toMatch(/followRider/);
+    expect(html).toMatch(/map\.setView\(\[m\.rider\.lat, m\.rider\.lng\], zoom\)/);
+    expect(html).toMatch(/dragstart/);
+    // The opening zoom mirrors the stop across the rider, so centring on them
+    // cannot push where they are going off the edge.
+    expect(html).toMatch(/2 \* m\.rider\.lat - stop\.lat/);
+    expect(html).toMatch(/getBoundsZoom/);
   });
 
   it("keeps the navigation banner clear of the phone's own status bar", () => {

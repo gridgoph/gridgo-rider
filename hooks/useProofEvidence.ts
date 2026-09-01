@@ -97,11 +97,15 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
   }, [send, step]);
 
   const attachSignature = useCallback(
-    (uri: string) => {
+    async (uri: string) => {
       setCaptureError(null);
-      const file = signatureEvidence(uri, Date.now());
-      setEvidence(file);
-      send(file);
+      try {
+        const file = await signatureEvidence(uri, Date.now());
+        setEvidence(file);
+        send(file);
+      } catch {
+        setCaptureError("Could not read that signature. Capture it again.");
+      }
     },
     [send],
   );

@@ -1,5 +1,14 @@
+import {
+  createUploadTask,
+  FileSystemUploadType,
+} from "expo-file-system/legacy";
+
 import { getApiBase, resolveBearer } from "@/lib/api";
-import type { EvidenceUpload, ProofEvidence } from "@/lib/proofEvidence";
+import {
+  UNREADABLE_CAPTURE_MESSAGE,
+  type EvidenceUpload,
+  type ProofEvidence,
+} from "@/lib/proofEvidence";
 
 /**
  * Proof files, against the GRIDGO storage contract (`gridgo-api`
@@ -17,9 +26,10 @@ import type { EvidenceUpload, ProofEvidence } from "@/lib/proofEvidence";
  * Progress reaching 100% is not success — the contract says so explicitly, and
  * this module keeps "sending" and "saving" as separate states for that reason.
  *
- * The file part is `{ uri, name, type }`. React Native streams that off disk;
- * reading a 12 MP photo into JavaScript first is how a mid-range Android phone
- * runs out of memory at someone's front door.
+ * The bytes leave the phone through the native file uploader, streamed from a
+ * `file://` cache copy — never read into JavaScript, never sent as a camera
+ * `content://` grant. That grant cannot be opened by XHR, which then reported
+ * a dropped connection even while GET /orders still worked.
  */
 
 /**
@@ -118,6 +128,9 @@ export function storageErrorMessage(code: string | undefined, status: number): s
       return "Your session has expired. Sign in again, then send the evidence.";
     case "order_not_found":
       return "That job no longer exists. Refresh your trip and speak to Operations.";
+    case "invalid_milestone_code":
+    case "milestone_not_found":
+      return "This job has no payout step for that proof. The delivery photo is enough — confirm the drop-off.";
     case "file_already_attached":
     case "file_not_ready":
     case "file_state_conflict":
@@ -151,10 +164,25 @@ function isRetryable(code: string | undefined, status: number): boolean {
     case "forbidden":
     case "order_not_found":
     case "delivery_photo_upload_not_allowed":
+    case "invalid_milestone_code":
+    case "milestone_not_found":
       return false;
     default:
       return true;
   }
+}
+
+/**
+ * A Proof of Fulfilment attach that names a `delivered` milestone this order
+ * does not have.
+ *
+ * Completing a delivery only needs the delivery photo. Seeded jobs and some
+ * collected office drops have no payout steps at all, so hanging a second
+ * purpose on `delivered` is refused even though the photo already landed.
+ * That refusal must not strand the rider on "Not sent".
+ */
+export function isOptionalFulfilmentProofFailure(code: string | undefined): boolean {
+  return code === "invalid_milestone_code" || code === "milestone_not_found";
 }
 
 function parseFailure(text: string): ApiFailure {
@@ -164,6 +192,8 @@ function parseFailure(text: string): ApiFailure {
     return {};
   }
 }
+
+type CancellableUpload = { cancelAsync: () => Promise<void> };
 
 /**
  * Stream one capture to the server and bind it to the job.
@@ -177,7 +207,7 @@ export function uploadEvidence({
   targets,
   onPhase,
 }: UploadArgs): UploadHandle {
-  let inFlight: XMLHttpRequest | null = null;
+  let inFlight: CancellableUpload | null = null;
   let cancelled = false;
   let settled = false;
 
@@ -203,6 +233,22 @@ export function uploadEvidence({
     });
   }
 
+  function rejectUpload(
+    error: Error & { code?: string; status?: number },
+  ): never {
+    if (cancelled) {
+      settled = true;
+      onPhase({ phase: "idle" });
+      throw error;
+    }
+    if (error.code === "minio_unavailable" || error.code === "storage_initializing") {
+      settled = true;
+      onPhase({ phase: "failed", message: error.message, retryable: true });
+      throw new StorageUnavailableError(error.message);
+    }
+    fail(error.message, isRetryable(error.code, error.status ?? 0), error);
+  }
+
   const result = (async (): Promise<StoredEvidence> => {
     if (evidence.sizeBytes != null && evidence.sizeBytes > MAX_EVIDENCE_BYTES) {
       fail(
@@ -212,6 +258,10 @@ export function uploadEvidence({
       );
     }
 
+    if (!evidence.uri.startsWith("file:")) {
+      fail(UNREADABLE_CAPTURE_MESSAGE, true, new Error("unreadable_capture"));
+    }
+
     const token = await resolveBearer();
     const base = getApiBase();
     const stored: StoredEvidence = {};
@@ -219,77 +269,77 @@ export function uploadEvidence({
     reportSending(0, 0, evidence.sizeBytes);
 
     for (const [index, target] of targets.entries()) {
-      const xhr = new XMLHttpRequest();
-      inFlight = xhr;
+      if (cancelled) {
+        settled = true;
+        onPhase({ phase: "idle" });
+        throw new Error("cancelled");
+      }
 
-      const uploaded = await new Promise<StoredFile>((resolve, reject) => {
-        const form = new FormData();
-        // Exactly these two parts. Any extra text field is rejected by contract.
-        form.append("purpose", target.purpose);
-        form.append("file", {
-          uri: evidence.uri,
-          name: evidence.fileName,
-          // iOS reports this unreliably; the server decides from magic bytes.
-          type: evidence.mimeType || "application/octet-stream",
-        } as unknown as Blob);
+      reportSending(index, 0, evidence.sizeBytes);
 
-        xhr.open("POST", `${base}/files`);
-        xhr.responseType = "text";
-        xhr.setRequestHeader("Accept", "application/json");
-        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-        // Content-Type is left alone on purpose: React Native supplies the
-        // multipart boundary, and overwriting it breaks the framing.
-        xhr.timeout = 15 * 60 * 1000;
-
-        xhr.upload.onprogress = (event) => {
-          reportSending(index, event.loaded, event.lengthComputable ? event.total : null);
-        };
-
-        // Bytes have left the phone; the server is still validating and writing.
-        xhr.upload.onload = () => onPhase({ phase: "processing" });
-
-        xhr.onerror = () =>
-          reject(
-            new Error(
-              "No connection while sending. Move to a spot with signal and send again.",
-            ),
+      const task = createUploadTask(
+        `${base}/files`,
+        evidence.uri,
+        {
+          httpMethod: "POST",
+          uploadType: FileSystemUploadType.MULTIPART,
+          fieldName: "file",
+          mimeType: evidence.mimeType || "application/octet-stream",
+          parameters: { purpose: target.purpose },
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+        (progress) => {
+          reportSending(
+            index,
+            progress.totalBytesSent,
+            progress.totalBytesExpectedToSend > 0 ? progress.totalBytesExpectedToSend : null,
           );
-        xhr.ontimeout = () =>
-          reject(new Error("Sending timed out. Find better signal and send again."));
-        xhr.onabort = () => reject(new Error("cancelled"));
+        },
+      );
+      inFlight = task;
 
-        xhr.onload = () => {
-          if (xhr.status === 201) {
-            const body = parseFailure(xhr.responseText) as { file?: StoredFile };
-            if (body.file?.fileId) {
-              resolve(body.file);
-              return;
-            }
-            reject(
-              new Error("The server accepted the file but did not identify it. Send it again."),
-            );
-            return;
-          }
-          const failure = parseFailure(xhr.responseText);
-          const error = new Error(storageErrorMessage(failure.error, xhr.status));
-          Object.assign(error, { code: failure.error, status: xhr.status });
-          reject(error);
-        };
+      let uploadResult: { status: number; body: string } | null | undefined;
+      try {
+        uploadResult = await task.uploadAsync();
+      } catch (error) {
+        rejectUpload(
+          error instanceof Error
+            ? Object.assign(error, {
+                message:
+                  "No connection while sending. Move to a spot with signal and send again.",
+              })
+            : new Error(
+                "No connection while sending. Move to a spot with signal and send again.",
+              ),
+        );
+      } finally {
+        inFlight = null;
+      }
 
-        xhr.send(form);
-      }).catch((error: Error & { code?: string; status?: number }) => {
-        if (cancelled) {
-          settled = true;
-          onPhase({ phase: "idle" });
-          throw error;
-        }
-        if (error.code === "minio_unavailable" || error.code === "storage_initializing") {
-          settled = true;
-          onPhase({ phase: "failed", message: error.message, retryable: true });
-          throw new StorageUnavailableError(error.message);
-        }
-        fail(error.message, isRetryable(error.code, error.status ?? 0), error);
-      });
+      if (cancelled || uploadResult == null) {
+        settled = true;
+        onPhase({ phase: "idle" });
+        throw new Error("cancelled");
+      }
+
+      const failure = parseFailure(uploadResult.body);
+      if (uploadResult.status !== 201) {
+        const error = new Error(storageErrorMessage(failure.error, uploadResult.status));
+        Object.assign(error, { code: failure.error, status: uploadResult.status });
+        rejectUpload(error);
+      }
+
+      const uploaded = (failure as { file?: StoredFile }).file;
+      if (!uploaded?.fileId) {
+        fail(
+          "The server accepted the file but did not identify it. Send it again.",
+          true,
+          new Error("file_metadata_invalid"),
+        );
+      }
 
       // Uploaded, but nothing points at it yet.
       onPhase({ phase: "processing" });
@@ -318,11 +368,18 @@ export function uploadEvidence({
 
       const attachText = await attachResponse.text();
       if (!attachResponse.ok) {
-        const failure = parseFailure(attachText);
+        const attachFailure = parseFailure(attachText);
+        if (
+          target.purpose === "fulfilment_proof" &&
+          stored.delivery_photo &&
+          isOptionalFulfilmentProofFailure(attachFailure.error)
+        ) {
+          continue;
+        }
         fail(
-          storageErrorMessage(failure.error, attachResponse.status),
-          isRetryable(failure.error, attachResponse.status),
-          new Error(failure.error ?? "attach_failed"),
+          storageErrorMessage(attachFailure.error, attachResponse.status),
+          isRetryable(attachFailure.error, attachResponse.status),
+          new Error(attachFailure.error ?? "attach_failed"),
         );
       }
 
@@ -342,7 +399,7 @@ export function uploadEvidence({
     cancel: () => {
       if (settled) return;
       cancelled = true;
-      inFlight?.abort();
+      void inFlight?.cancelAsync();
     },
   };
 }

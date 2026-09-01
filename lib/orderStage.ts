@@ -49,8 +49,43 @@ export type OrderStage = {
   summary: string;
 };
 
+/** Rider-ladder index for a server state, or -1 before the job reaches them. */
+function stageIndexForState(state: string): number {
+  switch (state) {
+    case "rider_assigned":
+      return 0;
+    case "picked_up":
+      return 1;
+    case "out_for_delivery":
+      return 2;
+    case "awaiting_collection":
+    case "delivered":
+    case "issue_window_open":
+    case "completed":
+    case "payout_released":
+      return 3;
+    default:
+      return -1;
+  }
+}
+
 /** Where this job stands, in rider terms. */
-export function orderStage(order: Pick<Order, "state" | "pickupChecklist">): OrderStage {
+export function orderStage(
+  order: Pick<Order, "state" | "pickupChecklist"> & {
+    timeline?: { state: string }[];
+  },
+): OrderStage {
+  if (order.state === "cancelled") {
+    const prior = [...(order.timeline ?? [])]
+      .reverse()
+      .find((entry) => entry.state !== "cancelled");
+    return {
+      index: prior ? stageIndexForState(prior.state) : -1,
+      blocked: true,
+      summary: "Cancelled",
+    };
+  }
+
   if (isTransportBlocked(order)) {
     return {
       index: 0,
@@ -66,6 +101,8 @@ export function orderStage(order: Pick<Order, "state" | "pickupChecklist">): Ord
       return { index: 1, blocked: false, summary: "Checked, and with you" };
     case "out_for_delivery":
       return { index: 2, blocked: false, summary: "On the way to the client" };
+    case "awaiting_collection":
+      return { index: 3, blocked: false, summary: "Left at GRIDGO Office" };
     case "delivered":
     case "issue_window_open":
     case "completed":

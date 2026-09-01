@@ -18,7 +18,7 @@ export function useTripOrder(orderId: string | null) {
     if (!orderId) {
       setOrder(null);
       setLoading(false);
-      setError("This job is no longer open. Go back to your trip.");
+      setError("This job could not be opened. Go back and try again.");
       return;
     }
     setLoading(true);

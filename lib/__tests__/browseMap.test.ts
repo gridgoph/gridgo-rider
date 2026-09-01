@@ -21,8 +21,19 @@ describe("browse map messages", () => {
           lat: 7.1,
           lng: 125.6,
         },
+        {
+          id: "gridgo-office",
+          name: "GRIDGO Office",
+          address: "Poblacion District, Davao City",
+          lat: 7.09,
+          lng: 125.62,
+          kind: "office",
+        },
       ]),
-    ).toEqual([{ id: "user_lovis_printshop", name: "Lovis Printshop", lat: 7.1, lng: 125.6 }]);
+    ).toEqual([
+      { id: "user_lovis_printshop", name: "Lovis Printshop", lat: 7.1, lng: 125.6, kind: "shop" },
+      { id: "gridgo-office", name: "GRIDGO Office", lat: 7.09, lng: 125.62, kind: "office" },
+    ]);
     expect(viewOn({ lat: 7.19, lng: 125.45 }, 14)).toEqual({
       lat: 7.19,
       lng: 125.45,
