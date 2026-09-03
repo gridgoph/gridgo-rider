@@ -13,11 +13,13 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
+import { BrandIntro } from "@/components/BrandIntro";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useArrivalAlert } from "@/hooks/useArrivalAlert";
@@ -102,23 +104,18 @@ function AppShell() {
     SystemUI.setBackgroundColorAsync(token.canvas);
   }, [token.canvas]);
 
-  // The splash covers the session read as well as the fonts. Hiding it earlier
-  // shows a welcome screen to a rider who is already signed in. `launchReady` is
-  // time-bounded, so this always fires — the splash can never be left up.
+  // The opening covers the session read. Hide the native splash on the first
+  // frame so the GRIDGO overlay is what you see, matching the legacy app.
+  // `launchReady` still gates the navigator so a signed-in rider is not shown
+  // welcome underneath.
   useEffect(() => {
-    if (launchReady) void SplashScreen.hideAsync().catch(() => {});
-  }, [launchReady]);
+    void SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
-  /*
-    Nothing renders until the fonts AND the stored session are ready — or until
-    the launch deadline passes, whichever comes first.
-
-    Waiting is what keeps a signed-in rider off the welcome screen: a screen that
-    mounts first fires its data load with no bearer, and the server answers 401.
-    Waiting *without a deadline* is what turned a stalled storage read into a
-    permanent black screen, so `useLaunchReady` gives up rather than hang.
-  */
-  if (!launchReady) return null;
+  // The opening plays once per launch, over everything. This layout mounts
+  // once, so the flag is the whole gate — no route, no back-stack entry, and
+  // nothing about where the launch lands is decided here.
+  const [introPlaying, setIntroPlaying] = useState(true);
 
   return (
     /*
@@ -154,6 +151,7 @@ function AppShell() {
       <KeyboardProvider>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider value={navigationTheme(scheme)}>
+        {launchReady ? (
         <AuthGate>
           <Stack
             screenOptions={{
@@ -280,7 +278,11 @@ function AppShell() {
             <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
           </Stack>
         </AuthGate>
+        ) : (
+          <View style={{ flex: 1, backgroundColor: token.canvas }} />
+        )}
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+          {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>
       </SafeAreaProvider>
       </KeyboardProvider>

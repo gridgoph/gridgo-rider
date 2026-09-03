@@ -2,11 +2,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 /**
- * Local Android work is a USB development build, not Expo Go.
- *
- * The LAN Expo Go packager is closed. `start` must target a dev client and
- * `android` must compile and install one — otherwise a later agent types
- * `npm start` / `npm run android` and lands back in the Go workflow.
+ * Day-to-day Metro is Expo Go. `android` still builds the native client
+ * for push and custom-scheme work that Expo Go cannot do.
  */
 
 const root = join(__dirname, "..");
@@ -19,8 +16,8 @@ type PackageJson = {
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as PackageJson;
 
 describe("development build scripts", () => {
-  it("starts Metro for a development client, not Expo Go", () => {
-    expect(packageJson.scripts?.start).toBe("expo start --dev-client");
+  it("starts Metro for Expo Go on this app's port", () => {
+    expect(packageJson.scripts?.start).toBe("expo start --go --port 8083");
   });
 
   it("installs the native client instead of opening Expo Go", () => {
