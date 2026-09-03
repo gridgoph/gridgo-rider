@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import SsoCallbackScreen from "@/app/sso-callback";
@@ -14,7 +14,7 @@ describe("SSO callback route", () => {
     mockReplace.mockReset();
   });
 
-  it("matches Clerk's default callback path and quietly returns to launch", async () => {
+  it("stays on Signing you in and does not dump onto Welcome", async () => {
     await render(<SsoCallbackScreen />, {
       wrapper: ({ children }) => (
         <SafeAreaProvider
@@ -28,7 +28,7 @@ describe("SSO callback route", () => {
       ),
     });
 
-    expect(screen.getByText("Signing you in…")).toBeTruthy();
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
+    expect(screen.getByText("Signing you in")).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });

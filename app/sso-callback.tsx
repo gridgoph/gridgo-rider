@@ -1,25 +1,36 @@
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
 
-import { Screen } from "@/components/Screen";
-import { useThemeColors } from "@/hooks/useTheme";
+import { SessionWait } from "@/components/SessionWait";
+import { useSession } from "@/store/session";
 
-/** Clerk's default Expo Go browser-SSO redirect target. */
+/**
+ * Native Google return. Stay here until GRIDGO has adopted the rider —
+ * replacing to `/` is what painted Welcome under a successful sign-in.
+ */
 export default function SsoCallbackScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
+  const user = useSession((state) => state.user);
+  const showErrorOnLogin = useSession((state) => state.showErrorOnLogin);
+  const needsApplication = useSession((state) => state.needsApplication);
 
   useEffect(() => {
-    router.replace("/");
-  }, [router]);
+    useSession.getState().beginSessionWait("in");
+  }, []);
 
-  return (
-    <Screen edges={["top", "bottom"]}>
-      <View className="flex-1 items-center justify-center gap-3 px-4">
-        <ActivityIndicator color={colors.textPrimary} />
-        <Text className="text-body text-text-secondary">Signing you in…</Text>
-      </View>
-    </Screen>
-  );
+  useEffect(() => {
+    if (user) {
+      router.replace("/(tabs)/active");
+      return;
+    }
+    if (showErrorOnLogin) {
+      router.replace("/(auth)/login");
+      return;
+    }
+    if (needsApplication) {
+      router.replace("/(auth)/signup");
+    }
+  }, [needsApplication, router, showErrorOnLogin, user]);
+
+  return <SessionWait tone="in" role="rider" />;
 }

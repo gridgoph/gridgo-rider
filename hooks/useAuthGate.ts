@@ -1,6 +1,7 @@
 import { useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 
+import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
 import { canGateNavigate, resolveAuthRedirect } from "@/lib/authGate";
 import { useSession } from "@/store/session";
 
@@ -21,6 +22,8 @@ export function useAuthGate(): void {
   const hydrated = useSession((s) => s.hydrated);
   const showErrorOnLogin = useSession((s) => s.showErrorOnLogin);
   const needsApplication = useSession((s) => s.needsApplication);
+  const sessionWait = useSession((s) => s.sessionWait);
+  const hold = useRiderAuthHold();
   const segments = useSegments();
   const router = useRouter();
   const rootState = useRootNavigationState();
@@ -34,6 +37,7 @@ export function useAuthGate(): void {
       segments,
       showErrorOnLogin,
       needsApplication,
+      sessionWait ?? hold,
     );
     if (target) {
       router.replace(target);
@@ -43,6 +47,8 @@ export function useAuthGate(): void {
     hydrated,
     showErrorOnLogin,
     needsApplication,
+    sessionWait,
+    hold,
     rootNavigatorKey,
     segments,
     router,

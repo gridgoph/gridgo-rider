@@ -13,7 +13,9 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { SessionWait } from "@/components/SessionWait";
 import { fieldInputStyle } from "@/constants/theme";
+import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
 import { useThemeColors } from "@/hooks/useTheme";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
 import {
@@ -45,6 +47,7 @@ export default function LoginScreen() {
   // Set while the session bridge adopts a fresh Clerk session against /auth/me.
   const adopting = useSession((state) => state.loading);
   const storeError = useSession((state) => state.error);
+  const hold = useRiderAuthHold();
   const clearError = useSession((state) => state.clearError);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -63,6 +66,7 @@ export default function LoginScreen() {
   }, [resendIn]);
 
   if (user) return <Redirect href="/(tabs)/active" />;
+  if (hold) return <SessionWait tone={hold} role="rider" />;
 
   async function sendSecondFactor(factor: ClerkSecondFactorStrategy) {
     if (!signIn) return;
@@ -223,10 +227,20 @@ export default function LoginScreen() {
         startSSOFlow: () => startSSOFlow({ strategy: "oauth_google" }),
         setActive: (args) => setActive(args),
       });
+      if (outcome.status === "cancelled") {
+        useSession.getState().clearSessionWait();
+        return;
+      }
+      if (outcome.status === "activated" || outcome.status === "already_signed_in") {
+        useSession.getState().beginSessionWait("in");
+        return;
+      }
       if (outcome.status === "incomplete") {
-        throw new Error("Google did not create a session.");
+        // Native callback starts the wait once Google has returned.
+        return;
       }
     } catch (caught) {
+      useSession.getState().clearSessionWait();
       setClerkError(
         clerkErrorMessage(caught, "Google sign in did not go through. Try again."),
       );
