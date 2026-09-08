@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import * as SplashScreen from "expo-splash-screen";
 
 import RootLayout from "@/app/_layout";
@@ -83,13 +83,10 @@ function stallSessionRead(): void {
 /**
  * Let every launch deadline expire, several times over.
  *
- * Deliberately not wrapped in `act`: the point of the test is what the app does
- * when time passes on its own, with nothing driving it. React logs an
- * unwrapped-update warning for the resulting re-render, which is the honest
- * shape of the scenario.
+ * Flush React updates caused by the elapsed deadlines before asserting the shell.
  */
 async function waitOutEveryDeadline(): Promise<void> {
-  await jest.advanceTimersByTimeAsync(10_000);
+  await act(async () => { await jest.advanceTimersByTimeAsync(10_000); });
 }
 
 describe("startup can never hang", () => {
@@ -115,7 +112,7 @@ describe("startup can never hang", () => {
   it("renders the app anyway when the session read never comes back", async () => {
     stallSessionRead();
 
-    render(<RootLayout />);
+    await render(<RootLayout />);
 
     // Still behind the splash while the read is in flight.
     expect(mockShellMounted).not.toHaveBeenCalled();
@@ -128,7 +125,7 @@ describe("startup can never hang", () => {
   it("hides the splash when the session read never comes back", async () => {
     stallSessionRead();
 
-    render(<RootLayout />);
+    await render(<RootLayout />);
     await waitOutEveryDeadline();
 
     expect(SplashScreen.hideAsync).toHaveBeenCalled();
@@ -137,7 +134,7 @@ describe("startup can never hang", () => {
   it("renders the app anyway when the fonts never load", async () => {
     mockFontsLoaded = false;
 
-    render(<RootLayout />);
+    await render(<RootLayout />);
     await waitOutEveryDeadline();
 
     expect(mockShellMounted).toHaveBeenCalled();
@@ -147,7 +144,7 @@ describe("startup can never hang", () => {
   it("releases every gate that waits on the stored session", async () => {
     stallSessionRead();
 
-    render(<RootLayout />);
+    await render(<RootLayout />);
     await waitOutEveryDeadline();
 
     // `hydrated` is what the auth gate and app/index.tsx both wait on. If it
@@ -160,7 +157,7 @@ describe("startup can never hang", () => {
   it("says in the log which part of startup stalled", async () => {
     stallSessionRead();
 
-    render(<RootLayout />);
+    await render(<RootLayout />);
     await waitOutEveryDeadline();
 
     // Without this, a black launch screen is indistinguishable from any other

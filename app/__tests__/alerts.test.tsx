@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 jest.mock("expo-router", () => ({
   router: { replace: jest.fn(), push: jest.fn() },
@@ -18,6 +18,7 @@ jest.mock("@/lib/api", () => ({
   listNotifications: jest.fn(),
   listOrders: jest.fn(),
   deleteNotification: jest.fn(),
+  markNotificationsRead: jest.fn(async () => undefined),
 }));
 
 import AlertsScreen from "@/app/alerts";
@@ -95,4 +96,17 @@ describe("AlertsScreen", () => {
     expect(screen.queryByText(dispatch.title)).toBeNull();
     expect(screen.queryByText("Clear notifications")).toBeNull();
   });
+});
+
+
+it("updates the visible inbox from a silent notification event without navigation", async () => {
+  const { invalidate } = require("@/lib/live");
+  api.listNotifications.mockResolvedValue([]);
+  api.listOrders.mockResolvedValue([]);
+  await render(<AlertsScreen />);
+  await waitFor(() => expect(api.listNotifications).toHaveBeenCalled());
+  const incoming = { id:"ntf_live", userId:"owner", title:"Live decision arrived", body:"Open your account", read:false, at:"2026-09-08T00:00:00Z" };
+  api.listNotifications.mockResolvedValue([incoming]);
+  await act(async () => { invalidate("notifications"); });
+  expect(await screen.findByText("Live decision arrived")).toBeTruthy();
 });

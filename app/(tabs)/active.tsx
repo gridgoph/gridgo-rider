@@ -20,10 +20,9 @@ import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { TripMap } from "@/components/TripMap";
 import { TripTimeline } from "@/components/TripTimeline";
-import { useLocationSharing } from "@/hooks/useLocationSharing";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRiderAction } from "@/hooks/useRiderAction";
-import { useRiderLocation } from "@/hooks/useRiderLocation";
+import { useTripLocation } from "@/store/tripLocation";
 import { useRoute } from "@/hooks/useRoute";
 import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -97,7 +96,7 @@ export default function ActiveScreen() {
   const heading = trip ? nextStop(trip, phase) : null;
 
   const needsGps = focused && Boolean(trip) && phase !== "complete" && phase !== "idle";
-  const riderLocation = useRiderLocation({ enabled: needsGps });
+  const riderLocation = useTripLocation();
   const routeFrom = useSnappedOrigin(riderLocation.coords);
 
   const { route } = useRoute({
@@ -106,13 +105,7 @@ export default function ActiveScreen() {
     enabled: Boolean(trip) && Boolean(heading?.point) && Boolean(routeFrom),
   });
 
-  const { sharing } = useLocationSharing({
-    orderId: trip?.id ?? null,
-    state: trip?.state ?? null,
-    coords: riderLocation.coords,
-    accuracy: riderLocation.accuracy,
-    enabled: focused,
-  });
+  const sharing = riderLocation.sharing;
 
   // A fix does not go stale because something re-rendered, so its age is on its
   // own clock.

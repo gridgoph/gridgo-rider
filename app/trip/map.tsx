@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen } from "@/components/Screen";
 import { TripMap } from "@/components/TripMap";
 import { useRiderAction } from "@/hooks/useRiderAction";
-import { useRiderLocation } from "@/hooks/useRiderLocation";
+import { useTripLocation } from "@/store/tripLocation";
 import { useRoute } from "@/hooks/useRoute";
 import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -45,9 +45,7 @@ export default function TripMapScreen() {
   const destination = trip ? tripDestination(trip) : null;
   const heading = trip ? nextStop(trip, phase) : null;
 
-  const riderLocation = useRiderLocation({
-    enabled: Boolean(trip) && phase !== "complete" && phase !== "idle",
-  });
+  const riderLocation = useTripLocation();
   const routeFrom = useSnappedOrigin(riderLocation.coords);
   const { route } = useRoute({
     from: routeFrom,

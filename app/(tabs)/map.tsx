@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect } from "expo-router";
 import { LocateFixed, Search, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,6 +61,8 @@ export default function MapScreen() {
       setShopsLoaded(true);
     }
   }, []);
+
+  useLiveRefresh(["catalog", "availability", "services"], loadShops);
 
   useFocusEffect(
     useCallback(() => {

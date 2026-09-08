@@ -1,3 +1,5 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
@@ -43,10 +45,12 @@ export default function OffersScreen() {
   const hasActive = Boolean(activeTrip);
   const approval = approvalPresentation(user);
 
+  const nextRead = useReadVersion();
   const reload = useCallback(async () => {
+    const current = nextRead();
     // Every dispatch route answers 403 for an unapproved rider. Asking anyway
     // would turn a state the app already knows into an error it has to explain.
-    if (!approvalPresentation(useSession.getState().user).canWork) {
+    if (!approval.canWork || !approvalPresentation(useSession.getState().user).canWork) {
       setOffers([]);
       setError(null);
       return;
@@ -56,9 +60,11 @@ export default function OffersScreen() {
         api.listOffers(),
         refreshTrip(user?.id ?? null, "refresh"),
       ]);
+      if (!current()) return;
       setOffers(selectOffers(list));
       setError(null);
     } catch (e) {
+      if (!current()) return;
       setError(
         api.apiErrorMessage(
           e,
@@ -67,7 +73,7 @@ export default function OffersScreen() {
       );
       setOffers((current) => current ?? []);
     }
-  }, [refreshTrip, user?.id]);
+  }, [nextRead, refreshTrip, user?.id, approval.canWork]);
 
   /*
     `refreshing` is the pull gesture's, and only the pull gesture's. Everything
@@ -82,6 +88,8 @@ export default function OffersScreen() {
       setRefreshing(false);
     }
   }, [reload]);
+
+  useLiveRefresh(["dispatch", "orders", "identity", "approvals"], reload);
 
   useFocusEffect(
     useCallback(() => {

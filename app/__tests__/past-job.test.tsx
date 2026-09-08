@@ -4,6 +4,7 @@ import type { Order } from "@/lib/api";
 import { useSession } from "@/store/session";
 
 jest.mock("expo-router", () => ({
+  useFocusEffect: (callback: () => void) => { require("react").useEffect(callback, [callback]); },
   useLocalSearchParams: () => ({ orderId: "ord_done" }),
 }));
 

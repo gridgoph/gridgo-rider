@@ -9,6 +9,7 @@ jest.mock("@/lib/api", () => {
     ...actual,
     listNotifications: jest.fn(),
     deleteNotification: jest.fn(),
+    markNotificationsRead: jest.fn(async () => undefined),
   };
 });
 
@@ -16,6 +17,7 @@ jest.mock("@/lib/api", () => {
 const api = require("@/lib/api") as {
   listNotifications: jest.Mock;
   deleteNotification: jest.Mock;
+  markNotificationsRead: jest.Mock;
 };
 
 function alert(patch: Partial<Notification> & Pick<Notification, "id">): Notification {
@@ -127,4 +129,20 @@ describe("clearing the inbox", () => {
     });
     expect(api.deleteNotification).not.toHaveBeenCalled();
   });
+});
+
+it("writes only the displayed snapshot and accepts another device's read state",async()=>{
+  api.markNotificationsRead.mockResolvedValue(undefined);
+  await useNotifications.getState().markAllRead([alert({id:"a"}),alert({id:"b"})]);
+  expect(api.markNotificationsRead).toHaveBeenCalledWith(["a","b"]);
+  api.listNotifications.mockResolvedValue([alert({id:"new",read:true})]);
+  await useNotifications.getState().refreshUnread();
+  expect(useNotifications.getState().unread).toBe(0);
+});
+it("rolls back a failed read and refetches the authoritative badge",async()=>{
+  api.markNotificationsRead.mockRejectedValueOnce(new Error("offline"));
+  api.listNotifications.mockResolvedValue([alert({id:"a"})]);
+  await useNotifications.getState().markRead("a");
+  expect(useNotifications.getState().readIds).not.toContain("a");
+  expect(useNotifications.getState().unread).toBe(1);
 });

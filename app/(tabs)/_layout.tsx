@@ -1,18 +1,16 @@
 import { Tabs } from "expo-router";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { SessionWait } from "@/components/SessionWait";
 import { TABS } from "@/constants/tabs";
 import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
 import { useThemeColors } from "@/hooks/useTheme";
-import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
 import { useTripProof } from "@/store/tripProof";
 
 /** How often the shell re-checks the job in hand while the app is open. */
-const TRIP_POLL_MS = 30_000;
 
 /**
  * Rider tab shell.
@@ -27,14 +25,10 @@ const TRIP_POLL_MS = 30_000;
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
-  const refreshUnread = useNotifications((s) => s.refreshUnread);
   const userId = useSession((s) => s.user?.id ?? null);
-  const sessionReady = useSession((s) => s.hydrated);
   const hold = useRiderAuthHold();
-  const refreshTrip = useActiveTrip((s) => s.refresh);
   const hydrateProof = useTripProof((s) => s.hydrate);
   const hydrateAlerts = useNotifications((s) => s.hydrate);
-  const refreshUser = useSession((s) => s.refreshUser);
 
   /*
     The account is polled with the trip, because accreditation is the one thing
@@ -43,25 +37,12 @@ export default function TabsLayout() {
     only reached the phone on the next sign-in, so the "awaiting approval"
     screen the rider was staring at could never resolve itself.
   */
-  const poll = useCallback(() => {
-    void refreshTrip(userId, "refresh");
-    void refreshUnread();
-    void refreshUser();
-  }, [refreshTrip, refreshUnread, refreshUser, userId]);
 
   useEffect(() => {
     void hydrateProof();
     void hydrateAlerts();
   }, [hydrateProof, hydrateAlerts]);
 
-  useEffect(() => {
-    if (!sessionReady || !userId) return;
-    void refreshTrip(userId);
-    void refreshUnread();
-    void refreshUser();
-    const handle = setInterval(poll, TRIP_POLL_MS);
-    return () => clearInterval(handle);
-  }, [poll, refreshTrip, refreshUnread, refreshUser, sessionReady, userId]);
 
   if (!userId) {
     return <SessionWait tone={hold ?? "out"} role="rider" />;
