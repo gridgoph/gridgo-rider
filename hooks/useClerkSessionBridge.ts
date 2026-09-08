@@ -50,6 +50,18 @@ export function useClerkSessionBridge(): boolean {
       // must still drop the apply hold — otherwise Sign in cannot leave Sign up.
       if (authSource === "clerk" || needsApplication) clearSession();
       setIdentityReady(true);
+      // A Google return can relaunch before Clerk reports signed-in. Keep the
+      // wait briefly; if nobody arrives, drop it so a real signed-out rider
+      // can see Welcome.
+      const joining = useSession.getState().sessionWait === "in";
+      if (joining) {
+        const timer = setTimeout(() => {
+          if (!useSession.getState().user && !useSession.getState().loading) {
+            useSession.getState().clearSessionWait();
+          }
+        }, 12_000);
+        return () => clearTimeout(timer);
+      }
       return;
     }
 

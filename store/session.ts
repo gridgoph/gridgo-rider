@@ -12,6 +12,17 @@ import {
   SESSION_STORAGE_KEY,
   type StoredSession,
 } from "@/lib/sessionStorage";
+
+/** Survives the Android process death between Google's browser and return. */
+const GOOGLE_JOIN_KEY = "gridgo.rider.google-join.v1";
+
+function persistGoogleJoin(on: boolean): void {
+  const write = on
+    ? AsyncStorage.setItem(GOOGLE_JOIN_KEY, "1")
+    : AsyncStorage.removeItem(GOOGLE_JOIN_KEY);
+  void write.catch(() => undefined);
+}
+import { sessionWaitHold } from "@/lib/sessionWait";
 import { usePush } from "@/store/push";
 import { useActiveTrip } from "@/store/activeTrip";
 
@@ -88,6 +99,9 @@ type SessionState = {
    * signed in and can only do one thing: apply. The gate routes them there.
    */
   needsApplication: boolean;
+  sessionWait: "in" | "out" | null;
+  beginSessionWait: (tone: "in" | "out") => void;
+  clearSessionWait: () => void;
   login: (email: string, password: string) => Promise<PasswordLoginResult>;
   /**
    * File a rider application against a live Clerk session. The caller owns
@@ -187,6 +201,15 @@ export const useSession = create<SessionState>((set, get) => ({
   error: null,
   showErrorOnLogin: false,
   needsApplication: false,
+  sessionWait: null,
+  beginSessionWait: (tone) => {
+    persistGoogleJoin(tone === "in");
+    set({ sessionWait: tone });
+  },
+  clearSessionWait: () => {
+    persistGoogleJoin(false);
+    set({ sessionWait: null });
+  },
   clearError: () => set({ error: null, showErrorOnLogin: false }),
   clearSession: () => {
     sessionDecisionVersion += 1;
@@ -202,6 +225,7 @@ export const useSession = create<SessionState>((set, get) => ({
       showErrorOnLogin: false,
       needsApplication: false,
       loading: false,
+      sessionWait: null,
     });
     if (wasClerk) void clerkSignOut?.().catch(() => {});
   },
@@ -238,7 +262,9 @@ export const useSession = create<SessionState>((set, get) => ({
       error: message,
       showErrorOnLogin: true,
       needsApplication: false,
+      sessionWait: null,
     });
+    persistGoogleJoin(false);
   },
   beginClerkSession: () => {
     sessionDecisionVersion += 1;
@@ -247,6 +273,7 @@ export const useSession = create<SessionState>((set, get) => ({
     api.setToken(null);
     api.setTokenProvider(null);
     persist(null);
+    persistGoogleJoin(true);
     set({
       user: null,
       authSource: null,
@@ -254,6 +281,7 @@ export const useSession = create<SessionState>((set, get) => ({
       error: null,
       showErrorOnLogin: false,
       needsApplication: false,
+      sessionWait: "in",
     });
   },
   /*
@@ -285,7 +313,12 @@ export const useSession = create<SessionState>((set, get) => ({
         ? stored
         : null;
 
+    const joining = AsyncStorage.getItem(GOOGLE_JOIN_KEY)
+      .then((value) => value === "1")
+      .catch(() => false);
+
     const outcome = await raceDeadline(read, SESSION_READ_TIMEOUT_MS);
+    const googleJoin = await joining.catch(() => false);
 
     if (outcome === "timeout") {
       if (__DEV__) {
@@ -303,7 +336,7 @@ export const useSession = create<SessionState>((set, get) => ({
         api.setToken(session.token);
         set({ user: session.user, authSource: "legacy" });
       });
-      set({ hydrated: true });
+      set({ hydrated: true, sessionWait: googleJoin ? "in" : get().sessionWait });
       return;
     }
 
@@ -312,8 +345,8 @@ export const useSession = create<SessionState>((set, get) => ({
     // One commit, so a signed-in rider never renders a frame as signed out.
     set(
       session
-        ? { user: session.user, authSource: "legacy", hydrated: true }
-        : { hydrated: true },
+        ? { user: session.user, authSource: "legacy", hydrated: true, sessionWait: null }
+        : { hydrated: true, sessionWait: googleJoin ? "in" : get().sessionWait },
     );
   },
   login: async (email, password) => {
@@ -334,7 +367,8 @@ export const useSession = create<SessionState>((set, get) => ({
         return "failed";
       }
       persist({ token, user });
-      set({ user, authSource: "legacy", loading: false });
+      persistGoogleJoin(false);
+      set({ user, authSource: "legacy", loading: false, sessionWait: null });
       return "signed_in";
     } catch (e) {
       const invalid = e instanceof ApiError && e.status === 401;
@@ -365,7 +399,7 @@ export const useSession = create<SessionState>((set, get) => ({
         });
         return false;
       }
-      set({ user, authSource: "clerk", loading: false, needsApplication: false });
+      set({ user, authSource: "clerk", loading: false, needsApplication: false, sessionWait: null });
       return true;
     } catch (e) {
       /*
@@ -417,10 +451,12 @@ export const useSession = create<SessionState>((set, get) => ({
           loading: false,
           error: `This is a ${roleLabel(user.role)} account. Open the GRIDGO ${roleLabel(user.role)} app to sign in.`,
           showErrorOnLogin: true,
+          sessionWait: null,
         });
         return "rejected";
       }
-      set({ user, authSource: "clerk", loading: false, needsApplication: false });
+      persistGoogleJoin(false);
+      set({ user, authSource: "clerk", loading: false, needsApplication: false, sessionWait: null });
       return "adopted";
     } catch (error) {
       /*
@@ -490,6 +526,8 @@ export const useSession = create<SessionState>((set, get) => ({
   logout: async () => {
     sessionDecisionVersion += 1;
     clerkAdoptionBlocked = true;
+    const startedAt = Date.now();
+    set({ sessionWait: "out" });
     // Leave the signed-in area first. Waiting on `/auth/logout` or Clerk used
     // to keep Account up when the API was slow, and a leftover Clerk session
     // could then be adopted as whoever signed in last.
@@ -517,6 +555,7 @@ export const useSession = create<SessionState>((set, get) => ({
       showErrorOnLogin: false,
       needsApplication: false,
       loading: false,
+      sessionWait: "out",
     });
     useActiveTrip.getState().clear();
     void usePush.getState().release();
@@ -527,6 +566,8 @@ export const useSession = create<SessionState>((set, get) => ({
         LOGOUT_CLERK_TIMEOUT_MS,
       ),
     ]);
+    await sessionWaitHold(startedAt);
+    set({ sessionWait: null });
   },
 }));
 

@@ -31,7 +31,7 @@ On a physical device, use your machine's LAN IP instead of `127.0.0.1`.
 
 | Command | Does |
 |---|---|
-| `npm start` | Metro for the USB development build (`expo start --dev-client`, port 8083) |
+| `npm start` | Metro for Expo Go (`expo start --go --port 8083`) |
 | `npm run android` | Prebuild and install the development client (`expo run:android`) |
 | `npm run ios` | iOS (not in current use) |
 | `npm run lint` | ESLint |
@@ -39,7 +39,7 @@ On a physical device, use your machine's LAN IP instead of `127.0.0.1`.
 
 Typecheck: `npx tsc --noEmit`.
 
-Local Android work is a USB development build, not Expo Go. Set `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`. Do not commit `/android` or `google-services.json`.
+Day-to-day testing is Expo Go. `npm run android` still builds the USB development client when you need native push. Set `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`. Do not commit `/android` or `google-services.json`.
 
 ## Android emulator API URL
 

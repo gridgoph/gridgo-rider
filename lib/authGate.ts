@@ -15,6 +15,38 @@ export type AuthRedirect =
   | "/(tabs)/active"
   | null;
 
+/** Identity wait to paint instead of Welcome. */
+export type RiderAuthHold = "in" | "out" | null;
+
+/**
+ * Whether the door must stay closed.
+ *
+ * Google often relaunches the app at `/` with no GRIDGO user yet: Clerk is
+ * still loading, or is signed in while `/auth/me` is in flight. Sending that
+ * rider to Welcome is the flash before Active.
+ */
+export function riderAuthHold(input: {
+  hasUser: boolean;
+  sessionWait: "in" | "out" | null;
+  loading: boolean;
+  clerkLoaded: boolean;
+  clerkSignedIn: boolean;
+  googleReturn: boolean;
+  /** Explicit sign-out: leftover Clerk is not a Google return. */
+  signedOut?: boolean;
+  /** Wrong-role / refused identity: show the login error, do not keep waiting. */
+  hasError?: boolean;
+}): RiderAuthHold {
+  if (input.sessionWait === "out") return "out";
+  if (input.signedOut) return null;
+  if (input.hasError) return null;
+  if (input.sessionWait === "in") return "in";
+  if (input.hasUser) return null;
+  if (input.loading || input.googleReturn) return "in";
+  if (!input.clerkLoaded || input.clerkSignedIn) return "in";
+  return null;
+}
+
 /**
  * Route groups / top-level segments that require a signed-in rider.
  * Anything else is treated as public (login, onboarding, index).
@@ -69,33 +101,37 @@ export function resolveAuthRedirect(
   segments: readonly string[],
   showErrorOnLogin = false,
   needsApplication = false,
+  sessionWait: "in" | "out" | null = null,
 ): AuthRedirect {
   const root = segments[0];
 
   // Still resolving the initial route — wait for a real segment.
   if (!root) return null;
 
+  const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
+  // A refused identity (wrong app) must reach login, not stay on Signing you in.
+  if (!isSignedIn && showErrorOnLogin && !alreadyOnLogin) {
+    return "/(auth)/login";
+  }
+
+  // Google join stays put. Sign-out leaves the tabs — Welcome shows the wait.
+  if (sessionWait === "in") return null;
+  if (sessionWait === "out") {
+    const onWelcome = root === "(auth)" && segments[1] === "welcome";
+    return onWelcome ? null : "/(auth)/welcome";
+  }
+
   /*
     Signed in with Clerk, unknown to GRIDGO: the only thing this person can do
     is apply, so that is where they go — whether they arrived by signing in with
     an account that never applied, or by verifying a brand-new email.
 
-    This outranks the stored-error redirect below because it is not an error.
-    Sending them to the sign-in screen instead was the dead end: their password
-    was correct, and typing it again could not create the rider record they were
-    missing.
+    A stored Clerk failure already sent them to login above: that message has
+    to be visible. This branch is the unassigned-identity case, not an error.
   */
   if (!isSignedIn && needsApplication) {
     const alreadyApplying = root === "(auth)" && segments[1] === "signup";
     return alreadyApplying ? null : "/(auth)/signup";
-  }
-
-  // Browser SSO returns through a public callback route. If Clerk rejects the
-  // identity there (meant for another GRIDGO app), carry that stored
-  // explanation back to the one auth screen that renders it.
-  const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
-  if (!isSignedIn && showErrorOnLogin && !alreadyOnLogin) {
-    return "/(auth)/login";
   }
 
   const inProtected = PROTECTED_ROOTS.has(root);

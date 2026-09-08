@@ -2,7 +2,9 @@ import { Tabs } from "expo-router";
 import { useCallback, useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
+import { SessionWait } from "@/components/SessionWait";
 import { TABS } from "@/constants/tabs";
+import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
@@ -28,6 +30,7 @@ export default function TabsLayout() {
   const refreshUnread = useNotifications((s) => s.refreshUnread);
   const userId = useSession((s) => s.user?.id ?? null);
   const sessionReady = useSession((s) => s.hydrated);
+  const hold = useRiderAuthHold();
   const refreshTrip = useActiveTrip((s) => s.refresh);
   const hydrateProof = useTripProof((s) => s.hydrate);
   const hydrateAlerts = useNotifications((s) => s.hydrate);
@@ -59,6 +62,10 @@ export default function TabsLayout() {
     const handle = setInterval(poll, TRIP_POLL_MS);
     return () => clearInterval(handle);
   }, [poll, refreshTrip, refreshUnread, refreshUser, sessionReady, userId]);
+
+  if (!userId) {
+    return <SessionWait tone={hold ?? "out"} role="rider" />;
+  }
 
   return (
     <Tabs

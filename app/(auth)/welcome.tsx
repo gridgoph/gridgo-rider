@@ -1,4 +1,4 @@
-import { useRouter, type Href } from "expo-router";
+import { Redirect, useRouter, type Href } from "expo-router";
 import { Image } from "expo-image";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 
@@ -6,7 +6,10 @@ import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { SessionWait } from "@/components/SessionWait";
 import { images } from "@/constants/images";
+import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
+import { useSession } from "@/store/session";
 
 /**
  * First screen a rider sees. The scooter is the thesis — a Davao rider
@@ -16,6 +19,11 @@ import { images } from "@/constants/images";
 export default function WelcomeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const user = useSession((state) => state.user);
+  const hold = useRiderAuthHold();
+
+  if (user) return <Redirect href="/(tabs)/active" />;
+  if (hold) return <SessionWait tone={hold} role="rider" />;
 
   return (
     <Screen>

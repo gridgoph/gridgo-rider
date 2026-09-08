@@ -1,5 +1,6 @@
 import {
   resolveAuthRedirect,
+  riderAuthHold,
   shouldInvalidateSessionOnStatus,
 } from "@/lib/authGate";
 
@@ -19,10 +20,114 @@ describe("resolveAuthRedirect", () => {
     expect(resolveAuthRedirect(false, ["(auth)", "login"])).toBeNull();
   });
 
+  it("does not dump onto Welcome while Google is still joining", () => {
+    expect(resolveAuthRedirect(false, ["(tabs)", "active"], false, false, "in")).toBeNull();
+    expect(resolveAuthRedirect(false, ["sso-callback"], false, false, "in")).toBeNull();
+  });
+
+  it("takes a signing-out rider to Welcome, which shows Signing you out", () => {
+    expect(resolveAuthRedirect(false, ["(tabs)", "account"], false, false, "out")).toBe(
+      "/(auth)/welcome",
+    );
+    expect(resolveAuthRedirect(false, ["(auth)", "welcome"], false, false, "out")).toBeNull();
+  });
+
+  it("holds Signing you in while Clerk is restoring or Google is returning", () => {
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: null,
+        loading: false,
+        clerkLoaded: false,
+        clerkSignedIn: false,
+        googleReturn: false,
+      }),
+    ).toBe("in");
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: null,
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: false,
+      }),
+    ).toBe("in");
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: null,
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: false,
+        googleReturn: true,
+      }),
+    ).toBe("in");
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: null,
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: false,
+        googleReturn: false,
+      }),
+    ).toBeNull();
+    expect(
+      riderAuthHold({
+        hasUser: true,
+        sessionWait: "in",
+        loading: true,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: true,
+      }),
+    ).toBe("in");
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: "out",
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: false,
+        signedOut: true,
+      }),
+    ).toBe("out");
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: null,
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: false,
+        signedOut: true,
+      }),
+    ).toBeNull();
+  });
+
   it("leaves public routes alone when signed out", () => {
     expect(resolveAuthRedirect(false, ["onboarding"])).toBeNull();
     // index has no group root until navigation settles — wait.
     expect(resolveAuthRedirect(false, [])).toBeNull();
+  });
+
+  it("returns a Clerk callback failure to login even while Signing you in", () => {
+    expect(resolveAuthRedirect(false, ["sso-callback"], true, false, "in")).toBe(
+      "/(auth)/login",
+    );
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: "in",
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: true,
+        hasError: true,
+      }),
+    ).toBeNull();
   });
 
   it("returns a Clerk callback failure to login where its message is visible", () => {

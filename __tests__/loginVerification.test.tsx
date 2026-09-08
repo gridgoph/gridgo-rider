@@ -55,6 +55,7 @@ jest.mock("@/store/session", () => {
   useSession.getState = () => mockSessionState;
   return {
     isSignedIn: () => false,
+    isClerkAdoptionBlocked: () => false,
     useSession,
   };
 });
