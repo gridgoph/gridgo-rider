@@ -40,6 +40,13 @@ jest.mock("react-native-safe-area-context", () => ({
 /** Fires whenever the layout gets as far as mounting the navigator. */
 const mockShellMounted = jest.fn();
 
+// The opening is motion on its own clock. These tests drive launch deadlines
+// with fake timers; BrandIntro's cascade would keep scheduling work and is
+// not what the black-screen gate is about.
+jest.mock("@/components/BrandIntro", () => ({
+  BrandIntro: () => null,
+}));
+
 // The layout only needs a navigator shaped like a Stack. The routes themselves
 // are covered by their own screens' tests; what matters here is whether the
 // shell is reached at all.

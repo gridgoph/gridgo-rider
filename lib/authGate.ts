@@ -110,8 +110,8 @@ export function resolveAuthRedirect(
 
   const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
   // A refused identity (wrong app) must reach login, not stay on Signing you in.
-  if (!isSignedIn && showErrorOnLogin && !needsApplication && !alreadyOnLogin) {
-    return "/(auth)/login";
+  if (!isSignedIn && showErrorOnLogin) {
+    return alreadyOnLogin ? null : "/(auth)/login";
   }
 
   // Google join stays put. Sign-out leaves the tabs — Welcome shows the wait.
@@ -126,10 +126,8 @@ export function resolveAuthRedirect(
     is apply, so that is where they go — whether they arrived by signing in with
     an account that never applied, or by verifying a brand-new email.
 
-    This outranks the stored-error redirect below because it is not an error.
-    Sending them to the sign-in screen instead was the dead end: their password
-    was correct, and typing it again could not create the rider record they were
-    missing.
+    A stored Clerk failure already sent them to login above: that message has
+    to be visible. This branch is the unassigned-identity case, not an error.
   */
   if (!isSignedIn && needsApplication) {
     const alreadyApplying = root === "(auth)" && segments[1] === "signup";

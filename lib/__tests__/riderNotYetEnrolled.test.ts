@@ -88,10 +88,16 @@ describe("a Clerk identity GRIDGO has no rider record for", () => {
     expect(resolveAuthRedirect(false, ["(auth)", "signup"], false, true)).toBeNull();
   });
 
-  it("does not strand a rider on sign-in when a stored error is also set", () => {
-    // Needing to apply outranks the stored-error redirect: typing the password
-    // again cannot create the missing rider record.
-    expect(resolveAuthRedirect(false, ["(auth)", "signup"], true, true)).toBeNull();
+  it("returns a stored Clerk failure to login even while applying", () => {
+    // A refused identity (wrong app) must reach login, where the message is
+    // visible — even if this person also still needs to apply.
+    expect(resolveAuthRedirect(false, ["(auth)", "signup"], true, true)).toBe(
+      "/(auth)/login",
+    );
+  });
+
+  it("keeps the stored failure visible on login without bouncing back to apply", () => {
+    expect(resolveAuthRedirect(false, ["(auth)", "login"], true, true)).toBeNull();
   });
 
   it("keeps a genuine failure a failure", async () => {
