@@ -99,7 +99,7 @@ describe("Map tab", () => {
   });
 
   it("is a city map with search, not a route builder", async () => {
-    renderMap(<MapScreen />);
+    await renderMap(<MapScreen />);
 
     await waitFor(() => {
       expect(screen.getByText(/GRIDGO print shops/i)).toBeTruthy();
@@ -114,7 +114,7 @@ describe("Map tab", () => {
   });
 
   it("lists live catalog shops as you type", async () => {
-    renderMap(<MapScreen />);
+    await renderMap(<MapScreen />);
     await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
 
     await act(async () => {
@@ -126,7 +126,7 @@ describe("Map tab", () => {
   });
 
   it("opens a live shop from the map", async () => {
-    renderMap(<MapScreen />);
+    await renderMap(<MapScreen />);
     await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
 
     await act(async () => {
@@ -148,7 +148,7 @@ describe("Map tab", () => {
   });
 
   it("opens GRIDGO Office from its own pin", async () => {
-    renderMap(<MapScreen />);
+    await renderMap(<MapScreen />);
     await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
 
     await act(async () => {
@@ -166,7 +166,7 @@ describe("Map tab", () => {
   });
 
   it("lists the office when you search for it", async () => {
-    renderMap(<MapScreen />);
+    await renderMap(<MapScreen />);
     await waitFor(() => expect(mockListCatalogShops).toHaveBeenCalled());
 
     await act(async () => {
@@ -179,7 +179,7 @@ describe("Map tab", () => {
 
   it("says so when the catalog cannot be loaded", async () => {
     mockListCatalogShops.mockRejectedValueOnce(new Error("offline"));
-    renderMap(<MapScreen />);
+    await renderMap(<MapScreen />);
 
     await waitFor(() => {
       expect(screen.getByText(/Could not load print shops/i)).toBeTruthy();
