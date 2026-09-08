@@ -22,6 +22,7 @@ const mockSessionState = {
 
 jest.mock("@/store/session", () => ({
   isSignedIn: () => false,
+  isClerkAdoptionBlocked: () => false,
   useSession: (selector: (s: Record<string, unknown>) => unknown) =>
     selector(mockSessionState),
 }));
