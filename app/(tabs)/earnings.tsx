@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
@@ -65,6 +66,8 @@ export default function EarningsScreen() {
       setRefreshing(false);
     }
   }, [reload]);
+
+  useLiveRefresh(["orders", "payouts", "identity"], reload);
 
   useFocusEffect(
     useCallback(() => {

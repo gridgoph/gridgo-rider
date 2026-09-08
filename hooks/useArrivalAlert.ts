@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { useRiderAction } from "@/hooks/useRiderAction";
-import { useRiderLocation } from "@/hooks/useRiderLocation";
+import { useTripLocation } from "@/store/tripLocation";
 import {
   arrivalCopy,
   claimArrivalNotice,
@@ -36,7 +36,7 @@ export function useArrivalAlert(): void {
   const heading = trip ? nextStop(trip, phase) : null;
 
   const needsGps = Boolean(trip) && phase !== "complete" && phase !== "idle";
-  const riderLocation = useRiderLocation({ enabled: needsGps });
+  const riderLocation = useTripLocation();
 
   const [now, setNow] = useState(() => Date.now());
   const [appState, setAppState] = useState<AppStateStatus>(

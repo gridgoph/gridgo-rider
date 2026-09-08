@@ -284,7 +284,7 @@ describe("signing out", () => {
 
     await useSession.getState().logout();
 
-    expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1");
+    expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1", expect.any(Promise));
     expect(useSession.getState().user).toBeNull();
     expect(usePush.getState().claimed).toBe(false);
     logout.mockRestore();
@@ -297,7 +297,7 @@ describe("signing out", () => {
 
     await useSession.getState().logout();
 
-    expect(logout).toHaveBeenCalledWith(null);
+    expect(logout).toHaveBeenCalledWith(null, expect.any(Promise));
     logout.mockRestore();
   });
 

@@ -1,3 +1,4 @@
+import { STALE_FIX_MS } from "@/lib/locationFreshness";
 import { useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
@@ -13,6 +14,7 @@ type Args = {
   /** Live GPS from useRiderLocation — never from storage. */
   coords: LatLng | null;
   accuracy?: number | null;
+  fixAtMs: number | null;
   /** When false, the hook never starts (e.g. screen unfocused). */
   enabled?: boolean;
 };
@@ -30,6 +32,7 @@ export function useLocationSharing({
   state,
   coords,
   accuracy = null,
+  fixAtMs,
   enabled = true,
 }: Args) {
   const [sharing, setSharing] = useState(false);
@@ -38,11 +41,14 @@ export function useLocationSharing({
   const stateRef = useRef(state);
   const coordsRef = useRef(coords);
   const accuracyRef = useRef(accuracy);
+  const fixRef = useRef(fixAtMs);
+  fixRef.current = fixAtMs;
   orderIdRef.current = orderId;
   stateRef.current = state;
   coordsRef.current = coords;
   accuracyRef.current = accuracy;
 
+  const hasCoords = coords != null;
   useEffect(() => {
     const active =
       enabled &&
@@ -50,32 +56,44 @@ export function useLocationSharing({
       Boolean(state) &&
       shouldShareLocation(state ?? "");
 
-    setSharing(active);
+    setSharing(false);
     if (!active) {
       setLastError(null);
       return;
     }
 
     let cancelled = false;
+    let inFlight = false;
+    let sentFix: number | null = null;
 
     async function pingOnce() {
       const id = orderIdRef.current;
       const tripState = stateRef.current;
       const point = coordsRef.current;
-      if (!id || !shouldShareLocation(tripState ?? "") || !point) return;
+      const fix = fixRef.current;
+      if (cancelled || inFlight || !id || !shouldShareLocation(tripState ?? "") || !point) return;
+      if (fix == null || !Number.isFinite(fix) || Date.now() - fix >= STALE_FIX_MS || fix > Date.now() + 10_000) {
+        setSharing(false);
+        return;
+      }
+      if (sentFix === fix) return;
+      inFlight = true;
       try {
         // Live coords only — never persist.
         await api.postLocation(id, {
           lat: point.lat,
           lng: point.lng,
           accuracy: accuracyRef.current ?? null,
+          recordedAt: new Date(fix).toISOString(),
         });
-        if (!cancelled) setLastError(null);
+        sentFix = fix;
+        if (!cancelled) { setLastError(null); setSharing(true); }
       } catch (e) {
         if (!cancelled) {
           setLastError(api.apiErrorMessage(e, "Location ping failed."));
+          setSharing(false);
         }
-      }
+      } finally { inFlight = false; }
     }
 
     void pingOnce();
@@ -89,7 +107,7 @@ export function useLocationSharing({
       // Sharing ends with the effect teardown — trip ended or screen left.
       setSharing(false);
     };
-  }, [orderId, state, enabled, coords != null]);
+  }, [orderId, state, enabled, hasCoords]);
 
   return { sharing, lastError };
 }

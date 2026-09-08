@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useRouter } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
@@ -55,6 +56,8 @@ export default function PastJobsScreen() {
       setRefreshing(false);
     }
   }, [reload]);
+
+  useLiveRefresh(["orders"], reload);
 
   useFocusEffect(
     useCallback(() => {

@@ -2,10 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { invalidate } from "@/lib/live";
 
 const STORAGE_KEY = "gridgo.alertsRead.v1";
 
 type NotificationsState = {
+  ownerId: string | null;
+  bindOwner: (id: string | null) => void;
   unread: number;
   /** Ids the rider has marked read on this phone. */
   readIds: string[];
@@ -16,8 +19,8 @@ type NotificationsState = {
   refreshUnread: () => Promise<void>;
   /** Adopt a freshly fetched list: recomputes unread against local marks. */
   adopt: (items: api.Notification[]) => void;
-  markRead: (id: string) => void;
-  markAllRead: (items: api.Notification[]) => void;
+  markRead: (id: string) => Promise<void>;
+  markAllRead: (items: api.Notification[]) => Promise<void>;
   /**
    * Soft-delete these rows on GRIDGO, then drop their local read marks.
    * Succeeded ids leave the inbox; failed ones stay so the screen can retry.
@@ -29,9 +32,8 @@ type NotificationsState = {
 /**
  * The Alerts badge, and which alerts the rider has already dealt with.
  *
- * Marking one read still happens on this phone: `GET /notifications` returns
- * `read`, but this app has not yet wired `PATCH /notifications/:id`. A mark is
- * only ever added, never removed, so the server's own `read` still wins.
+ * Read marks update optimistically and persist only after the owner API accepts
+ * the displayed snapshot. Failed writes roll back and refetch the badge.
  *
  * Clearing the inbox is different. `DELETE /notifications/:id` is a durable
  * soft delete — those rows never come back on the next list — so Clear must
@@ -41,8 +43,9 @@ export const useNotifications = create<NotificationsState>((set, get) => {
   let writeQueue: Promise<void> = Promise.resolve();
 
   function persist(readIds: string[]) {
+    const key = `${STORAGE_KEY}.${get().ownerId ?? "signed-out"}`;
     writeQueue = writeQueue.then(() =>
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(readIds)).catch(() => {
+      AsyncStorage.setItem(key, JSON.stringify(readIds)).catch(() => {
         // The mark still applies for this launch if the write fails.
       }),
     );
@@ -54,14 +57,18 @@ export const useNotifications = create<NotificationsState>((set, get) => {
   }
 
   return {
+    ownerId: null,
+    bindOwner: (ownerId) => { if (get().ownerId !== ownerId) set({ownerId, unread:0, readIds:[], hydrated:false}); },
     unread: 0,
     readIds: [],
     hydrated: false,
 
     hydrate: async () => {
       if (get().hydrated) return;
+      const owner = get().ownerId;
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const raw = await AsyncStorage.getItem(`${STORAGE_KEY}.${owner ?? "signed-out"}`);
+        if (owner !== get().ownerId) return;
         const parsed = raw ? (JSON.parse(raw) as unknown) : null;
         if (Array.isArray(parsed)) {
           set({ readIds: parsed.filter((id): id is string => typeof id === "string") });
@@ -69,7 +76,7 @@ export const useNotifications = create<NotificationsState>((set, get) => {
       } catch {
         // Corrupt or absent — start with nothing marked rather than crash.
       } finally {
-        set({ hydrated: true });
+        if (owner === get().ownerId) set({ hydrated: true });
       }
     },
 
@@ -77,22 +84,32 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
     adopt: (items) => set({ unread: countUnread(items, get().readIds) }),
 
-    markRead: (id) => {
-      const { readIds } = get();
-      if (readIds.includes(id)) return;
-      const next = [...readIds, id];
-      set({ readIds: next, unread: Math.max(0, get().unread - 1) });
-      persist(next);
-    },
+    markRead: async (id) => { await get().markAllRead([{ id } as api.Notification]); },
 
-    markAllRead: (items) => {
-      const next = [...new Set([...get().readIds, ...items.map((item) => item.id)])];
-      set({ readIds: next, unread: 0 });
-      persist(next);
+    markAllRead: async (items) => {
+      const owner = get().ownerId;
+      const previous = get().readIds;
+      const ids = [...new Set(items.map((item) => item.id))];
+      const added = ids.filter((id) => !previous.includes(id));
+      if (!added.length) return;
+      set({ readIds: [...previous, ...added], unread: Math.max(0, get().unread - added.length) });
+      try {
+        await api.markNotificationsRead(ids);
+        if (owner !== get().ownerId) return;
+        persist(get().readIds);
+        invalidate("notifications");
+      } catch {
+        if (owner !== get().ownerId) return;
+        const drop = new Set(added);
+        set({ readIds: get().readIds.filter((id) => !drop.has(id)) });
+        await get().refreshUnread();
+        invalidate("notifications");
+      }
     },
 
     clear: async (items) => {
       if (!items.length) return { cleared: [], failed: false };
+      const owner = get().ownerId;
       const results = await Promise.allSettled(
         items.map((item) => api.deleteNotification(item.id)),
       );
@@ -102,6 +119,7 @@ export const useNotifications = create<NotificationsState>((set, get) => {
         if (results[index]?.status === "fulfilled") cleared.push(item.id);
         else failed = true;
       });
+      if (owner !== get().ownerId) return { cleared: [], failed: true };
       if (cleared.length) {
         const drop = new Set(cleared);
         const next = get().readIds.filter((id) => !drop.has(id));
@@ -113,7 +131,9 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
     refreshUnread: async () => {
       try {
-        get().adopt(await api.listNotifications());
+        const owner = get().ownerId;
+        const items = await api.listNotifications();
+        if (owner === get().ownerId) get().adopt(items);
       } catch {
         // Leave the last known count; the Alerts screen surfaces the error.
       }

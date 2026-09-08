@@ -2,7 +2,6 @@ import { useAuth, useClerk, useUser } from "@clerk/expo";
 import { useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
-import { readGridgoRole, resolveGridgoRole, riderAccessError } from "@/lib/clerkAuth";
 import {
   bindClerkSignOut,
   isClerkAdoptionBlocked,
@@ -22,7 +21,6 @@ export function useClerkSessionBridge(): boolean {
   const adoptClerkSession = useSession((state) => state.adoptClerkSession);
   const beginClerkSession = useSession((state) => state.beginClerkSession);
   const clearSession = useSession((state) => state.clearSession);
-  const rejectClerkSession = useSession((state) => state.rejectClerkSession);
   const authSource = useSession((state) => state.authSource);
   const needsApplication = useSession((state) => state.needsApplication);
   const [identityReady, setIdentityReady] = useState(false);
@@ -90,23 +88,8 @@ export function useClerkSessionBridge(): boolean {
       return;
     }
 
-    const claimsRole = readGridgoRole(
-      sessionClaims as Record<string, unknown> | null | undefined,
-    );
-    const metadataRole = readGridgoRole(
-      user?.publicMetadata as Record<string, unknown> | null | undefined,
-    );
-    const role = resolveGridgoRole(claimsRole, metadataRole);
-    const accessError = riderAccessError(role);
-
-    if (accessError) {
-      handledSession.current = sessionId;
-      rejectClerkSession(accessError);
-      void signOut().catch(() => {});
-      setIdentityReady(true);
-      return;
-    }
-
+    // Clerk metadata names a primary role. Only the role-scoped API projection
+    // can establish this app's membership for a person with several roles.
     if (handledSession.current === sessionId && authSource === "clerk") {
       setIdentityReady(true);
       return;
@@ -159,7 +142,6 @@ export function useClerkSessionBridge(): boolean {
     isLoaded,
     isSignedIn,
     needsApplication,
-    rejectClerkSession,
     sessionClaims,
     signOut,
     user,

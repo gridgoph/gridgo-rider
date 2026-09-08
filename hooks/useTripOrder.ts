@@ -1,3 +1,5 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useEffect, useState } from "react";
 
 import * as api from "@/lib/api";
@@ -14,7 +16,9 @@ export function useTripOrder(orderId: string | null) {
   const [loading, setLoading] = useState(Boolean(orderId));
   const [error, setError] = useState<string | null>(null);
 
+  const nextRead = useReadVersion();
   const load = useCallback(async () => {
+    const current = nextRead();
     if (!orderId) {
       setOrder(null);
       setLoading(false);
@@ -24,16 +28,22 @@ export function useTripOrder(orderId: string | null) {
     setLoading(true);
     try {
       const next = await api.getOrder(orderId);
+      if (!current()) return;
       setOrder(next);
       setError(null);
     } catch (e) {
+      if (!current()) return;
+      if (e instanceof api.ApiError && (e.status === 403 || e.status === 404)) setOrder(null);
       setError(
         api.apiErrorMessage(e, "Could not load this job. Check your connection and try again."),
       );
     } finally {
+      if (current())
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, nextRead]);
+
+  useLiveRefresh(["orders", "jobs", "dispatch", "escalations", "claims", "payouts"], load);
 
   useEffect(() => {
     void load();

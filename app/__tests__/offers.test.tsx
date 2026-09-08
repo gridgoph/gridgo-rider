@@ -131,6 +131,15 @@ describe("Offers accept button", () => {
     await view?.unmount();
   });
 
+  it("removes a competing rider's accepted offer while Offers stays open", async () => {
+    const { invalidate } = require("@/lib/live");
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    api.listOffers.mockResolvedValue([]);
+    await act(async () => { invalidate("dispatch"); });
+    await waitFor(() => expect(screen.queryByText("Storefront tarpaulin")).toBeNull());
+  });
+
   it("does not stay on Accepting when the rider already has a job", async () => {
     useActiveTrip.setState({ order: activeJob, loaded: true });
     api.listOrders.mockResolvedValue([activeJob]);

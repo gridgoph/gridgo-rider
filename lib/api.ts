@@ -1,3 +1,4 @@
+import { assertLiveGeneration, liveGeneration } from "@/lib/live";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
@@ -376,16 +377,12 @@ export function getToken(): string | null {
  * Android stack then reported as a dead connection.
  */
 export async function resolveBearer(): Promise<string | null> {
-  if (tokenProvider) {
-    try {
-      const token = await tokenProvider();
-      const trimmed = token?.trim() || "";
-      if (trimmed) return trimmed;
-    } catch {
-      // Fall through to any leftover memory token.
-    }
-  }
-  return tokenMemory;
+  const provider = tokenProvider;
+  if (!provider) return tokenMemory;
+  const token = await provider();
+  // A superseded identity must never fall back to a previous legacy bearer.
+  if (provider !== tokenProvider) return null;
+  return token?.trim() || null;
 }
 
 /**
@@ -398,14 +395,7 @@ export async function resolveBearer(): Promise<string | null> {
  * A Rider broadcast then had nobody to interrupt.
  */
 export async function sessionBearerPresent(): Promise<boolean> {
-  if (tokenMemory) return true;
-  if (!tokenProvider) return false;
-  try {
-    const token = await tokenProvider();
-    return Boolean(token?.trim());
-  } catch {
-    return false;
-  }
+  try { return Boolean(await resolveBearer()); } catch { return false; }
 }
 
 export class ApiError extends Error {
@@ -436,19 +426,33 @@ type RequestInitWithProbe = RequestInit & {
   ignoreUnauthorized?: boolean;
 };
 
+export const API_REQUEST_MS = 20_000;
+
 async function request<T>(path: string, init: RequestInitWithProbe = {}): Promise<T> {
+  const generation = liveGeneration();
   const { ignoreUnauthorized, ...fetchInit } = init;
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  const bearer = await resolveBearer();
-  const sentBearer = Boolean(bearer);
-  if (bearer) headers.Authorization = `Bearer ${bearer}`;
-
-  const res = await fetch(`${getApiBase()}${path}`, { ...fetchInit, headers });
-  const text = await res.text();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_REQUEST_MS);
+  const aborted = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener("abort", () => reject(new Error("GRIDGO did not answer in time. Check this phone’s connection, then try again.")), { once: true });
+  });
+  let res: Response;
+  let text: string;
+  let sentBearer = false;
+  try {
+    const bearer = await Promise.race([resolveBearer(), aborted]);
+    assertLiveGeneration(generation);
+    sentBearer = Boolean(bearer);
+    if (bearer) { headers.Authorization = `Bearer ${bearer}`; headers["X-GRIDGO-Role"] = "rider"; }
+    res = await Promise.race([fetch(`${getApiBase()}${path}`, { ...fetchInit, headers, signal: controller.signal }), aborted]);
+    text = await Promise.race([res.text(), aborted]);
+  } finally { clearTimeout(timer); }
+  assertLiveGeneration(generation);
   let data: unknown = null;
   if (text) {
     try {
@@ -552,7 +556,33 @@ export async function enrollRider(
  * when no token was sent, the session had already expired, or the token now
  * belongs to somebody else. None of those is a failure worth showing anyone.
  */
-export async function logout(deviceToken?: string | null): Promise<void> {
+/** Captures this identity before UI teardown clears the provider. */
+export function captureLogoutBearer(): Promise<string | null> {
+  const provider = tokenProvider;
+  const token = tokenMemory;
+  if (!provider) return Promise.resolve(token);
+  return new Promise((resolve) => {
+    const deadline = setTimeout(() => resolve(null), 2_500);
+    void Promise.resolve().then(provider).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
+  });
+}
+
+export async function logout(deviceToken?: string | null, capturedBearer?: Promise<string | null>): Promise<void> {
+  if (capturedBearer) {
+    const bearer = await capturedBearer;
+    if (!bearer) return;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 5_000);
+    try {
+      await fetch(`${getApiBase()}/auth/logout`, {
+        method: "POST", signal: controller.signal,
+        headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", "X-GRIDGO-Role": "rider" },
+        body: JSON.stringify(deviceToken ? { deviceToken } : {}),
+      });
+    } finally { clearTimeout(deadline); }
+    // This old session must never clear a newer account's token or handle its 401.
+    return;
+  }
   try {
     await request("/auth/logout", {
       method: "POST",
@@ -580,7 +610,7 @@ export async function registerDevice(
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
-    body: JSON.stringify({ token, platform }),
+    body: JSON.stringify({ token, platform, appRole: "rider", tokenProvider: platform === "ios" ? "apns" : "fcm" }),
   });
 }
 
@@ -617,7 +647,7 @@ export async function registerDeviceUnclaimed(
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform }),
+    body: JSON.stringify({ token, platform, appRole: "rider", tokenProvider: platform === "ios" ? "apns" : "fcm" }),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -822,7 +852,7 @@ export type LocationPing = {
 /** Post a one-shot location ping. Never store pings client-side. */
 export async function postLocation(
   orderId: string,
-  coords: { lat: number; lng: number; accuracy?: number | null },
+  coords: { lat: number; lng: number; accuracy?: number | null; recordedAt?: string },
 ): Promise<LocationPing> {
   const result = await request<{ ping: LocationPing }>(`/dispatch/${orderId}/location`, {
     method: "POST",
@@ -830,14 +860,22 @@ export async function postLocation(
       lat: coords.lat,
       lng: coords.lng,
       accuracy: coords.accuracy ?? null,
+      ...(coords.recordedAt ? { recordedAt: coords.recordedAt } : {}),
     }),
   });
   return result.ping;
 }
 
 export async function listNotifications(): Promise<Notification[]> {
-  const result = await request<{ notifications: Notification[] }>("/notifications");
+  const result = await request<{ notifications: Notification[] }>("/notifications?role=rider");
   return result.notifications;
+}
+
+/** A snapshot of IDs avoids acknowledging notifications that arrive during the request. */
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => request(`/notifications/${encodeURIComponent(id)}`, {
+    method: "PATCH", body: JSON.stringify({ read: true }),
+  })));
 }
 
 /**

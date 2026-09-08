@@ -1,3 +1,4 @@
+import { liveGeneration } from "@/lib/live";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
@@ -25,14 +26,18 @@ type ActiveTripState = {
  * job's state belongs to the server, and a stale one shown at launch would be
  * a lie about where the package is.
  */
+let requestVersion = 0;
+
 export const useActiveTrip = create<ActiveTripState>((set) => ({
   order: null,
   loaded: false,
   loading: false,
   error: null,
-  setOrder: (order) => set({ order, loaded: true, error: null }),
-  clear: () => set({ order: null, loaded: false, loading: false, error: null }),
+  setOrder: (order) => { ++requestVersion; set({ order, loaded: true, error: null }); },
+  clear: () => { ++requestVersion; set({ order: null, loaded: false, loading: false, error: null }); },
   refresh: async (riderId, mode = "load") => {
+    const version = ++requestVersion;
+    const generation = liveGeneration();
     if (!riderId) {
       set({ order: null, loaded: true, loading: false });
       return;
@@ -40,6 +45,7 @@ export const useActiveTrip = create<ActiveTripState>((set) => ({
     if (mode === "load") set({ loading: true });
     try {
       const orders = await api.listOrders();
+      if (version !== requestVersion || generation !== liveGeneration()) return;
       set({
         order: selectActiveTrip(orders, riderId),
         error: null,
@@ -47,6 +53,8 @@ export const useActiveTrip = create<ActiveTripState>((set) => ({
         loading: false,
       });
     } catch (e) {
+      if (version !== requestVersion || generation !== liveGeneration()) return;
+      if (e instanceof api.ApiError && (e.status === 403 || e.status === 404)) set({order:null});
       set({
         error: api.apiErrorMessage(
           e,

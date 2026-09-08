@@ -1,3 +1,5 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
@@ -51,16 +53,20 @@ export default function AlertsScreen() {
     void hydrate();
   }, [hydrate]);
 
+  const nextRead = useReadVersion();
   const reload = useCallback(
     async (mode: "load" | "refresh" = "load") => {
+      const current = nextRead();
       if (mode === "refresh") setRefreshing(true);
       try {
         const list = await api.listNotifications();
+        if (!current()) return;
         setItems(list);
         adopt(list);
         setError(null);
         setClearError(null);
       } catch (e) {
+      if (!current()) return;
         setError(
           api.apiErrorMessage(
             e,
@@ -69,17 +75,21 @@ export default function AlertsScreen() {
         );
         setItems((current) => current ?? []);
       } finally {
+      if (current())
         setRefreshing(false);
       }
       // Separately, and quietly: the stage bars are an enrichment, not the list.
       try {
-        setOrders(await api.listOrders());
+        const orders = await api.listOrders();
+        if (current()) setOrders(orders);
       } catch {
         setOrders([]);
       }
     },
-    [adopt],
+    [nextRead, adopt],
   );
+
+  useLiveRefresh(["notifications", "orders"], reload);
 
   useFocusEffect(
     useCallback(() => {

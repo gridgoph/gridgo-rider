@@ -110,7 +110,7 @@ export function resolveAuthRedirect(
 
   const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
   // A refused identity (wrong app) must reach login, not stay on Signing you in.
-  if (!isSignedIn && showErrorOnLogin && !alreadyOnLogin) {
+  if (!isSignedIn && showErrorOnLogin && !needsApplication && !alreadyOnLogin) {
     return "/(auth)/login";
   }
 
