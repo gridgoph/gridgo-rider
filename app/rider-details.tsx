@@ -2,7 +2,7 @@ import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { ChevronRight } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
@@ -71,6 +71,7 @@ export default function RiderDetailsScreen() {
   const profile = details?.profile ?? null;
   const draft = details?.draft ?? null;
   const nextRead = useReadVersion();
+  const reloadDraft = useRef(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
@@ -84,7 +85,8 @@ export default function RiderDetailsScreen() {
     reloadable: boolean;
   } | null>(null);
 
-  const load = useCallback(async (adoptDraft: boolean) => {
+  const load = useCallback(async (replaceDraft: boolean) => {
+    if (replaceDraft) reloadDraft.current = true;
     const current = nextRead();
     setLoading(true);
     const outcome = await loadRiderDetails();
@@ -92,6 +94,8 @@ export default function RiderDetailsScreen() {
     setLoading(false);
 
     if (outcome.status === "ok") {
+      const adoptDraft = reloadDraft.current;
+      reloadDraft.current = false;
       setDetails((current) =>
         adoptDraft || !current
           ? { profile: outcome.value, draft: draftFromProfile(outcome.value, clerkName) }
@@ -132,6 +136,7 @@ export default function RiderDetailsScreen() {
   }
 
   function edit(patch: Partial<RiderDetailDraft>) {
+    reloadDraft.current = false;
     nextRead();
     setLoading(false);
     setDetails((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
@@ -149,6 +154,7 @@ export default function RiderDetailsScreen() {
     const patch = riderDetailPatch(profile, draft);
     if (!Object.keys(patch).length) return;
 
+    reloadDraft.current = false;
     nextRead();
     setSaving(true);
     setSaveNotice(null);

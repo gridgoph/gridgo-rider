@@ -131,7 +131,8 @@ export const useNotifications = create<NotificationsState>((set, get) => {
       } catch {
         if (owner !== get().ownerId) return;
         const drop = new Set(added);
-        set({ readIds: get().readIds.filter((id) => !drop.has(id)) });
+        const readIds = get().readIds.filter((id) => !drop.has(id));
+        set({ readIds, unread: countUnread(get().items ?? [], readIds) });
         await get().refreshUnread();
         invalidate("notifications");
       }

@@ -38,6 +38,8 @@ async function flush() {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  api.listNotifications.mockReset().mockResolvedValue([]);
+  api.markNotificationsRead.mockReset().mockResolvedValue(undefined);
   api.deleteNotification.mockReset();
   api.deleteNotification.mockResolvedValue({ id: "a", deletedAt: "2026-09-01T04:00:00.000Z" });
   useNotifications.setState({ items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
@@ -212,4 +214,24 @@ it("applies deletion to the current inbox and rejects reads started before it co
   await read;
   expect(useNotifications.getState().items).toEqual([b]);
   expect(useNotifications.getState().unread).toBe(1);
+});
+
+it.each([false, true])("restores the badge before offline recovery, with newer inbox: %s", async (newerInbox) => {
+  const a = alert({ id: "offline-a" });
+  const b = alert({ id: "offline-b" });
+  useNotifications.getState().adopt([a]);
+  const patch = deferred();
+  const recovery = deferred();
+  api.markNotificationsRead.mockReturnValueOnce(patch.promise);
+  api.listNotifications.mockReturnValueOnce(recovery.promise);
+  const marking = useNotifications.getState().markRead(a.id);
+  expect(useNotifications.getState().unread).toBe(0);
+  if (newerInbox) useNotifications.getState().adopt([a, b]);
+  patch.reject(new Error("offline"));
+  await flush();
+  expect(useNotifications.getState().isRead(a)).toBe(false);
+  expect(useNotifications.getState().unread).toBe(newerInbox ? 2 : 1);
+  recovery.reject(new Error("still offline"));
+  await marking;
+  expect(useNotifications.getState().unread).toBe(newerInbox ? 2 : 1);
 });

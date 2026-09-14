@@ -172,4 +172,33 @@ describe("the rider's own details", () => {
     } finally { jest.useRealTimers(); }
   });
 
+  it.each([false, true])("preserves explicit reload intent across a background read, then edited: %s", async (editAgain) => {
+    jest.useFakeTimers();
+    load();
+    (updateRiderProfile as jest.Mock).mockRejectedValue(new ApiError(409, { error: "rider_profile_stale" }));
+    let finishExplicit!: (profile: RiderSelfProfile) => void;
+    let finishBackground!: (profile: RiderSelfProfile) => void;
+    try {
+      await render(<RiderDetailsScreen />);
+      await fireEvent.changeText(screen.getByLabelText("Plate number"), "XYZ 9876");
+      await fireEvent.press(screen.getByText("Save changes"));
+      (getRiderProfile as jest.Mock)
+        .mockReturnValueOnce(new Promise<RiderSelfProfile>((resolve) => { finishExplicit = resolve; }))
+        .mockReturnValueOnce(new Promise<RiderSelfProfile>((resolve) => { finishBackground = resolve; }));
+      await fireEvent.press(screen.getByText("Load the latest"));
+      await act(async () => { invalidate("identity"); await jest.advanceTimersByTimeAsync(100); });
+      if (editAgain) await fireEvent.changeText(screen.getByLabelText("Plate number"), "NEW 1234");
+      await act(async () => { finishExplicit({ ...PROFILE, phone: "+639189876543", version: 4 }); });
+      await act(async () => { finishBackground({ ...PROFILE, phone: "+639199876543", version: 5 }); });
+      expect(screen.getByLabelText("Mobile number").props.value).toBe(editAgain ? PROFILE.phone : "+639199876543");
+      expect(screen.getByLabelText("Plate number").props.value).toBe(editAgain ? "NEW 1234" : PROFILE.plateNumber);
+      if (!editAgain) {
+        expect(screen.queryByText("Load the latest")).toBeNull();
+        await fireEvent.changeText(screen.getByLabelText("Plate number"), "NEW 1234");
+      }
+      await fireEvent.press(screen.getByText("Save changes"));
+      expect(updateRiderProfile).toHaveBeenLastCalledWith(editAgain ? 3 : 5, { plateNumber: "NEW 1234" });
+    } finally { jest.useRealTimers(); }
+  });
+
 });
