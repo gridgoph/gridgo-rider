@@ -11,6 +11,7 @@ type NotificationsState = {
   bindOwner: (id: string | null) => void;
   unread: number;
   items: api.Notification[] | null;
+  loadError: string | null;
   load: () => Promise<void>;
   /** Ids the rider has marked read on this phone. */
   readIds: string[];
@@ -66,10 +67,11 @@ export const useNotifications = create<NotificationsState>((set, get) => {
     bindOwner: (ownerId) => {
       if (get().ownerId === ownerId) return;
       readVersion += 1;
-      set({ ownerId, items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
+      set({ ownerId, items: null, loadError: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
     },
     unread: 0,
     items: null,
+    loadError: null,
     readIds: [],
     confirmedReadIds: [],
     hydrated: false,
@@ -99,7 +101,7 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
     adopt: (items) => {
       readVersion += 1;
-      set({ items, unread: countUnread(items, get().readIds) });
+      set({ items, loadError: null, unread: countUnread(items, get().readIds) });
     },
 
     load: async () => {
@@ -108,7 +110,15 @@ export const useNotifications = create<NotificationsState>((set, get) => {
         const items = await api.listNotifications();
         if (version === readVersion) get().adopt(items);
       } catch (error) {
-        if (version === readVersion) throw error;
+        if (version === readVersion) {
+          set({
+            loadError: api.apiErrorMessage(
+              error,
+              "Alerts did not load. Check the phone's connection and pull down to try again.",
+            ),
+          });
+          throw error;
+        }
       }
     },
 

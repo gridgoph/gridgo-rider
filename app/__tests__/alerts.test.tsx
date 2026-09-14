@@ -46,7 +46,7 @@ const dispatch: Notification = {
 describe("AlertsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    useNotifications.setState({ items: null, unread: 0, readIds: [], hydrated: true });
+    useNotifications.setState({ items: null, loadError: null, unread: 0, readIds: [], hydrated: true });
     api.listNotifications.mockResolvedValue([dispatch]);
     api.listOrders.mockResolvedValue([]);
     api.deleteNotification.mockResolvedValue({
@@ -97,6 +97,50 @@ describe("AlertsScreen", () => {
     expect(screen.queryByText(dispatch.title)).toBeNull();
     expect(screen.queryByText("Clear notifications")).toBeNull();
   });
+});
+
+it.each([
+  ["older first", "failure"],
+  ["newer first", "failure"],
+  ["older first", "success"],
+  ["newer first", "success"],
+])("shows the latest background load outcome: %s, %s", async (order, outcome) => {
+  useNotifications.setState({ items: null, loadError: null, unread: 0, readIds: [], hydrated: true });
+  let failOlder!: (error: Error) => void;
+  let failNewer!: (error: Error) => void;
+  let finishNewer!: (items: Notification[]) => void;
+  api.listNotifications.mockReset()
+    .mockReturnValueOnce(new Promise<Notification[]>((_, reject) => { failOlder = reject; }))
+    .mockReturnValueOnce(new Promise<Notification[]>((resolve, reject) => {
+      finishNewer = resolve;
+      failNewer = reject;
+    }))
+    .mockResolvedValue([dispatch]);
+  api.listOrders.mockResolvedValue([]);
+  await render(<AlertsScreen />);
+  let refreshing!: Promise<void>;
+  await act(async () => { refreshing = useNotifications.getState().refreshUnread(); });
+  const finishLatest = async () => {
+    if (outcome === "failure") failNewer(new Error("offline"));
+    else finishNewer([dispatch]);
+    await refreshing;
+  };
+  if (order === "older first") {
+    await act(async () => { failOlder(new Error("offline")); });
+    expect(screen.queryByText("Alerts did not load")).toBeNull();
+    await act(finishLatest);
+  } else {
+    await act(finishLatest);
+    await act(async () => { failOlder(new Error("offline")); });
+  }
+  if (outcome === "failure") {
+    expect(screen.getByText("Alerts did not load")).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Try again"));
+  }
+  expect(await screen.findByText(dispatch.title)).toBeTruthy();
+  expect(screen.queryByText("Alerts did not load")).toBeNull();
+  expect(useNotifications.getState().unread).toBe(1);
 });
 
 

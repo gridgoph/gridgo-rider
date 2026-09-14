@@ -37,6 +37,7 @@ export default function AlertsScreen() {
 
   const load = useNotifications((s) => s.load);
   const items = useNotifications((s) => s.items);
+  const error = useNotifications((s) => s.loadError);
   const markRead = useNotifications((s) => s.markRead);
   const markAllRead = useNotifications((s) => s.markAllRead);
   const clear = useNotifications((s) => s.clear);
@@ -45,7 +46,6 @@ export default function AlertsScreen() {
 
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [clearError, setClearError] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
 
@@ -58,22 +58,10 @@ export default function AlertsScreen() {
     async (mode: "load" | "refresh" = "load") => {
       const current = nextRead();
       if (mode === "refresh") setRefreshing(true);
-      try {
-        await load();
-        if (!current()) return;
-        setError(null);
-        setClearError(null);
-      } catch (e) {
-        if (!current()) return;
-        setError(
-          api.apiErrorMessage(
-            e,
-            "Alerts did not load. Check the phone's connection and pull down to try again.",
-          ),
-        );
-      } finally {
-        if (current()) setRefreshing(false);
-      }
+      const loaded = await load().then(() => true, () => false);
+      if (!current()) return;
+      if (loaded) setClearError(null);
+      setRefreshing(false);
       // Separately, and quietly: the stage bars are an enrichment, not the list.
       try {
         const orders = await api.listOrders();
