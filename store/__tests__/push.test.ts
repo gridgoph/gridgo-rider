@@ -382,3 +382,62 @@ it("releases the registration queue at its deadline and ignores a late token", a
     jest.useRealTimers();
   }
 });
+
+it.each(["native token", "bearer"])("finishes push registration when approval changes during %s lookup", async (stage) => {
+  jest.useFakeTimers();
+  useSession.setState({ user: { ...riderUser, verificationStatus: "pending" } });
+  usePush.setState({ permission: "granted", token: "old-token", claimed: true });
+  const token = deferred<Notifications.DevicePushToken>();
+  const bearer = deferred<boolean>();
+  if (stage === "native token") mocked.getDevicePushTokenAsync.mockReturnValueOnce(token.promise);
+  else jest.spyOn(api, "sessionBearerPresent").mockReturnValueOnce(bearer.promise);
+  const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  jest.spyOn(api, "me").mockResolvedValue({ ...riderUser, verificationStatus: "approved" });
+  try {
+    const pending = usePush.getState().registerIfGranted();
+    await jest.advanceTimersByTimeAsync(0);
+    await useSession.getState().refreshUser();
+    expect(useSession.getState().user?.verificationStatus).toBe("approved");
+    token.resolve({ type: "android", data: "rotated-token" } as never);
+    bearer.resolve(true);
+    await pending;
+    expect(register).toHaveBeenCalledWith(
+      stage === "native token" ? "rotated-token" : "fcm-token-a7c8d3f1",
+      "android",
+      expect.any(AbortSignal),
+    );
+    expect(register.mock.calls[0][2]?.aborted).toBe(false);
+    expect(usePush.getState()).toMatchObject({ busy: false, claimed: true, error: null });
+  } finally {
+    cancelDeviceRegistrations();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  }
+});
+
+it("cancels an old account's token lookup and lets the next account register", async () => {
+  jest.useFakeTimers();
+  useSession.setState({ user: riderUser });
+  usePush.setState({ permission: "granted" });
+  const token = deferred<Notifications.DevicePushToken>();
+  mocked.getDevicePushTokenAsync.mockReturnValueOnce(token.promise);
+  const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  try {
+    const old = usePush.getState().registerIfGranted();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(usePush.getState().busy).toBe(true);
+    useSession.setState({ user: { ...riderUser, id: "next-rider" } });
+    await old;
+    expect(usePush.getState().busy).toBe(false);
+    expect(register).not.toHaveBeenCalled();
+    await usePush.getState().registerIfGranted();
+    token.resolve({ type: "android", data: "obsolete-token" } as never);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(usePush.getState()).toMatchObject({ token: "fcm-token-a7c8d3f1", claimed: true, busy: false });
+  } finally {
+    cancelDeviceRegistrations();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  }
+});

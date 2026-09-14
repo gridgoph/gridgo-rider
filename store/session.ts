@@ -612,6 +612,7 @@ useSession.subscribe((state, previous) => {
   const next = state.user?.id ?? null;
   const status = state.user?.verificationStatus;
   if (next === (previous.user?.id ?? null) && status === previous.user?.verificationStatus) return;
+  if (next !== (previous.user?.id ?? null)) cancelDeviceRegistrations();
   setLiveOwner(next ? `${next}:${status ?? "approved"}` : null);
   useNotifications.getState().bindOwner(next);
   useActiveTrip.getState().clear();

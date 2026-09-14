@@ -2,7 +2,6 @@ import { Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
-import { liveGeneration } from "@/lib/live";
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import {
   devicePlatform,
@@ -194,8 +193,7 @@ export const usePush = create<PushState>((set, get) => ({
 
   registerIfGranted: () => {
     const controller = new AbortController();
-    const generation = liveGeneration();
-    const isCurrent = () => !controller.signal.aborted && generation === liveGeneration();
+    const isCurrent = () => !controller.signal.aborted;
     registrations.add(controller);
     const run = async () => {
       if (!isCurrent()) return;
@@ -239,7 +237,7 @@ export const usePush = create<PushState>((set, get) => ({
         clearTimeout(timer);
         controller.signal.removeEventListener("abort", finish);
         registrations.delete(controller);
-        if (generation === liveGeneration()) set({ busy: false });
+        set({ busy: false });
       }
     });
   },
