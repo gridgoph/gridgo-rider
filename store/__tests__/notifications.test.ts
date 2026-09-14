@@ -40,7 +40,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   api.deleteNotification.mockReset();
   api.deleteNotification.mockResolvedValue({ id: "a", deletedAt: "2026-09-01T04:00:00.000Z" });
-  useNotifications.setState({ unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
+  useNotifications.setState({ items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
 });
 
 describe("the unread count", () => {
@@ -75,7 +75,7 @@ describe("read marks live on this phone", () => {
     useNotifications.getState().markRead("a");
     await flush();
 
-    useNotifications.setState({ unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
+    useNotifications.setState({ items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
     await useNotifications.getState().hydrate();
 
     expect(useNotifications.getState().isRead(alert({ id: "a" }))).toBe(true);
@@ -172,4 +172,44 @@ it.each(["acknowledge", "clear"])("persists only confirmed marks through %s", as
   await useNotifications.getState().hydrate();
   expect(useNotifications.getState().isRead(alert({ id: "a" }))).toBe(false);
   expect(useNotifications.getState().isRead(alert({ id: "b" }))).toBe(operation === "acknowledge");
+});
+
+function pendingList() {
+  let resolve!: (items: Notification[]) => void;
+  const promise = new Promise<Notification[]>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+it.each(["refresh", "adopt"])("keeps a newer %s ahead of an old unread response", async (source) => {
+  const old = pendingList();
+  const b = alert({ id: "b" });
+  api.listNotifications.mockReturnValueOnce(old.promise).mockResolvedValueOnce([b]);
+  const first = useNotifications.getState().refreshUnread();
+  if (source === "refresh") await useNotifications.getState().refreshUnread();
+  else useNotifications.getState().adopt([b]);
+  old.resolve([]);
+  await first;
+  expect(useNotifications.getState().unread).toBe(1);
+  expect(useNotifications.getState().items).toEqual([b]);
+});
+
+it("applies deletion to the current inbox and rejects reads started before it completed", async () => {
+  const a = alert({ id: "a" });
+  const b = alert({ id: "b" });
+  useNotifications.getState().adopt([a]);
+  const deletion = deferred();
+  api.deleteNotification.mockReturnValueOnce(deletion.promise);
+  const clear = useNotifications.getState().clear([a]);
+  useNotifications.getState().adopt([a, b]);
+  const old = pendingList();
+  api.listNotifications.mockReturnValueOnce(old.promise);
+  const read = useNotifications.getState().refreshUnread();
+  deletion.resolve();
+  await clear;
+  expect(useNotifications.getState().items).toEqual([b]);
+  expect(useNotifications.getState().unread).toBe(1);
+  old.resolve([a]);
+  await read;
+  expect(useNotifications.getState().items).toEqual([b]);
+  expect(useNotifications.getState().unread).toBe(1);
 });

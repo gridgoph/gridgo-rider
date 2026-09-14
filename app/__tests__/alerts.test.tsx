@@ -22,7 +22,8 @@ jest.mock("@/lib/api", () => ({
 }));
 
 import AlertsScreen from "@/app/alerts";
-import type { Notification } from "@/lib/api";
+import type { Notification, Order } from "@/lib/api";
+import { invalidate } from "@/lib/live";
 import { askConfirm } from "@/store/sheets";
 import { useNotifications } from "@/store/notifications";
 
@@ -45,7 +46,7 @@ const dispatch: Notification = {
 describe("AlertsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    useNotifications.setState({ unread: 0, readIds: [], hydrated: true });
+    useNotifications.setState({ items: null, unread: 0, readIds: [], hydrated: true });
     api.listNotifications.mockResolvedValue([dispatch]);
     api.listOrders.mockResolvedValue([]);
     api.deleteNotification.mockResolvedValue({
@@ -109,4 +110,42 @@ it("updates the visible inbox from a silent notification event without navigatio
   api.listNotifications.mockResolvedValue([incoming]);
   await act(async () => { invalidate("notifications"); });
   expect(await screen.findByText("Live decision arrived")).toBeTruthy();
+});
+
+it("keeps an incoming notification visible when an earlier clear completes", async () => {
+  jest.useFakeTimers();
+  useNotifications.setState({ items: null, unread: 0, readIds: [], hydrated: true });
+  api.listNotifications.mockResolvedValue([dispatch]);
+  api.listOrders.mockResolvedValue([]);
+  (askConfirm as jest.Mock).mockResolvedValue(true);
+  let finish!: () => void;
+  api.deleteNotification.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+  try {
+    await render(<AlertsScreen />);
+    await fireEvent.press(screen.getByText("Clear notifications"));
+    const incoming = { ...dispatch, id: "b", title: "New dispatch" };
+    api.listNotifications.mockResolvedValue([dispatch, incoming]);
+    await act(async () => { invalidate("notifications"); await jest.advanceTimersByTimeAsync(100); });
+    expect(screen.getByText("New dispatch")).toBeTruthy();
+    await act(async () => { finish(); });
+    expect(screen.getByText("New dispatch")).toBeTruthy();
+    expect(screen.queryByText(dispatch.title)).toBeNull();
+    expect(useNotifications.getState().unread).toBe(1);
+  } finally { jest.useRealTimers(); }
+});
+
+it("keeps newer order stages when an earlier enrichment fails", async () => {
+  jest.useFakeTimers();
+  useNotifications.setState({ items: null, unread: 0, readIds: [], hydrated: true });
+  api.listNotifications.mockResolvedValue([dispatch]);
+  let fail!: (error: Error) => void;
+  api.listOrders.mockReturnValueOnce(new Promise<Order[]>((_, reject) => { fail = reject; }))
+    .mockResolvedValue([{ id: "ord_1", state: "delivered", timeline: [] }]);
+  try {
+    await render(<AlertsScreen />);
+    await act(async () => { invalidate("orders"); await jest.advanceTimersByTimeAsync(100); });
+    expect(screen.getByRole("button", { name: /Delivered/ })).toBeTruthy();
+    await act(async () => { fail(new Error("offline")); });
+    expect(screen.getByRole("button", { name: /Delivered/ })).toBeTruthy();
+  } finally { jest.useRealTimers(); }
 });

@@ -15,7 +15,6 @@ export function useAlertStream(enabled = true): void {
     const generation = liveGeneration();
     let stopped = false;
     let foreground = AppState.currentState !== "background" && AppState.currentState !== "inactive";
-    let live = false;
     let handle: AlertStreamHandle | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let refreshing = false;
@@ -54,7 +53,6 @@ export function useAlertStream(enabled = true): void {
       handle = openAlertStream({
         onStatus: (connected) => {
           if (!current()) return;
-          live = connected;
           if (connected) invalidate("*");
         },
         onResumeUnavailable: () => { if (current()) invalidate("*"); },
@@ -69,11 +67,11 @@ export function useAlertStream(enabled = true): void {
     if (foreground) start();
     const appState = AppState.addEventListener("change", (next) => {
       foreground = next === "active";
-      if (!foreground) { live = false; handle?.close(); handle = null; }
+      if (!foreground) { handle?.close(); handle = null; }
       else start();
     });
     // Resilience for unsupported streams, network errors and unavailable native push.
-    const fallback = setInterval(() => { if (foreground && !live && current()) invalidate("*"); }, 30_000);
+    const fallback = setInterval(() => { if (foreground && current()) invalidate("*"); }, 30_000);
     return () => {
       stopped = true; handle?.close(); appState.remove(); unsubscribe(); clearInterval(fallback);
       if (timer) clearTimeout(timer);

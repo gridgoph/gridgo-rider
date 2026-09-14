@@ -10,6 +10,8 @@ type NotificationsState = {
   ownerId: string | null;
   bindOwner: (id: string | null) => void;
   unread: number;
+  items: api.Notification[] | null;
+  load: () => Promise<void>;
   /** Ids the rider has marked read on this phone. */
   readIds: string[];
   confirmedReadIds: string[];
@@ -42,6 +44,7 @@ type NotificationsState = {
  */
 export const useNotifications = create<NotificationsState>((set, get) => {
   let writeQueue: Promise<void> = Promise.resolve();
+  let readVersion = 0;
 
   function persist() {
     const readIds = get().confirmedReadIds;
@@ -60,8 +63,13 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
   return {
     ownerId: null,
-    bindOwner: (ownerId) => { if (get().ownerId !== ownerId) set({ownerId, unread:0, readIds:[], confirmedReadIds: [], hydrated:false}); },
+    bindOwner: (ownerId) => {
+      if (get().ownerId === ownerId) return;
+      readVersion += 1;
+      set({ ownerId, items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
+    },
     unread: 0,
+    items: null,
     readIds: [],
     confirmedReadIds: [],
     hydrated: false,
@@ -89,7 +97,20 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
     isRead: (item) => item.read || get().readIds.includes(item.id),
 
-    adopt: (items) => set({ unread: countUnread(items, get().readIds) }),
+    adopt: (items) => {
+      readVersion += 1;
+      set({ items, unread: countUnread(items, get().readIds) });
+    },
+
+    load: async () => {
+      const version = ++readVersion;
+      try {
+        const items = await api.listNotifications();
+        if (version === readVersion) get().adopt(items);
+      } catch (error) {
+        if (version === readVersion) throw error;
+      }
+    },
 
     markRead: async (id) => { await get().markAllRead([{ id } as api.Notification]); },
 
@@ -133,6 +154,7 @@ export const useNotifications = create<NotificationsState>((set, get) => {
         const drop = new Set(cleared);
         const next = get().readIds.filter((id) => !drop.has(id));
         set({ readIds: next, confirmedReadIds: get().confirmedReadIds.filter((id) => !drop.has(id)) });
+        get().adopt((get().items ?? []).filter((item) => !drop.has(item.id)));
         persist();
       }
       return { cleared, failed };
@@ -140,9 +162,7 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
     refreshUnread: async () => {
       try {
-        const owner = get().ownerId;
-        const items = await api.listNotifications();
-        if (owner === get().ownerId) get().adopt(items);
+        await get().load();
       } catch {
         // Leave the last known count; the Alerts screen surfaces the error.
       }

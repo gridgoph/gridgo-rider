@@ -35,14 +35,14 @@ export default function AlertsScreen() {
   const router = useRouter();
   const colors = useThemeColors();
 
-  const adopt = useNotifications((s) => s.adopt);
+  const load = useNotifications((s) => s.load);
+  const items = useNotifications((s) => s.items);
   const markRead = useNotifications((s) => s.markRead);
   const markAllRead = useNotifications((s) => s.markAllRead);
   const clear = useNotifications((s) => s.clear);
   const readIds = useNotifications((s) => s.readIds);
   const hydrate = useNotifications((s) => s.hydrate);
 
-  const [items, setItems] = useState<api.Notification[] | null>(null);
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,34 +59,30 @@ export default function AlertsScreen() {
       const current = nextRead();
       if (mode === "refresh") setRefreshing(true);
       try {
-        const list = await api.listNotifications();
+        await load();
         if (!current()) return;
-        setItems(list);
-        adopt(list);
         setError(null);
         setClearError(null);
       } catch (e) {
-      if (!current()) return;
+        if (!current()) return;
         setError(
           api.apiErrorMessage(
             e,
             "Alerts did not load. Check the phone's connection and pull down to try again.",
           ),
         );
-        setItems((current) => current ?? []);
       } finally {
-      if (current())
-        setRefreshing(false);
+        if (current()) setRefreshing(false);
       }
       // Separately, and quietly: the stage bars are an enrichment, not the list.
       try {
         const orders = await api.listOrders();
         if (current()) setOrders(orders);
       } catch {
-        setOrders([]);
+        if (current()) setOrders([]);
       }
     },
-    [nextRead, adopt],
+    [nextRead, load],
   );
 
   useLiveRefresh(["notifications", "orders"], reload);
@@ -124,9 +120,6 @@ export default function AlertsScreen() {
     setClearError(null);
     try {
       const outcome = await clear(items);
-      const remaining = items.filter((item) => !outcome.cleared.includes(item.id));
-      setItems(remaining);
-      adopt(remaining);
       if (outcome.failed) {
         setClearError(
           outcome.cleared.length
@@ -174,7 +167,7 @@ export default function AlertsScreen() {
           />
         ) : null}
 
-        {items === null ? <AlertListSkeleton /> : null}
+        {items === null && !error ? <AlertListSkeleton /> : null}
 
         {items?.length ? (
           <>

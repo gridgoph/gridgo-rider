@@ -49,6 +49,18 @@ describe("authenticated app stream lifecycle", () => {
     expect(received).not.toHaveBeenCalled();
     unsubscribe();
   });
+  it("reconciles a failed approval read while the stream stays connected", async () => {
+    await renderHook(() => useAlertStream());
+    const handlers = (openAlertStream as jest.Mock).mock.calls[0][0];
+    await act(async () => { handlers.onStatus(true); await jest.advanceTimersByTimeAsync(100); });
+    (api.me as jest.Mock).mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ ...user, verificationStatus: "approved" });
+    await act(async () => { handlers.onInvalidate({ resource: "approvals" }); await jest.advanceTimersByTimeAsync(100); });
+    expect(useSession.getState().user?.verificationStatus).toBe("pending");
+    await act(async () => { await jest.advanceTimersByTimeAsync(30_000); });
+    expect(useSession.getState().user?.verificationStatus).toBe("approved");
+  });
+
 });
 
 it("clears the role session when the authoritative projection revokes membership",async()=>{

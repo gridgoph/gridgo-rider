@@ -1,3 +1,4 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { ChevronRight } from "lucide-react-native";
@@ -63,8 +64,13 @@ export default function RiderDetailsScreen() {
   const [portraitBusy, setPortraitBusy] = useState(false);
   const [portraitError, setPortraitError] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<RiderSelfProfile | null>(null);
-  const [draft, setDraft] = useState<RiderDetailDraft | null>(null);
+  const [details, setDetails] = useState<{
+    profile: RiderSelfProfile;
+    draft: RiderDetailDraft;
+  } | null>(null);
+  const profile = details?.profile ?? null;
+  const draft = details?.draft ?? null;
+  const nextRead = useReadVersion();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
@@ -79,15 +85,16 @@ export default function RiderDetailsScreen() {
   } | null>(null);
 
   const load = useCallback(async (adoptDraft: boolean) => {
+    const current = nextRead();
     setLoading(true);
     const outcome = await loadRiderDetails();
+    if (!current()) return;
     setLoading(false);
 
     if (outcome.status === "ok") {
-      setProfile(outcome.value);
-      setDraft((current) =>
+      setDetails((current) =>
         adoptDraft || !current
-          ? draftFromProfile(outcome.value, clerkName)
+          ? { profile: outcome.value, draft: draftFromProfile(outcome.value, clerkName) }
           : current,
       );
       setLoadProblem(null);
@@ -107,7 +114,7 @@ export default function RiderDetailsScreen() {
             message: outcome.status === "failed" ? outcome.message : RIDER_DETAILS_STALE,
           },
     );
-  }, [clerkName]);
+  }, [clerkName, nextRead]);
 
   useLiveRefresh(["identity"], () => load(false));
 
@@ -125,7 +132,9 @@ export default function RiderDetailsScreen() {
   }
 
   function edit(patch: Partial<RiderDetailDraft>) {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
+    nextRead();
+    setLoading(false);
+    setDetails((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
     setRefusals({});
   }
 
@@ -140,6 +149,7 @@ export default function RiderDetailsScreen() {
     const patch = riderDetailPatch(profile, draft);
     if (!Object.keys(patch).length) return;
 
+    nextRead();
     setSaving(true);
     setSaveNotice(null);
     setRefusals({});
@@ -157,8 +167,9 @@ export default function RiderDetailsScreen() {
     setSaving(false);
 
     if (outcome.status === "ok") {
-      setProfile(outcome.value);
-      setDraft(draftFromProfile(outcome.value, clerkName));
+      nextRead();
+      setLoading(false);
+      setDetails({ profile: outcome.value, draft: draftFromProfile(outcome.value, clerkName) });
       await refreshUser();
       router.back();
       return;

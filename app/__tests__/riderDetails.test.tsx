@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), back: jest.fn() },
@@ -29,6 +29,7 @@ jest.mock("@/lib/api", () => ({
 
 import RiderDetailsScreen from "@/app/rider-details";
 import { ApiError, getRiderProfile, updateRiderProfile, type RiderSelfProfile } from "@/lib/api";
+import { invalidate } from "@/lib/live";
 import { useSession } from "@/store/session";
 
 const mockRouter = jest.requireMock("expo-router").router as { back: jest.Mock; push: jest.Mock };
@@ -136,4 +137,39 @@ describe("the rider's own details", () => {
     expect(mockRouter.back).not.toHaveBeenCalled();
     await view.unmount();
   });
+  it("keeps the edited draft paired with its original version until explicit reload", async () => {
+    jest.useFakeTimers();
+    load();
+    (updateRiderProfile as jest.Mock).mockRejectedValue(new ApiError(409, { error: "rider_profile_stale" }));
+    try {
+      await render(<RiderDetailsScreen />);
+      await fireEvent.changeText(screen.getByLabelText("Plate number"), "XYZ 9876");
+      load({ ...PROFILE, phone: "+639189876543", version: 4 });
+      await act(async () => { invalidate("identity"); await jest.advanceTimersByTimeAsync(100); });
+      expect(screen.getByLabelText("Mobile number").props.value).toBe(PROFILE.phone);
+      await fireEvent.press(screen.getByText("Save changes"));
+      expect(updateRiderProfile).toHaveBeenLastCalledWith(3, { plateNumber: "XYZ 9876" });
+      await fireEvent.press(screen.getByText("Load the latest"));
+      expect(screen.getByLabelText("Mobile number").props.value).toBe("+639189876543");
+      await fireEvent.changeText(screen.getByLabelText("Plate number"), "NEW 1234");
+      await fireEvent.press(screen.getByText("Save changes"));
+      expect(updateRiderProfile).toHaveBeenLastCalledWith(4, { plateNumber: "NEW 1234" });
+    } finally { jest.useRealTimers(); }
+  });
+
+  it.each(["success", "failure"])("ignores an older profile %s after newer details arrive", async (outcome) => {
+    jest.useFakeTimers();
+    let finish!: (value: RiderSelfProfile) => void;
+    let fail!: (error: Error) => void;
+    (getRiderProfile as jest.Mock).mockReturnValueOnce(new Promise<RiderSelfProfile>((resolve, reject) => { finish = resolve; fail = reject; }))
+      .mockResolvedValue({ ...PROFILE, phone: "+639189876543", version: 4 });
+    try {
+      await render(<RiderDetailsScreen />);
+      await act(async () => { invalidate("identity"); await jest.advanceTimersByTimeAsync(100); });
+      await act(async () => { if (outcome === "success") finish(PROFILE); else fail(new Error("offline")); });
+      expect(screen.getByLabelText("Mobile number").props.value).toBe("+639189876543");
+      expect(screen.queryByText("Could not refresh")).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
 });
