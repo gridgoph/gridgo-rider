@@ -4,6 +4,10 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import type { ReactElement } from "react";
 import { StyleSheet } from "react-native";
+import { compile } from "react-native-css/compiler";
+import { StyleCollection } from "react-native-css/native";
+import postcss from "postcss";
+import tailwindcss from "@tailwindcss/postcss";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
@@ -20,6 +24,26 @@ import {
 import { TABS } from "@/constants/tabs";
 import type { VerificationStatus } from "@/lib/api";
 import { useSession } from "@/store/session";
+
+jest.mock("react-native", () => {
+  const actual = jest.requireActual("react-native");
+  const styled = (name: "View" | "Pressable" | "Text") => (props: unknown) =>
+    require("react-native-css/native").useCssElement(actual[name], props, { className: "style" });
+  return Object.defineProperties({}, {
+    ...Object.getOwnPropertyDescriptors(actual),
+    View: { value: styled("View") },
+    Pressable: { value: styled("Pressable") },
+    Text: { value: styled("Text") },
+  });
+});
+
+let stylesheet: ReturnType<ReturnType<typeof compile>["stylesheet"]>;
+beforeAll(async () => {
+  const from = join(__dirname, "..", "..", "global.css");
+  const result = await postcss([tailwindcss({ optimize: false })]).process(readFileSync(from, "utf8"), { from });
+  stylesheet = compile(result.css, { inlineVariables: false }).stylesheet();
+});
+beforeEach(() => { StyleCollection.inject(stylesheet); });
 
 const navigate = jest.fn();
 const emit = jest.fn(() => ({ defaultPrevented: false }));
@@ -354,21 +378,16 @@ describe("GridgoTabBar", () => {
       expect(style.paddingBottom).toBe(expected);
     });
 
-    it("paints the surface across the whole bar, as gridgo-supplier does", () => {
-      // No transparent strip at the top of the column any more: the painted
-      // edge and the layout edge are the same line, which is what makes the gap
-      // above the icons comparable with the supplier's at all.
-      //
-      // Read from the source rather than the rendered tree, because the class
-      // that positions it is compiled by NativeWind and never reaches the node
-      // as an inline style — a render assertion here passes on `undefined`.
-      const source = readFileSync(
-        join(__dirname, "..", "GridgoTabBar.tsx"),
-        "utf8",
-      );
-      expect(source).toContain('className="absolute inset-0 border-t border-outline bg-surface"');
-      expect(source).not.toMatch(/absolute inset-x-0 bottom-0 border-t/);
-      expect(source).not.toMatch(/\bactionRise\b\s*[,:}]/);
+    it("paints the surface across the whole bar", async () => {
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+      const surface = screen.getByTestId("gridgo-tab-bar-surface");
+      const style = StyleSheet.flatten(surface.props.style);
+      expect(["top", "right", "bottom", "left"].map((edge) => style[edge] ?? style.inset)).toEqual([0, 0, 0, 0]);
+      expect(surface).toHaveStyle({ position: "absolute", borderTopWidth: 1, backgroundColor: "#fff" });
+      expect(screen.getByTestId("gridgo-tab-bar")).toHaveStyle({ position: "relative" });
+      for (const tab of screen.getAllByRole("tab")) {
+        expect(tab).toHaveStyle({ flexGrow: 1, alignItems: "center", justifyContent: "flex-end" });
+      }
     });
   });
 });

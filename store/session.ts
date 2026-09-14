@@ -1,5 +1,5 @@
 import { sessionWaitHold } from "@/lib/sessionWait";
-import { serializeDeviceMutation, usePush } from "@/store/push";
+import { cancelDeviceRegistrations, serializeDeviceMutation, usePush } from "@/store/push";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
 import { setLiveOwner } from "@/lib/live";
@@ -548,7 +548,8 @@ export const useSession = create<SessionState>((set, get) => ({
     const deviceToken = usePush.getState().token;
     const identity = clerkSignOut;
     const logoutBearer = api.captureLogoutBearer();
-    const serverLogout = serializeDeviceMutation(() => api.logout(usePush.getState().token ?? deviceToken, logoutBearer));
+    cancelDeviceRegistrations();
+    const serverLogout = serializeDeviceMutation(() => api.logout(deviceToken, logoutBearer));
     api.setToken(null);
     api.setTokenProvider(null);
     persist(null);
@@ -567,7 +568,10 @@ export const useSession = create<SessionState>((set, get) => ({
     await Promise.all([
       raceDeadline(serverLogout.catch(() => undefined), LOGOUT_API_TIMEOUT_MS),
       raceDeadline(
-        identity ? serverLogout.catch(() => undefined).then(() => identity().catch(() => undefined)) : Promise.resolve(),
+        identity
+          ? raceDeadline(serverLogout.catch(() => undefined), LOGOUT_API_TIMEOUT_MS)
+              .then(() => identity()).catch(() => undefined)
+          : Promise.resolve(),
         LOGOUT_CLERK_TIMEOUT_MS,
       ),
     ]);

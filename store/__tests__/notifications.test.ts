@@ -40,7 +40,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   api.deleteNotification.mockReset();
   api.deleteNotification.mockResolvedValue({ id: "a", deletedAt: "2026-09-01T04:00:00.000Z" });
-  useNotifications.setState({ unread: 0, readIds: [], hydrated: false });
+  useNotifications.setState({ unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
 });
 
 describe("the unread count", () => {
@@ -75,7 +75,7 @@ describe("read marks live on this phone", () => {
     useNotifications.getState().markRead("a");
     await flush();
 
-    useNotifications.setState({ unread: 0, readIds: [], hydrated: false });
+    useNotifications.setState({ unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
     await useNotifications.getState().hydrate();
 
     expect(useNotifications.getState().isRead(alert({ id: "a" }))).toBe(true);
@@ -145,4 +145,31 @@ it("rolls back a failed read and refetches the authoritative badge",async()=>{
   await useNotifications.getState().markRead("a");
   expect(useNotifications.getState().readIds).not.toContain("a");
   expect(useNotifications.getState().unread).toBe(1);
+});
+
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+it.each(["acknowledge", "clear"])("persists only confirmed marks through %s", async (operation) => {
+  useNotifications.getState().bindOwner("concurrent-rider");
+  const pending = deferred();
+  api.markNotificationsRead.mockReturnValueOnce(pending.promise).mockResolvedValue(undefined);
+  api.listNotifications.mockResolvedValue([alert({ id: "a" }), alert({ id: "b", read: true })]);
+  const a = useNotifications.getState().markRead("a");
+  if (operation === "acknowledge") await useNotifications.getState().markRead("b");
+  else await useNotifications.getState().clear([alert({ id: "b" })]);
+  await flush();
+  expect(JSON.parse((await AsyncStorage.getItem("gridgo.alertsRead.v1.concurrent-rider"))!)).not.toContain("a");
+  pending.reject(new Error("offline"));
+  await a;
+  await flush();
+  useNotifications.getState().bindOwner(null);
+  useNotifications.getState().bindOwner("concurrent-rider");
+  await useNotifications.getState().hydrate();
+  expect(useNotifications.getState().isRead(alert({ id: "a" }))).toBe(false);
+  expect(useNotifications.getState().isRead(alert({ id: "b" }))).toBe(operation === "acknowledge");
 });

@@ -216,3 +216,21 @@ describe("session clear + 401 wiring", () => {
     }
   });
 });
+
+it("cancels a device claim while its bearer is unresolved", async () => {
+  let finish!: (token: string) => void;
+  api.setTokenProvider(() => new Promise<string>((resolve) => { finish = resolve; }));
+  const fetchSpy = jest.spyOn(global, "fetch");
+  const controller = new AbortController();
+  try {
+    const request = api.registerDevice("device", "android", controller.signal);
+    controller.abort();
+    await expect(request).rejects.toThrow();
+    finish("late-token");
+    await Promise.resolve();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  } finally {
+    api.setTokenProvider(null);
+    fetchSpy.mockRestore();
+  }
+});

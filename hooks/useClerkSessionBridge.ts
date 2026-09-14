@@ -15,7 +15,7 @@ import {
  * and authorization is still enforced by the server on every request.
  */
 export function useClerkSessionBridge(): boolean {
-  const { isLoaded, isSignedIn, getToken, sessionClaims } = useAuth();
+  const { isLoaded, isSignedIn, getToken, sessionClaims, sessionId: clerkSessionId } = useAuth();
   const { isLoaded: userIsLoaded, user } = useUser();
   const { signOut } = useClerk();
   const adoptClerkSession = useSession((state) => state.adoptClerkSession);
@@ -31,7 +31,11 @@ export function useClerkSessionBridge(): boolean {
   // in the application form.
   const settledUnassigned = useRef<string | null>(null);
 
-  useEffect(() => bindClerkSignOut(signOut), [signOut]);
+  const signOutSessionId = clerkSessionId ?? (typeof sessionClaims?.sid === "string" ? sessionClaims.sid : null);
+  useEffect(
+    () => bindClerkSignOut(signOutSessionId ? () => signOut({ sessionId: signOutSessionId }) : null),
+    [signOut, signOutSessionId],
+  );
 
   useEffect(() => {
     if (!isLoaded) {

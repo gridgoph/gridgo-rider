@@ -441,17 +441,24 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
   const aborted = new Promise<never>((_, reject) => {
     controller.signal.addEventListener("abort", () => reject(new Error("GRIDGO did not answer in time. Check this phone’s connection, then try again.")), { once: true });
   });
+  const abort = () => controller.abort();
+  init.signal?.addEventListener("abort", abort, { once: true });
+  if (init.signal?.aborted) abort();
   let res: Response;
   let text: string;
   let sentBearer = false;
   try {
     const bearer = await Promise.race([resolveBearer(), aborted]);
     assertLiveGeneration(generation);
+    if (controller.signal.aborted) await aborted;
     sentBearer = Boolean(bearer);
     if (bearer) { headers.Authorization = `Bearer ${bearer}`; headers["X-GRIDGO-Role"] = "rider"; }
     res = await Promise.race([fetch(`${getApiBase()}${path}`, { ...fetchInit, headers, signal: controller.signal }), aborted]);
     text = await Promise.race([res.text(), aborted]);
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener("abort", abort);
+  }
   assertLiveGeneration(generation);
   let data: unknown = null;
   if (text) {
@@ -607,9 +614,11 @@ export async function logout(deviceToken?: string | null, capturedBearer?: Promi
 export async function registerDevice(
   token: string,
   platform: DevicePlatform,
+  signal?: AbortSignal,
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
+    signal,
     body: JSON.stringify({ token, platform, appRole: "rider", tokenProvider: platform === "ios" ? "apns" : "fcm" }),
   });
 }
@@ -643,9 +652,11 @@ export async function registerDevice(
 export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
+    signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ token, platform, appRole: "rider", tokenProvider: platform === "ios" ? "apns" : "fcm" }),
   });

@@ -1,3 +1,4 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect } from "expo-router";
 import { LocateFixed, Search, X } from "lucide-react-native";
@@ -35,6 +36,7 @@ import { useSession } from "@/store/session";
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const beginRead = useReadVersion();
   const user = useSession((state) => state.user);
   const approval = approvalPresentation(user);
   const location = useRiderLocation();
@@ -50,17 +52,20 @@ export default function MapScreen() {
   const [cardOpen, setCardOpen] = useState(true);
 
   const loadShops = useCallback(async () => {
+    const isCurrent = beginRead();
     try {
       const catalog = await api.listCatalogShops();
+      if (!isCurrent()) return;
       setShops(withGridgoOffice(directoryShopsFromCatalog(catalog)));
       setShopsError(null);
     } catch {
+      if (!isCurrent()) return;
       setShops(withGridgoOffice([]));
       setShopsError("Could not load print shops. Try again.");
     } finally {
-      setShopsLoaded(true);
+      if (isCurrent()) setShopsLoaded(true);
     }
-  }, []);
+  }, [beginRead]);
 
   useLiveRefresh(["catalog", "availability", "services"], loadShops);
 

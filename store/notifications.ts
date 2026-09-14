@@ -12,6 +12,7 @@ type NotificationsState = {
   unread: number;
   /** Ids the rider has marked read on this phone. */
   readIds: string[];
+  confirmedReadIds: string[];
   hydrated: boolean;
   /** Read the local read marks back at launch. Safe to call more than once. */
   hydrate: () => Promise<void>;
@@ -42,7 +43,8 @@ type NotificationsState = {
 export const useNotifications = create<NotificationsState>((set, get) => {
   let writeQueue: Promise<void> = Promise.resolve();
 
-  function persist(readIds: string[]) {
+  function persist() {
+    const readIds = get().confirmedReadIds;
     const key = `${STORAGE_KEY}.${get().ownerId ?? "signed-out"}`;
     writeQueue = writeQueue.then(() =>
       AsyncStorage.setItem(key, JSON.stringify(readIds)).catch(() => {
@@ -58,9 +60,10 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
   return {
     ownerId: null,
-    bindOwner: (ownerId) => { if (get().ownerId !== ownerId) set({ownerId, unread:0, readIds:[], hydrated:false}); },
+    bindOwner: (ownerId) => { if (get().ownerId !== ownerId) set({ownerId, unread:0, readIds:[], confirmedReadIds: [], hydrated:false}); },
     unread: 0,
     readIds: [],
+    confirmedReadIds: [],
     hydrated: false,
 
     hydrate: async () => {
@@ -71,7 +74,11 @@ export const useNotifications = create<NotificationsState>((set, get) => {
         if (owner !== get().ownerId) return;
         const parsed = raw ? (JSON.parse(raw) as unknown) : null;
         if (Array.isArray(parsed)) {
-          set({ readIds: parsed.filter((id): id is string => typeof id === "string") });
+          const confirmedReadIds = [...new Set([
+            ...parsed.filter((id): id is string => typeof id === "string"),
+            ...get().confirmedReadIds,
+          ])];
+          set({ confirmedReadIds, readIds: [...new Set([...confirmedReadIds, ...get().readIds])] });
         }
       } catch {
         // Corrupt or absent — start with nothing marked rather than crash.
@@ -94,9 +101,11 @@ export const useNotifications = create<NotificationsState>((set, get) => {
       if (!added.length) return;
       set({ readIds: [...previous, ...added], unread: Math.max(0, get().unread - added.length) });
       try {
-        await api.markNotificationsRead(ids);
+        await api.markNotificationsRead(added);
         if (owner !== get().ownerId) return;
-        persist(get().readIds);
+        const accepted = added.filter((id) => get().readIds.includes(id));
+        set({ confirmedReadIds: [...new Set([...get().confirmedReadIds, ...accepted])] });
+        persist();
         invalidate("notifications");
       } catch {
         if (owner !== get().ownerId) return;
@@ -123,8 +132,8 @@ export const useNotifications = create<NotificationsState>((set, get) => {
       if (cleared.length) {
         const drop = new Set(cleared);
         const next = get().readIds.filter((id) => !drop.has(id));
-        set({ readIds: next });
-        persist(next);
+        set({ readIds: next, confirmedReadIds: get().confirmedReadIds.filter((id) => !drop.has(id)) });
+        persist();
       }
       return { cleared, failed };
     },

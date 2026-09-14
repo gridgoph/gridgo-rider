@@ -3,8 +3,8 @@ import { Platform } from "react-native";
 
 import * as api from "@/lib/api";
 import { PUSH_CHANNEL_ID } from "@/lib/push";
-import { usePush, pushSupported } from "@/store/push";
-import { useSession } from "@/store/session";
+import { usePush, pushSupported, DEVICE_REGISTRATION_TIMEOUT_MS, cancelDeviceRegistrations } from "@/store/push";
+import { bindClerkSignOut, useSession } from "@/store/session";
 
 /**
  * The registration lifecycle, against a mocked native module (jest.setup.js).
@@ -92,7 +92,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().error).toBeNull();
     register.mockRestore();
@@ -117,7 +117,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(claimed).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(false);
@@ -136,7 +136,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(unclaimed).not.toHaveBeenCalled();
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
@@ -151,7 +151,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
   });
@@ -229,7 +229,7 @@ describe("enable", () => {
     await expect(usePush.getState().enable()).resolves.toBe(true);
 
     expect(mocked.requestPermissionsAsync).toHaveBeenCalled();
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     register.mockRestore();
   });
 
@@ -259,7 +259,7 @@ describe("adoptToken", () => {
 
     await usePush.getState().adoptToken("rotated-token");
 
-    expect(register).toHaveBeenCalledWith("rotated-token", "android");
+    expect(register).toHaveBeenCalledWith("rotated-token", "android", expect.any(AbortSignal));
     register.mockRestore();
   });
 
@@ -311,8 +311,74 @@ describe("signing out", () => {
 
     await usePush.getState().release();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(usePush.getState().claimed).toBe(false);
     unclaimed.mockRestore();
   });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+it.each(["native token", "bearer", "unclaimed request"])("cancels stalled %s work and tears down Clerk", async (stage) => {
+  jest.useFakeTimers();
+  const stalled = deferred<never>();
+  const identity = jest.fn(async () => undefined);
+  const unbind = bindClerkSignOut(identity);
+  usePush.setState({ permission: "granted" });
+  const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  const unclaimed = jest.spyOn(api, "registerDeviceUnclaimed").mockResolvedValue(undefined);
+  const logout = jest.spyOn(api, "logout").mockResolvedValue(undefined);
+  if (stage === "native token") mocked.getDevicePushTokenAsync.mockReturnValueOnce(stalled.promise);
+  if (stage === "bearer") api.setTokenProvider(() => stalled.promise);
+  if (stage === "unclaimed request") {
+    api.setToken(null);
+    unclaimed.mockReturnValueOnce(stalled.promise);
+  }
+  try {
+    const old = usePush.getState().registerIfGranted();
+    await jest.advanceTimersByTimeAsync(0);
+    const signingOut = useSession.getState().logout();
+    await jest.advanceTimersByTimeAsync(4_000);
+    await signingOut;
+    await old;
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(identity).toHaveBeenCalledTimes(1);
+    if (stage === "unclaimed request") expect(unclaimed.mock.calls[0][2]?.aborted).toBe(true);
+    stalled.resolve({ type: "android", data: "obsolete" } as never);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(register).not.toHaveBeenCalled();
+    expect(usePush.getState().token).not.toBe("obsolete");
+  } finally {
+    cancelDeviceRegistrations();
+    await jest.advanceTimersByTimeAsync(0);
+    unbind();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  }
+});
+
+it("releases the registration queue at its deadline and ignores a late token", async () => {
+  jest.useFakeTimers();
+  const stalled = deferred<Notifications.DevicePushToken>();
+  mocked.getDevicePushTokenAsync.mockReturnValueOnce(stalled.promise);
+  usePush.setState({ permission: "granted" });
+  const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  try {
+    const first = usePush.getState().registerIfGranted();
+    const second = usePush.getState().registerIfGranted();
+    await jest.advanceTimersByTimeAsync(DEVICE_REGISTRATION_TIMEOUT_MS);
+    await Promise.all([first, second]);
+    expect(register).toHaveBeenCalledTimes(1);
+    stalled.resolve({ type: "android", data: "obsolete" } as never);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
+  } finally {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  }
 });

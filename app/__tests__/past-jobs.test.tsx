@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
 import type { Order } from "@/lib/api";
 import { useSession } from "@/store/session";
@@ -17,6 +17,8 @@ jest.mock("@/lib/api", () => ({
   listOrders: jest.fn(),
 }));
 
+import EarningsScreen from "@/app/(tabs)/earnings";
+import { invalidate } from "@/lib/live";
 import PastJobsScreen from "@/app/past-jobs";
 
 const api = jest.requireMock("@/lib/api") as { listOrders: jest.Mock };
@@ -95,4 +97,19 @@ describe("Past jobs", () => {
     await fireEvent.press(screen.getByText("See offers"));
     expect(jest.requireMock("expo-router").router.replace).toHaveBeenCalledWith("/(tabs)/offers");
   });
+});
+
+it.each([PastJobsScreen, EarningsScreen])("keeps the newest delivery when an earlier read finishes last (%p)", async (Screen) => {
+  jest.useFakeTimers();
+  useSession.setState({ user: rider });
+  let finish!: (orders: Order[]) => void;
+  api.listOrders.mockReturnValueOnce(new Promise<Order[]>((resolve) => { finish = resolve; }))
+    .mockResolvedValue([order({ id: "done", state: "completed", title: "Newest delivery" })]);
+  try {
+    await render(<Screen />);
+    await act(async () => { invalidate("orders"); await jest.advanceTimersByTimeAsync(100); });
+    expect(screen.getByText("Newest delivery")).toBeTruthy();
+    await act(async () => { finish([]); });
+    expect(screen.getByText("Newest delivery")).toBeTruthy();
+  } finally { jest.useRealTimers(); }
 });

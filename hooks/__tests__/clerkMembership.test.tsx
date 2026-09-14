@@ -1,4 +1,4 @@
-import {renderHook,waitFor} from "@testing-library/react-native";
+import {act,renderHook,waitFor} from "@testing-library/react-native";
 import {useClerkSessionBridge} from "@/hooks/useClerkSessionBridge";
 import {useSession,releaseClerkAdoptionBlock} from "@/store/session";
 import * as api from "@/lib/api";
@@ -13,4 +13,30 @@ it("uses API membership even when the Clerk primary role is client",async()=>{
   await waitFor(()=>expect(useSession.getState().user?.id).toBe("dual"));
   expect(mockSignOut).not.toHaveBeenCalled();
   await view.unmount();jest.restoreAllMocks();api.setTokenProvider(null);
+});
+
+it("ends only the original Clerk session even when domain logout stalls", async () => {
+  jest.useFakeTimers();
+  releaseClerkAdoptionBlock();
+  mockClaims.sid = "old-session";
+  mockSignOut.mockClear();
+  useSession.setState({ user: null, authSource: null, needsApplication: false, loading: false });
+  jest.spyOn(api, "me").mockResolvedValue({ id: "old-rider", role: "rider", name: "Rider", email: "rider@test" });
+  let finish!: () => void;
+  jest.spyOn(api, "logout").mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+  const view = await renderHook(() => useClerkSessionBridge());
+  let logout!: Promise<void>;
+  await act(async () => { logout = useSession.getState().logout(); });
+  mockClaims.sid = "new-session";
+  await view.rerender({});
+  await act(async () => { await jest.advanceTimersByTimeAsync(4_000); await logout; });
+  expect(mockSignOut).toHaveBeenCalledWith({ sessionId: "old-session" });
+  expect(mockSignOut).toHaveBeenCalledTimes(1);
+  await act(async () => { finish(); await Promise.resolve(); });
+  expect(mockSignOut).toHaveBeenCalledTimes(1);
+  await view.unmount();
+  mockClaims.sid = "dual-session";
+  jest.restoreAllMocks();
+  api.setTokenProvider(null);
+  jest.useRealTimers();
 });
