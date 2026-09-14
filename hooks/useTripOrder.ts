@@ -17,7 +17,7 @@ export function useTripOrder(orderId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const nextRead = useReadVersion();
-  const load = useCallback(async () => {
+  const load = useCallback(async (mode: "load" | "refresh" = "load") => {
     const current = nextRead();
     if (!orderId) {
       setOrder(null);
@@ -25,7 +25,7 @@ export function useTripOrder(orderId: string | null) {
       setError("This job could not be opened. Go back and try again.");
       return;
     }
-    setLoading(true);
+    if (mode === "load") setLoading(true);
     try {
       const next = await api.getOrder(orderId);
       if (!current()) return;
@@ -38,12 +38,14 @@ export function useTripOrder(orderId: string | null) {
         api.apiErrorMessage(e, "Could not load this job. Check your connection and try again."),
       );
     } finally {
-      if (current())
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [orderId, nextRead]);
 
-  useLiveRefresh(["orders", "jobs", "dispatch", "escalations", "claims", "payouts"], load);
+  useLiveRefresh(
+    ["orders", "jobs", "dispatch", "escalations", "claims", "payouts"],
+    () => load("refresh"),
+  );
 
   useEffect(() => {
     void load();
