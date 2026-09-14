@@ -49,6 +49,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
     <View className="gg-card gap-4">
       <View className="gap-1">
         <Text className="text-h3 text-text-primary">{offer.title}</Text>
+        <Text className="text-caption text-text-muted">Order {offer.id}</Text>
         <Text className="text-caption text-text-muted">
           {offer.size} · {offer.material} · {offer.quantity} pcs
         </Text>

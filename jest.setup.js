@@ -1,3 +1,10 @@
+// Reanimated 4 / Worklets 0.10 load a native TurboModule at import time.
+// Jest has no UI runtime, so the Worklets mock must stand in before Reanimated
+// calls setUpTests — otherwise every suite dies on `loadUnpackers`.
+jest.mock("react-native-worklets", () =>
+  require("react-native-worklets/src/mock"),
+);
+
 // Reanimated ships its own Jest harness. Without this, useAnimatedStyle and
 // useSharedValue throw when the worklet runtime is absent.
 require("react-native-reanimated").setUpTests();

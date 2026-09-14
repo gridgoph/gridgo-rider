@@ -41,6 +41,13 @@ const offer = {
 } as Order;
 
 describe("OfferCard accept control", () => {
+  it("prints the order id under the title", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("Storefront tarpaulin")).toBeTruthy();
+    expect(screen.getByText("Order ord_1")).toBeTruthy();
+  });
+
   it("says Accepting only while this card's accept is in flight", async () => {
     await render(<OfferCard offer={offer} accepting onAccept={jest.fn()} />);
 

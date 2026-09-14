@@ -37,7 +37,7 @@ export function BlockingOverlay({ visible, label }: Props) {
       entering={reduced ? undefined : FadeIn.duration(motion.fast)}
       exiting={reduced ? undefined : FadeOut.duration(motion.fast)}
       style={[
-        StyleSheet.absoluteFillObject,
+        StyleSheet.absoluteFill,
         {
           backgroundColor: colors.scrim,
           alignItems: "center",

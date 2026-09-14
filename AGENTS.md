@@ -1,6 +1,6 @@
-# Expo HAS CHANGED
+# Expo SDK 57
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v54.0.0/ before writing any code.
+Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
 
 You are an expert React Native and Expo engineer helping me build GRIDGO.
 
@@ -65,7 +65,7 @@ Every screen that needs network uses **`lib/api.ts`** against the shared local *
 - **Contract** — `gridgo-api` `docs/OPERATIONAL_MODEL_V2_API.md` is authoritative for routes, states, transitions and role projections; `docs/STORAGE_API.md` for file bytes. Read them before changing a call site rather than inferring from the app.
 - **Stable API surface** — feature call sites continue through `lib/api.ts`; auth chooses a fresh Clerk bearer or the development-only legacy bearer there.
 - **API base** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → Expo dev-server hostname from `expo-constants` + `EXPO_PUBLIC_API_PORT` (default `8787`) → Android emulator `10.0.2.2` when that host is loopback → `127.0.0.1`. Do not hardcode a LAN IP; a physical device inherits the host it loaded the bundle from. Unit tests: `lib/__tests__/apiBase.test.ts`.
-- **Local Android is a USB development build, not Expo Go.** `expo-dev-client` is a dependency. Scripts: `start` → `expo start --dev-client`; `android` → `expo run:android`. Metro for this app is port **8083**. Export `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`; never commit `/android` or `google-services.json`. Guarded by `__tests__/devClientScripts.test.ts`.
+- **Day-to-day Metro is Expo Go; native work still uses a USB development build.** Scripts: `start` → `expo start --go --port 8083`; `start:usb` → `expo start --dev-client`; `android` → `expo run:android`. `expo-dev-client` stays a dependency for push and custom-scheme work Expo Go cannot do. Metro for this app is port **8083**. Export `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`; never commit `/android` or `google-services.json`. Guarded by `__tests__/devClientScripts.test.ts`. Navigation types come from `expo-router` (`expo-router/js-tabs`, `expo-router/react-navigation`), not from a direct `@react-navigation/*` dependency.
 - **Pointing a build at a hosted API is configuration, never code.** Set `EXPO_PUBLIC_API_URL` in the build environment — `EXPO_PUBLIC_API_URL=https://your-api.example npx expo export`, or an EAS build profile's `env`. It wins over every other step, on every platform, including the Android loopback rewrite (asserted for the whole matrix in `apiBase.test.ts`). `EXPO_PUBLIC_*` values are **inlined by Babel at bundle time**, not read at runtime, so the variable has to be set for the command that builds the bundle; setting it only on the server that serves it does nothing. Verify a real build rather than trusting the config: the URL appears as a literal in the exported Hermes bundle and the name `EXPO_PUBLIC_API_URL` does not. Never commit the domain to the repo.
 
 Product scope for this binary: **`PRD.md`**. Fleet blueprint: `gridgo-tinker`.

@@ -9,7 +9,7 @@ import {
   DefaultTheme,
   ThemeProvider,
   type Theme,
-} from "@react-navigation/native";
+} from "expo-router/react-navigation";
 import Constants from "expo-constants";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";

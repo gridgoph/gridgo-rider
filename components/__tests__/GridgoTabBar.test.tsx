@@ -1,4 +1,4 @@
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { readFileSync } from "fs";
 import { join } from "path";
