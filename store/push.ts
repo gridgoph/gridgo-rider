@@ -230,7 +230,11 @@ export const usePush = create<PushState>((set, get) => ({
       let finish: () => void = () => {};
       const cancelled = new Promise<void>((resolve) => { finish = resolve; });
       controller.signal.addEventListener("abort", finish, { once: true });
-      const timer = setTimeout(() => controller.abort(), DEVICE_REGISTRATION_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        if (!isCurrent()) return;
+        set({ error: errorText(null) });
+        controller.abort();
+      }, DEVICE_REGISTRATION_TIMEOUT_MS);
       try {
         await Promise.race([run(), cancelled]);
       } finally {

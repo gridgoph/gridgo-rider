@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 import * as api from "@/lib/api";
-import { PUSH_CHANNEL_ID } from "@/lib/push";
+import { PUSH_CHANNEL_ID, pushOffer } from "@/lib/push";
 import { usePush, pushSupported, DEVICE_REGISTRATION_TIMEOUT_MS, cancelDeviceRegistrations } from "@/store/push";
 import { bindClerkSignOut, useSession } from "@/store/session";
 
@@ -361,6 +361,44 @@ it.each(["native token", "bearer", "unclaimed request"])("cancels stalled %s wor
   }
 });
 
+it.each(["native token", "bearer", "registration request"])("offers retry after a %s timeout", async (stage) => {
+  jest.useFakeTimers();
+  const stalled = deferred<never>();
+  usePush.setState({ permission: "granted" });
+  const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  if (stage === "native token") mocked.getDevicePushTokenAsync.mockReturnValueOnce(stalled.promise);
+  if (stage === "bearer") jest.spyOn(api, "sessionBearerPresent").mockReturnValueOnce(stalled.promise);
+  if (stage === "registration request") register.mockReturnValueOnce(stalled.promise);
+  try {
+    const pending = usePush.getState().registerIfGranted();
+    await jest.advanceTimersByTimeAsync(DEVICE_REGISTRATION_TIMEOUT_MS);
+    await pending;
+    const state = usePush.getState();
+    expect(state).toMatchObject({
+      busy: false,
+      claimed: false,
+      error: "Could not turn on alerts for this phone. Your alerts still arrive in the app.",
+    });
+    expect(pushOffer({ ...state, signedIn: true, failed: Boolean(state.error) })).toBe("retry");
+    if (stage === "registration request") expect(register.mock.calls[0][2]?.aborted).toBe(true);
+    stalled.resolve({ type: "android", data: "obsolete" } as never);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(usePush.getState().error).toBe(state.error);
+    expect(usePush.getState().token).not.toBe("obsolete");
+    await usePush.getState().registerIfGranted();
+    expect(usePush.getState()).toMatchObject({
+      busy: false,
+      claimed: true,
+      token: "fcm-token-a7c8d3f1",
+      error: null,
+    });
+  } finally {
+    cancelDeviceRegistrations();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  }
+});
+
 it("releases the registration queue at its deadline and ignores a late token", async () => {
   jest.useFakeTimers();
   const stalled = deferred<Notifications.DevicePushToken>();
@@ -428,7 +466,7 @@ it("cancels an old account's token lookup and lets the next account register", a
     expect(usePush.getState().busy).toBe(true);
     useSession.setState({ user: { ...riderUser, id: "next-rider" } });
     await old;
-    expect(usePush.getState().busy).toBe(false);
+    expect(usePush.getState()).toMatchObject({ busy: false, error: null });
     expect(register).not.toHaveBeenCalled();
     await usePush.getState().registerIfGranted();
     token.resolve({ type: "android", data: "obsolete-token" } as never);
