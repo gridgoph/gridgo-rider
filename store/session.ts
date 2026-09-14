@@ -251,6 +251,8 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   rejectClerkSession: (message) => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = true;
+    const identity = clerkSignOut;
     clerkOwnsSession = true;
     api.setToken(null);
     api.setTokenProvider(null);
@@ -265,6 +267,7 @@ export const useSession = create<SessionState>((set, get) => ({
       sessionWait: null,
     });
     persistGoogleJoin(false);
+    void identity?.().catch(() => {});
   },
   beginClerkSession: () => {
     sessionDecisionVersion += 1;
