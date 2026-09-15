@@ -1,12 +1,14 @@
 import {act,renderHook,waitFor} from "@testing-library/react-native";
 import {useClerkSessionBridge} from "@/hooks/useClerkSessionBridge";
+import {CLERK_JOIN_TIMEOUT_MS} from "@/lib/authGate";
 import {useSession,releaseClerkAdoptionBlock,isClerkAdoptionBlocked} from "@/store/session";
 import * as api from "@/lib/api";
 const mockToken=jest.fn(async()=>"token");const mockSignOut=jest.fn(async()=>{});
 const mockClaims={sid:"dual-session",gridgoRole:"client"};
-const mockUser={publicMetadata:{gridgoRole:"client"}};
+let mockUser: { publicMetadata: { gridgoRole: string } } | null = {publicMetadata:{gridgoRole:"client"}};
+let mockUserLoaded = true;
 let mockSignedIn = true;
-jest.mock("@clerk/expo",()=>({useAuth:()=>({isLoaded:true,isSignedIn:mockSignedIn,getToken:mockToken,sessionClaims:mockClaims}),useClerk:()=>({signOut:mockSignOut}),useUser:()=>({isLoaded:true,user:mockUser})}));
+jest.mock("@clerk/expo",()=>({useAuth:()=>({isLoaded:true,isSignedIn:mockSignedIn,getToken:mockToken,sessionClaims:mockClaims}),useClerk:()=>({signOut:mockSignOut}),useUser:()=>({isLoaded:mockUserLoaded,user:mockUser})}));
 it("uses API membership even when the Clerk primary role is client",async()=>{
   releaseClerkAdoptionBlock();useSession.setState({user:null,authSource:null,needsApplication:false,loading:false});
   jest.spyOn(api,"me").mockResolvedValue({id:"dual",role:"rider",name:"Dual",email:"dual@test",verificationStatus:"approved"});
@@ -78,6 +80,94 @@ it("keeps a revoked rider at login while Clerk sign-out completes", async () => 
     await view.unmount();
     mockSignedIn = true;
     releaseClerkAdoptionBlock();
+    jest.restoreAllMocks();
+    api.setTokenProvider(null);
+  }
+});
+
+it("adopts a signed-in Clerk session before user metadata arrives", async () => {
+  const previousUser = mockUser;
+  const previousLoaded = mockUserLoaded;
+  mockUser = null;
+  mockUserLoaded = false;
+  releaseClerkAdoptionBlock();
+  useSession.setState({
+    user: null, authSource: null, needsApplication: false, loading: false, sessionWait: null,
+  });
+  jest.spyOn(api, "me").mockResolvedValue({
+    id: "dual", role: "rider", name: "Dual", email: "dual@test", verificationStatus: "approved",
+  });
+  const view = await renderHook(() => useClerkSessionBridge());
+  try {
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("dual"));
+    expect(view.result.current).toBe(true);
+    expect(useSession.getState().sessionWait).toBeNull();
+  } finally {
+    await view.unmount();
+    mockUser = previousUser;
+    mockUserLoaded = previousLoaded;
+    jest.restoreAllMocks();
+    api.setTokenProvider(null);
+  }
+});
+
+it("does not keep Signing you in when a signed-in adopt never sees a Clerk user", async () => {
+  const previousUser = mockUser;
+  const previousLoaded = mockUserLoaded;
+  mockUser = null;
+  mockUserLoaded = false;
+  jest.useFakeTimers();
+  releaseClerkAdoptionBlock();
+  mockSignOut.mockClear();
+  useSession.setState({
+    user: null, authSource: null, needsApplication: false, loading: false,
+    sessionWait: null, error: null, showErrorOnLogin: false,
+  });
+  jest.spyOn(api, "me").mockReturnValue(new Promise(() => {}));
+  const view = await renderHook(() => useClerkSessionBridge());
+  try {
+    expect(useSession.getState().sessionWait).toBe("in");
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(CLERK_JOIN_TIMEOUT_MS);
+    });
+    expect(useSession.getState().sessionWait).not.toBe("in");
+    expect(useSession.getState().loading).toBe(false);
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().showErrorOnLogin).toBe(true);
+    expect(useSession.getState().error).toBeTruthy();
+    expect(view.result.current).toBe(true);
+  } finally {
+    await view.unmount();
+    mockUser = previousUser;
+    mockUserLoaded = previousLoaded;
+    mockSignedIn = true;
+    releaseClerkAdoptionBlock();
+    jest.restoreAllMocks();
+    api.setTokenProvider(null);
+    jest.useRealTimers();
+  }
+});
+
+it("does not keep Signing you in after an unassigned Clerk identity is adopted", async () => {
+  const previousUser = mockUser;
+  const previousLoaded = mockUserLoaded;
+  mockUser = null;
+  mockUserLoaded = false;
+  releaseClerkAdoptionBlock();
+  useSession.setState({
+    user: null, authSource: null, needsApplication: false, loading: false, sessionWait: null,
+  });
+  jest.spyOn(api, "me").mockRejectedValue(new api.ApiError(401, "unauthorized"));
+  const view = await renderHook(() => useClerkSessionBridge());
+  try {
+    await waitFor(() => expect(useSession.getState().needsApplication).toBe(true));
+    expect(useSession.getState().sessionWait).not.toBe("in");
+    expect(useSession.getState().showErrorOnLogin).toBe(false);
+    expect(view.result.current).toBe(true);
+  } finally {
+    await view.unmount();
+    mockUser = previousUser;
+    mockUserLoaded = previousLoaded;
     jest.restoreAllMocks();
     api.setTokenProvider(null);
   }

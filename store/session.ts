@@ -502,6 +502,7 @@ export const useSession = create<SessionState>((set, get) => ({
           error: null,
           showErrorOnLogin: false,
           needsApplication: true,
+          sessionWait: null,
         });
         return "unassigned";
       }
@@ -511,6 +512,7 @@ export const useSession = create<SessionState>((set, get) => ({
         loading: false,
         error: loginErrorMessage(error),
         showErrorOnLogin: true,
+        sessionWait: null,
       });
       return "rejected";
     }
