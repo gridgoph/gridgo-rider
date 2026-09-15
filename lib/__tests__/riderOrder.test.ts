@@ -215,6 +215,32 @@ describe("the spoken sign-off", () => {
 });
 
 describe("the client's digital balance gates delivery", () => {
+  const finalPayment = {
+    amountMinor: 19875,
+    method: "qr_manual",
+    submittedAt: null,
+    confirmedAt: null,
+    confirmationSource: null,
+  };
+
+  it.each(["confirmed", "legacy_confirmed"] as const)("accepts canonical final_online %s", (status) => {
+    expect(isBalanceConfirmed({ payments: { final_online: { ...finalPayment, status } } })).toBe(true);
+  });
+
+  it("uses the canonical confirmation even when an old alias is pending", () => {
+    expect(isBalanceConfirmed({ payments: {
+      final_online: { ...finalPayment, status: "confirmed" },
+      balance: { ...finalPayment, status: "pending_confirmation" },
+    } })).toBe(true);
+  });
+
+  it.each(["not_submitted", "pending_confirmation"] as const)("keeps canonical %s blocked even when an old alias is confirmed", (status) => {
+    expect(isBalanceConfirmed({ payments: {
+      final_online: { ...finalPayment, status },
+      balance: { ...finalPayment, status: "confirmed" },
+    } })).toBe(false);
+  });
+
   it("is confirmed only when Operations says so", () => {
     const installment = {
       amountMinor: 19875,

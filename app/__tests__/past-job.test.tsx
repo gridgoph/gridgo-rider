@@ -86,7 +86,7 @@ describe("a past job", () => {
     await render(<PastJobScreen />);
 
     expect(await screen.findByText("Flyers x500")).toBeTruthy();
-    expect(screen.getByText("Order ord_done")).toBeTruthy();
+    expect(screen.getByText("DONE")).toBeTruthy();
     expect(screen.getByText("Delivery complete")).toBeTruthy();
     expect(screen.getByText("HISTORY")).toBeTruthy();
 

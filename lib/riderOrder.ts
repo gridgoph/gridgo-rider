@@ -129,7 +129,9 @@ export function endsAtOffice(order: Pick<Order, "fulfillmentMode">): boolean {
 }
 
 export function isBalanceConfirmed(order: Pick<Order, "payments">): boolean {
-  const status = order.payments?.balance?.status;
+  // The API returns final_online; balance is retained for older responses.
+  // A stale alias must never override the authoritative installment.
+  const status = (order.payments?.final_online ?? order.payments?.balance)?.status;
   return status === "confirmed" || status === "legacy_confirmed";
 }
 
@@ -214,7 +216,7 @@ export function tripPhase(order: Order | null): TripPhase {
 export function primaryActionLabel(phase: TripPhase, toOffice = false): string | null {
   switch (phase) {
     case "pickup_checks":
-      return "Run the six pickup checks";
+      return "Check with the supplier";
     case "pickup_blocked":
       return null;
     case "start_delivery":

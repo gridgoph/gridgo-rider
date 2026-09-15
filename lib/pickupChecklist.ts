@@ -3,7 +3,7 @@ import type { Order, PickupCheckCode, PickupCheckResult } from "@/lib/api";
 /**
  * The six-point pickup check.
  *
- * A rider runs this at the supplier's counter before the package ever moves.
+ * The rider and supplier run this together at the counter before the package moves.
  * All six have to pass; any one failing stops transport outright.
  *
  * The reason that rule is absolute, and the reason it belongs in the copy the
@@ -47,7 +47,7 @@ export const PICKUP_CHECKS: readonly PickupCheckDefinition[] = [
   {
     code: "quantity_match",
     label: "Quantity matches",
-    verify: "Count the pieces. The physical count matches the quantity on the order ticket.",
+    verify: "Count the pieces together with the supplier against the order ticket.",
     failure: "the count does not match the order",
   },
   {
@@ -77,7 +77,7 @@ export const PICKUP_CHECKS: readonly PickupCheckDefinition[] = [
   {
     code: "supplier_sign_off",
     label: "Supplier signs off",
-    verify: "The supplier confirms the handoff — a signature, or a chat message with a photo.",
+    verify: "After checking together, the supplier confirms the handoff — a signature, or a chat message with a photo.",
     failure: "the supplier would not sign the handoff off",
   },
 ] as const;
@@ -204,4 +204,9 @@ export function checklistSummary(order: Pick<Order, "pickupChecklist">): string 
     default:
       return null;
   }
+}
+
+/** Server authorization remains authoritative; do not offer checks outside pickup. */
+export function canRunPickupChecks(order: Pick<Order, "state" | "pickupChecklist">): boolean {
+  return order.state === "rider_assigned" && order.pickupChecklist?.status !== "failed_escalated";
 }

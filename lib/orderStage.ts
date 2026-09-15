@@ -96,7 +96,7 @@ export function orderStage(
 
   switch (order.state) {
     case "rider_assigned":
-      return { index: 0, blocked: false, summary: "Waiting for your pickup checks" };
+      return { index: 0, blocked: false, summary: "Go to the shop for joint pickup checks" };
     case "picked_up":
       return { index: 1, blocked: false, summary: "Checked, and with you" };
     case "out_for_delivery":

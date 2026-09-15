@@ -16,10 +16,14 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { BrandIntro } from "@/components/BrandIntro";
 import { colors, type ThemeName, typography } from "@/constants/theme";
@@ -35,6 +39,7 @@ import {
   fullBleedScreenOptions,
   multiOriginPushedScreenOptions,
 } from "@/lib/navigationHeaders";
+import { nativeHeaderInsetOptions } from "@/lib/nativeHeaderInsets";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
@@ -77,7 +82,6 @@ function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function AppShell() {
-  const ownerId = useSession((s) => `${s.user?.id ?? "signed-out"}:${s.user?.verificationStatus ?? "approved"}`);
   const scheme = useThemeName();
   const token = useThemeColors();
   const fontsReady = useAppFonts();
@@ -158,131 +162,7 @@ function AppShell() {
         <ThemeProvider value={navigationTheme(scheme)}>
         {launchReady ? (
         <AuthGate>
-          <Stack
-            key={ownerId ?? "signed-out"}
-            screenOptions={{
-              headerStyle: { backgroundColor: token.surface },
-              headerTintColor: token.textPrimary,
-              headerTitleStyle: {
-                fontSize: typography.h3.fontSize,
-                fontFamily: typography.h3.fontFamily,
-              },
-              headerShadowVisible: false,
-              contentStyle: { backgroundColor: token.canvas },
-            }}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="sso-callback"
-              options={{ headerShown: false, title: "Signing in" }}
-            />
-            <Stack.Screen name="(auth)/welcome" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="(auth)/signup"
-              options={{ title: "Sign up", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="(auth)/login"
-              options={{ title: "Sign in", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="(auth)/accept-invitation"
-              options={{ title: "Invitation", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="(auth)/reset-password"
-              options={{ title: "Recover password", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="onboarding"
-              options={{
-                headerShown: false,
-                animation: "fade",
-                contentStyle: { backgroundColor: token.canvas },
-              }}
-            />
-            {/*
-              The tab shell draws its own headers per tab, so its header is
-              hidden — but it still needs a title. Screens pushed above it set
-              their own back label (`multiOriginPushedScreenOptions`); this is
-              the second line of defence, so that if one ever forgets, iOS
-              labels the back control "GRIDGO" and never `(tabs)`.
-            */}
-            <Stack.Screen
-              name="(tabs)"
-              options={{ headerShown: false, title: "GRIDGO" }}
-            />
-            <Stack.Screen
-              name="alerts"
-              options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="past-jobs"
-              options={{ title: "Past jobs", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="past-job"
-              options={{ title: "Past job", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="settings"
-              options={{
-                title: "Settings",
-                ...multiOriginPushedScreenOptions,
-              }}
-            />
-            <Stack.Screen
-              name="rider-details"
-              options={{
-                title: "Your details",
-                ...multiOriginPushedScreenOptions,
-              }}
-            />
-            <Stack.Screen
-              name="change-password"
-              options={{
-                title: "Password",
-                ...multiOriginPushedScreenOptions,
-              }}
-            />
-            <Stack.Screen
-              name="design-system"
-              options={{
-                title: "Design system",
-                ...multiOriginPushedScreenOptions,
-              }}
-            />
-            {/*
-              Each proof step is its own screen so it can carry one action.
-              The titles name the step, which lets the screens themselves stay
-              quiet under it.
-            */}
-            <Stack.Screen
-              name="trip/pickup"
-              options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="trip/sign-off"
-              options={{ title: "Quality checkpoint", ...multiOriginPushedScreenOptions }}
-            />
-            <Stack.Screen
-              name="trip/delivery"
-              options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
-            />
-            {/*
-              Confirmations are the platform's own sheet, not a drawn overlay —
-              see `confirmSheetScreenOptions` for what that buys.
-            */}
-            {/*
-              The map, full screen. A destination rather than a sheet: it is
-              the same trip seen properly, and a rider reading a road wants the
-              whole display and the back gesture, not a card they can dismiss
-              by dragging in the direction they are trying to pan.
-            */}
-            <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
-            <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
-            <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
-          </Stack>
+          <RootStack />
         </AuthGate>
         ) : (
           <View style={{ flex: 1, backgroundColor: token.canvas }} />
@@ -293,6 +173,142 @@ function AppShell() {
       </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
+  );
+}
+
+/** Reads insets below the measured provider, not from the host window. */
+function RootStack() {
+  const ownerId = useSession((s) => `${s.user?.id ?? "signed-out"}:${s.user?.verificationStatus ?? "approved"}`);
+  const token = useThemeColors();
+  const { top } = useSafeAreaInsets();
+
+  return (
+    <Stack
+      key={ownerId ?? "signed-out"}
+      screenOptions={{
+        ...nativeHeaderInsetOptions(Platform.OS, top),
+        headerStyle: { backgroundColor: token.surface },
+        headerTintColor: token.textPrimary,
+        headerTitleStyle: {
+          fontSize: typography.h3.fontSize,
+          fontFamily: typography.h3.fontFamily,
+        },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: token.canvas },
+      }}
+    >
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="sso-callback"
+        options={{ headerShown: false, title: "Signing in" }}
+      />
+      <Stack.Screen name="(auth)/welcome" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="(auth)/signup"
+        options={{ title: "Sign up", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="(auth)/login"
+        options={{ title: "Sign in", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="(auth)/accept-invitation"
+        options={{ title: "Invitation", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="(auth)/reset-password"
+        options={{ title: "Recover password", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="onboarding"
+        options={{
+          headerShown: false,
+          animation: "fade",
+          contentStyle: { backgroundColor: token.canvas },
+        }}
+      />
+      {/*
+        The tab shell draws its own headers per tab, so its header is
+        hidden — but it still needs a title. Screens pushed above it set
+        their own back label (`multiOriginPushedScreenOptions`); this is
+        the second line of defence, so that if one ever forgets, iOS
+        labels the back control "GRIDGO" and never `(tabs)`.
+      */}
+      <Stack.Screen
+        name="(tabs)"
+        options={{ headerShown: false, title: "GRIDGO" }}
+      />
+      <Stack.Screen
+        name="alerts"
+        options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="past-jobs"
+        options={{ title: "Past jobs", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="past-job"
+        options={{ title: "Past job", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          ...multiOriginPushedScreenOptions,
+        }}
+      />
+      <Stack.Screen
+        name="rider-details"
+        options={{
+          title: "Your details",
+          ...multiOriginPushedScreenOptions,
+        }}
+      />
+      <Stack.Screen
+        name="change-password"
+        options={{
+          title: "Password",
+          ...multiOriginPushedScreenOptions,
+        }}
+      />
+      <Stack.Screen
+        name="design-system"
+        options={{
+          title: "Design system",
+          ...multiOriginPushedScreenOptions,
+        }}
+      />
+      {/*
+        Each proof step is its own screen so it can carry one action.
+        The titles name the step, which lets the screens themselves stay
+        quiet under it.
+      */}
+      <Stack.Screen
+        name="trip/pickup"
+        options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="trip/sign-off"
+        options={{ title: "Quality checkpoint", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="trip/delivery"
+        options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
+      />
+      {/*
+        Confirmations are the platform's own sheet, not a drawn overlay —
+        see `confirmSheetScreenOptions` for what that buys.
+      */}
+      {/*
+        The map, full screen. A destination rather than a sheet: it is
+        the same trip seen properly, and a rider reading a road wants the
+        whole display and the back gesture, not a card they can dismiss
+        by dragging in the direction they are trying to pan.
+      */}
+      <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
+      <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+      <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
+    </Stack>
   );
 }
 
