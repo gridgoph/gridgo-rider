@@ -39,6 +39,7 @@ describe("a signed-in rider stays signed in across launches", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.restoreAllMocks();
   });
 
   it("writes the token and the rider when login succeeds", async () => {
@@ -101,6 +102,44 @@ describe("a signed-in rider stays signed in across launches", () => {
 
     expect(useSession.getState().user).toBeNull();
     expect(api.getToken()).toBeNull();
+  });
+
+  describe.each([false, true])("hydration deadline reached: %s", (timesOut) => {
+    it.each(["adopted", "unassigned", "rejected"] as const)(
+      "does not restore a stale Google wait after Clerk is %s",
+      async (adoption) => {
+        jest.useFakeTimers();
+        try {
+          let finishRead!: (value: string | null) => void;
+          (AsyncStorage.getItem as jest.Mock)
+            .mockImplementationOnce(() => new Promise<string | null>((resolve) => { finishRead = resolve; }))
+            .mockResolvedValueOnce("1");
+          const hydration = useSession.getState().hydrate();
+          useSession.getState().beginClerkSession();
+          const me = jest.spyOn(api, "me");
+          if (adoption === "adopted") me.mockResolvedValue(rider);
+          else if (adoption === "unassigned") me.mockRejectedValue(new api.ApiError(401, "unauthorized"));
+          else me.mockResolvedValue({ ...rider, role: "supplier" });
+          await expect(useSession.getState().adoptClerkSession()).resolves.toBe(adoption);
+
+          if (timesOut) await jest.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS);
+          else finishRead(null);
+          await hydration;
+
+          expect(useSession.getState()).toMatchObject({
+            hydrated: true,
+            sessionWait: null,
+            loading: false,
+            user: adoption === "adopted" ? rider : null,
+            needsApplication: adoption === "unassigned",
+            showErrorOnLogin: adoption === "rejected",
+          });
+          finishRead(null);
+        } finally {
+          jest.useRealTimers();
+        }
+      },
+    );
   });
 
   it("forgets the session on sign-out, so the next launch lands on welcome", async () => {

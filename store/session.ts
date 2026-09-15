@@ -322,6 +322,11 @@ export const useSession = create<SessionState>((set, get) => ({
 
     const outcome = await raceDeadline(read, SESSION_READ_TIMEOUT_MS);
     const googleJoin = await joining.catch(() => false);
+    const sessionWait =
+      googleJoin && decisionAtStart === sessionDecisionVersion &&
+      !clerkOwnsSession && !get().user && get().sessionWait !== "out"
+        ? "in"
+        : get().sessionWait;
 
     if (outcome === "timeout") {
       if (__DEV__) {
@@ -339,7 +344,7 @@ export const useSession = create<SessionState>((set, get) => ({
         api.setToken(session.token);
         set({ user: session.user, authSource: "legacy" });
       });
-      set({ hydrated: true, sessionWait: googleJoin ? "in" : get().sessionWait });
+      set({ hydrated: true, sessionWait });
       return;
     }
 
@@ -349,7 +354,7 @@ export const useSession = create<SessionState>((set, get) => ({
     set(
       session
         ? { user: session.user, authSource: "legacy", hydrated: true, sessionWait: null }
-        : { hydrated: true, sessionWait: googleJoin ? "in" : get().sessionWait },
+        : { hydrated: true, sessionWait },
     );
   },
   login: async (email, password) => {

@@ -44,6 +44,46 @@ it("ends only the original Clerk session even when domain logout stalls", async 
   jest.useRealTimers();
 });
 
+it.each([true, false])("does not let the join deadline interrupt logout (adoption settled: %s)", async (settled) => {
+  jest.useFakeTimers();
+  releaseClerkAdoptionBlock();
+  mockSignOut.mockClear();
+  useSession.setState({
+    user: null, authSource: null, needsApplication: false, loading: false,
+    sessionWait: null, error: null, showErrorOnLogin: false,
+  });
+  const me = jest.spyOn(api, "me");
+  if (settled) me.mockResolvedValue({ id: "rider", role: "rider", name: "Rider", email: "rider@test" });
+  else me.mockReturnValue(new Promise(() => {}));
+  let finishLogout!: () => void;
+  jest.spyOn(api, "logout").mockReturnValue(new Promise<void>((resolve) => { finishLogout = resolve; }));
+  const view = await renderHook(() => useClerkSessionBridge());
+  try {
+    expect(useSession.getState().user?.id ?? null).toBe(settled ? "rider" : null);
+    await act(async () => { await jest.advanceTimersByTimeAsync(CLERK_JOIN_TIMEOUT_MS - 2_000); });
+    let logout!: Promise<void>;
+    await act(async () => { logout = useSession.getState().logout(); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(2_000); });
+
+    expect(useSession.getState()).toMatchObject({
+      user: null, sessionWait: "out", error: null, showErrorOnLogin: false,
+    });
+    expect(mockSignOut).not.toHaveBeenCalled();
+
+    await act(async () => { await jest.advanceTimersByTimeAsync(2_000); await logout; });
+    expect(useSession.getState()).toMatchObject({ sessionWait: null, error: null, showErrorOnLogin: false });
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).toHaveBeenCalledWith({ sessionId: "dual-session" });
+  } finally {
+    await act(async () => { finishLogout(); });
+    await view.unmount();
+    releaseClerkAdoptionBlock();
+    jest.restoreAllMocks();
+    api.setTokenProvider(null);
+    jest.useRealTimers();
+  }
+});
+
 it("keeps a revoked rider at login while Clerk sign-out completes", async () => {
   releaseClerkAdoptionBlock();
   mockSignOut.mockClear();
