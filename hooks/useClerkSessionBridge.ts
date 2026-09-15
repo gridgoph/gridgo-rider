@@ -37,10 +37,9 @@ export function useClerkSessionBridge(): boolean {
   const currentIdentity = useRef(identityKey);
   useLayoutEffect(() => { currentIdentity.current = identityKey; }, [identityKey]);
   const handledSession = useRef<string | null>(null);
-  // A session GRIDGO has no rider record for stays signed in, so `authSource`
-  // never becomes "clerk" and the short-circuit below would miss. Without this
-  // the effect would ask `/auth/me` again on every render while someone fills
-  // in the application form.
+  // Applying can claim this identity before the bridge starts adoption. Keep
+  // that claim even when needsApplication clears, so the bridge cannot probe
+  // again and replace the application's token provider mid-submit.
   const settledUnassigned = useRef<string | null>(null);
 
   const claimsSessionId = (sessionClaims as { sid?: unknown } | null | undefined)?.sid;

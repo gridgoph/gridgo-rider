@@ -18,7 +18,7 @@ export type AuthRedirect =
 /** Identity wait to paint instead of Welcome. */
 export type RiderAuthHold = "in" | "out" | null;
 
-/** How long Signing you in may last after Clerk has loaded. */
+/** Deadline per domain adoption attempt, also used for a signed-out Google return. */
 export const CLERK_JOIN_TIMEOUT_MS = 12_000;
 
 /**

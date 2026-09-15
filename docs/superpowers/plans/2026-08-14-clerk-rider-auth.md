@@ -48,8 +48,7 @@
 - Modify: `__tests__/startupNeverHangs.test.tsx`
 
 **Interfaces:**
-- Consumes Clerk `useAuth`, `useUser`, and Zustand session controls.
-- Produces a bounded `identityReady` launch flag and continuous Clerk-to-domain synchronization.
+- Current bridge inputs and readiness semantics live in [hooks/useClerkSessionBridge.ts](../../../hooks/useClerkSessionBridge.ts).
 
 - [ ] Add startup assertions for a stalled Clerk load.
 - [ ] Confirm the new startup assertion fails.
