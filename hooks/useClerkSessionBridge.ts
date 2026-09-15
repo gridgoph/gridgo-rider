@@ -31,7 +31,8 @@ export function useClerkSessionBridge(): boolean {
   // in the application form.
   const settledUnassigned = useRef<string | null>(null);
 
-  const signOutSessionId = clerkSessionId ?? (typeof sessionClaims?.sid === "string" ? sessionClaims.sid : null);
+  const claimsSessionId = (sessionClaims as { sid?: unknown } | null | undefined)?.sid;
+  const signOutSessionId = clerkSessionId ?? (typeof claimsSessionId === "string" ? claimsSessionId : null);
   useEffect(
     () => bindClerkSignOut(signOutSessionId ? () => signOut({ sessionId: signOutSessionId }) : null),
     [signOut, signOutSessionId],

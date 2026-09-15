@@ -15,7 +15,7 @@ type Args = {
   coords: LatLng | null;
   accuracy?: number | null;
   fixAtMs: number | null;
-  /** When false, the hook never starts (e.g. screen unfocused). */
+  /** When false, the hook never starts (e.g. app backgrounded). */
   enabled?: boolean;
 };
 
@@ -24,8 +24,8 @@ type Args = {
  *
  * - Explicit UI (LocationSharingBanner) must show when `sharing` is true.
  * - Sharing stops the moment the trip leaves picked_up / out_for_delivery.
- * - Coordinates are never written to AsyncStorage or any other store.
- * - Uses live GPS when available; skips the ping if GPS is not ready yet.
+ * - Coordinates are never persisted; the root tracking owner shares them in memory.
+ * - Sends each fresh fix once with its capture time; sharing becomes true only after a successful ping.
  */
 export function useLocationSharing({
   orderId,
@@ -104,7 +104,7 @@ export function useLocationSharing({
     return () => {
       cancelled = true;
       clearInterval(handle);
-      // Sharing ends with the effect teardown — trip ended or screen left.
+      // Sharing ends with the effect teardown — trip ended or foreground tracking disabled.
       setSharing(false);
     };
   }, [orderId, state, enabled, hasCoords]);

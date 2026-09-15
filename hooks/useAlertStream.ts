@@ -6,7 +6,12 @@ import { useSession } from "@/store/session";
 import { useNotifications } from "@/store/notifications";
 import { useActiveTrip } from "@/store/activeTrip";
 
-/** One connection per signed-in app. Inbox replay never replaces resource reconciliation. */
+/**
+ * Root-owned foreground reconciliation: stream hints, startup/resume, and a
+ * 30-second interval refresh identity, trip, and inbox even on a healthy stream.
+ * Replay never replaces reconciliation: a consumed event may have failed to
+ * refresh its resource. Backgrounding closes the stream; resuming reloads data.
+ */
 export function useAlertStream(enabled = true): void {
   const userId = useSession((s) => s.user?.id ?? null);
   const verification = useSession((s) => s.user?.verificationStatus);

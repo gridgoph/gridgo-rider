@@ -16,12 +16,12 @@ const Notifications = loadExpoNotifications();
  * screen when a rider taps an alert.
  *
  * Mounted once, from the root layout. Everything it decides comes from
- * `lib/push.ts`; everything it stores goes through `store/push.ts`. Ported from
- * `gridgo-supplier`; the one rider difference is that a tap is spent as soon as
- * someone is signed in. Supplier defers until the shop is `matchable`, because
- * its job workspace sits behind an accreditation guard. This app does not:
- * an unapproved rider lives in the tab shell, reads Alerts, and is exactly
- * the person whose approval they most want to hear about with the app closed.
+ * `lib/push.ts`; everything it stores goes through `store/push.ts`.
+ * Taps wait for a ready navigator and settled sign-in, then verify the referenced
+ * notification or order through the API. Missing inbox rows and revoked access
+ * go to Alerts; offline taps stay pending for a live refresh retry. Changing
+ * accounts drops taps captured for the previous owner. Approval is not required
+ * to open Alerts.
  */
 
 /**
@@ -67,14 +67,7 @@ if (Notifications) {
   );
 }
 
-/**
- * Make the unread badge agree with the platform.
- *
- * A foreground arrival is spent on this and nothing else. The Alerts list
- * already holds the same record, so this recomputes from the list rather than
- * adding to it. A failure costs nothing: every list in this app reloads on
- * focus.
- */
+/** Reconcile from the authorized inbox rather than trusting push payload counts. */
 async function refreshUnread(): Promise<void> {
   await useNotifications.getState().refreshUnread();
 }
@@ -191,7 +184,7 @@ export function usePushNotifications(): void {
     );
 
     // A push landing in the foreground shows nothing (see the handler above);
-    // its whole effect is that the unread badge catches up.
+    // it invalidates live resources and reconciles the unread badge.
     const received = withoutNativeModule(() =>
       Notifications.addNotificationReceivedListener(() => {
         invalidate("*");

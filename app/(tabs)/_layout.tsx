@@ -10,17 +10,9 @@ import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
 import { useTripProof } from "@/store/tripProof";
 
-/** How often the shell re-checks the job in hand while the app is open. */
-
 /**
- * Rider tab shell.
- *
- * Offers · Active · Map · Earnings · Account. Finding work is Offers. The
- * job in hand, its status, and the next step live on Active.
- *
- * The shell still polls the trip while the app is open so Active's step
- * stays current even if the rider is sitting on Earnings when the job moves.
- *
+ * Rider tab shell. Destination and action semantics belong to `constants/tabs.ts`.
+ * Root-owned account/trip reconciliation lives in `hooks/useAlertStream.ts`.
  * The bar is drawn from tokens on every platform — see `GridgoTabBar`.
  */
 export default function TabsLayout() {
@@ -29,14 +21,6 @@ export default function TabsLayout() {
   const hold = useRiderAuthHold();
   const hydrateProof = useTripProof((s) => s.hydrate);
   const hydrateAlerts = useNotifications((s) => s.hydrate);
-
-  /*
-    The account is polled with the trip, because accreditation is the one thing
-    about a rider that changes while they are sitting in the app doing nothing.
-    Without this, an Operations decision — approved, or suspended mid-shift —
-    only reached the phone on the next sign-in, so the "awaiting approval"
-    screen the rider was staring at could never resolve itself.
-  */
 
   useEffect(() => {
     void hydrateProof();

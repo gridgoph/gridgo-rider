@@ -13,7 +13,7 @@ type NotificationsState = {
   items: api.Notification[] | null;
   loadError: string | null;
   load: () => Promise<void>;
-  /** Ids the rider has marked read on this phone. */
+  /** Optimistic and confirmed read IDs for the currently bound rider. */
   readIds: string[];
   confirmedReadIds: string[];
   hydrated: boolean;
@@ -36,8 +36,11 @@ type NotificationsState = {
 /**
  * The Alerts badge, and which alerts the rider has already dealt with.
  *
- * Read marks update optimistically and persist only after the owner API accepts
- * the displayed snapshot. Failed writes roll back and refetch the badge.
+ * Read marks update optimistically through PATCH /notifications/:id. Only
+ * confirmed acknowledgements persist, under an account-specific storage key.
+ * Failed writes roll back both the marks and badge before reconciliation.
+ * Inbox reads adopt only their newest result, including its error; owner changes
+ * and successful deletions invalidate older reads. Server read flags still win.
  *
  * Clearing the inbox is different. `DELETE /notifications/:id` is a durable
  * soft delete — those rows never come back on the next list — so Clear must

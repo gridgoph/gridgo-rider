@@ -11,7 +11,7 @@ jest.mock("expo-notifications",()=>({
   setNotificationHandler:jest.fn(),getLastNotificationResponseAsync:()=>mockLast(),clearLastNotificationResponseAsync:jest.fn(async()=>{}),
   addNotificationResponseReceivedListener:jest.fn(()=>({remove:jest.fn()})),addNotificationReceivedListener:jest.fn(()=>({remove:jest.fn()})),addPushTokenListener:jest.fn(()=>({remove:jest.fn()}))
 }));
-jest.mock("@/store/push",()=>({usePush:{getState:()=>({registerIfGranted:jest.fn(),adoptToken:jest.fn()})}}));
+jest.mock("@/store/push",()=>({cancelDeviceRegistrations:jest.fn(),usePush:{getState:()=>({registerIfGranted:jest.fn(),adoptToken:jest.fn()})}}));
 jest.mock("@/lib/api",()=>({...jest.requireActual("@/lib/api"),listNotifications:jest.fn(),getOrder:jest.fn()}));
 const user={id:"owner",role:"rider" as const,name:"Owner",email:"owner@test",verificationStatus:"pending" as const};
 const response={notification:{request:{identifier:"push_one",content:{data:{notificationId:"n",orderId:"o"}}}}};

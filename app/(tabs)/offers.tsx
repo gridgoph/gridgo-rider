@@ -32,6 +32,7 @@ export default function OffersScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const user = useSession((s) => s.user);
+  const userId = user?.id;
   const activeTrip = useActiveTrip((s) => s.order);
   const refreshTrip = useActiveTrip((s) => s.refresh);
   const setOrder = useActiveTrip((s) => s.setOrder);
@@ -58,7 +59,7 @@ export default function OffersScreen() {
     try {
       const [list] = await Promise.all([
         api.listOffers(),
-        refreshTrip(user?.id ?? null, "refresh"),
+        refreshTrip(userId ?? null, "refresh"),
       ]);
       if (!current()) return;
       setOffers(selectOffers(list));
@@ -73,7 +74,7 @@ export default function OffersScreen() {
       );
       setOffers((current) => current ?? []);
     }
-  }, [nextRead, refreshTrip, user?.id, approval.canWork]);
+  }, [nextRead, refreshTrip, userId, approval.canWork]);
 
   /*
     `refreshing` is the pull gesture's, and only the pull gesture's. Everything

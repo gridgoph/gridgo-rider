@@ -549,6 +549,17 @@ export async function enrollRider(
   return me({ ignoreUnauthorized: true });
 }
 
+/** Captures this identity before UI teardown clears the provider. */
+export function captureLogoutBearer(): Promise<string | null> {
+  const provider = tokenProvider;
+  const token = tokenMemory;
+  if (!provider) return Promise.resolve(token);
+  return new Promise((resolve) => {
+    const deadline = setTimeout(() => resolve(null), 2_500);
+    void Promise.resolve().then(provider).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
+  });
+}
+
 /**
  * Sign out, and stop this phone receiving the account's push in the same call.
  *
@@ -563,17 +574,6 @@ export async function enrollRider(
  * when no token was sent, the session had already expired, or the token now
  * belongs to somebody else. None of those is a failure worth showing anyone.
  */
-/** Captures this identity before UI teardown clears the provider. */
-export function captureLogoutBearer(): Promise<string | null> {
-  const provider = tokenProvider;
-  const token = tokenMemory;
-  if (!provider) return Promise.resolve(token);
-  return new Promise((resolve) => {
-    const deadline = setTimeout(() => resolve(null), 2_500);
-    void Promise.resolve().then(provider).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
-  });
-}
-
 export async function logout(deviceToken?: string | null, capturedBearer?: Promise<string | null>): Promise<void> {
   if (capturedBearer) {
     const bearer = await capturedBearer;

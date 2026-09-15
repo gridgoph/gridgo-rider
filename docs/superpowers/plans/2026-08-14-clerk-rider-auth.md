@@ -1,21 +1,19 @@
 # Clerk Rider Authentication Implementation Plan
 
-> **For agentic workers:** Execute this plan inline with the Clerk Expo, custom UI, setup, CLI, test-driven-development, and verification-before-completion skills. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Historical implementation checklist. Current authentication policy is owned by
+> [AGENTS.md — Authentication](../../../AGENTS.md#authentication); this plan is not
+> an instruction to restore the earlier invitation-only or metadata-based gate.
 
-**Goal:** Add secure, invitation-first Clerk authentication to GRIDGO Rider without removing the development-only legacy login path or weakening API authorization.
-
-**Architecture:** `ClerkProvider` owns the native/web Clerk session and uses Clerk's SecureStore-backed `tokenCache`. A small bridge validates `publicMetadata.gridgoRole`, supplies fresh Clerk bearer tokens to the existing `lib/api.ts` surface, and adopts `/auth/me` into the existing Zustand domain session; legacy `tok_*` sessions remain isolated behind the current development login. Public authentication exposes sign-in and Google, while account creation is only reachable through an Operations-issued `__clerk_ticket`.
-
-**Tech Stack:** Expo SDK 54, Expo Router 6, React Native 0.81, TypeScript 5.9, NativeWind 5, Zustand 5, `@clerk/expo` 3.x, `expo-secure-store`, `expo-auth-session`, Jest.
+**Dependency versions:** See [package.json](../../../package.json).
 
 ## Global Constraints
 
-- Read and follow Expo SDK 54 versioned documentation before code changes.
+- Follow the versioned Expo documentation linked in [AGENTS.md](../../../AGENTS.md).
 - Use `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`; never hardcode a key or expose `CLERK_SECRET_KEY`.
 - Store Clerk tokens only through `@clerk/expo/token-cache`, never AsyncStorage.
-- Accept only `publicMetadata.gridgoRole === "rider"`; Google identity never assigns a role.
+- Membership checks follow [AGENTS.md — Authentication](../../../AGENTS.md#authentication).
 - Preserve the existing `__DEV__` demo login and local API surface.
-- No public rider sign-up control or call to `POST /auth/signup`.
+- Public application policy follows [AGENTS.md — Authentication](../../../AGENTS.md#authentication).
 - Keep light/dark labels and workflows identical and use GRIDGO tokens/NativeWind.
 - Do not add Facebook because the linked instance does not enable it.
 
@@ -31,10 +29,10 @@
 - Test: `lib/__tests__/clerkAuth.test.ts`
 
 **Interfaces:**
-- Produces `readGridgoRole(metadata)`, `riderAccessError(role)`, and an async API token-provider seam.
+- Current role resolution and token sourcing live in `hooks/useClerkSessionBridge.ts` and `lib/api.ts`.
 - Produces Clerk-session adoption and invalidation methods while preserving legacy persistence.
 
-- [ ] Write tests for rider, missing-role, unknown-role, and cross-role metadata.
+- Current membership regression coverage: `hooks/__tests__/clerkMembership.test.tsx`.
 - [ ] Run the focused test and confirm it fails because the policy module does not exist.
 - [ ] Implement the pure role policy and fresh token provider.
 - [ ] Extend the Zustand session with explicit `legacy | clerk` ownership and role-safe Clerk adoption.
@@ -59,29 +57,10 @@
 - [ ] Extend the bounded launch gate so Clerk can never create a blank screen.
 - [ ] Run startup and auth-gate tests.
 
-### Task 3: Invitation-first authentication UI
+### Task 3: Authentication UI
 
-**Files:**
-- Create: `app/(auth)/welcome.tsx`
-- Create: `app/(auth)/accept-invitation.tsx`
-- Create: `app/(auth)/reset-password.tsx`
-- Create: `components/AuthDivider.tsx`
-- Modify: `app/(auth)/login.tsx`
-- Delete: `app/(auth)/signup.tsx`
-- Modify: `app/_layout.tsx`
-- Modify: `app/index.tsx`
-- Modify: `__tests__/loginScreen.test.tsx`
-- Create: `__tests__/invitationFirst.test.ts`
-
-**Interfaces:**
-- Consumes current Clerk `signIn.password`, `signIn.resetPasswordEmailCode`, `useSSO`, and `signUp.ticket` APIs.
-- Produces `/welcome`, `/login`, `/accept-invitation?__clerk_ticket=…`, and `/reset-password` flows with no public rider role creation.
-
-- [ ] Add failing UI/source tests for exact sign-in copy, Google, no public sign-up, and ticket-only account creation.
-- [ ] Implement the scooter welcome surface and custom sign-in form.
-- [ ] Implement password recovery with code and new-password steps.
-- [ ] Implement invitation acceptance that refuses to submit without `__clerk_ticket` and includes Clerk CAPTCHA mount.
-- [ ] Run UI, invitation, back-affordance, and keyboard tests.
+The original invitation-only UI plan is superseded by
+[AGENTS.md — Authentication](../../../AGENTS.md#authentication).
 
 ### Task 4: Expo configuration and dependencies
 
@@ -94,7 +73,7 @@
 **Interfaces:**
 - Registers `@clerk/expo` and `expo-secure-store`; uses the existing `gridgorider` deep-link scheme for browser SSO.
 
-- [ ] Install SDK-54-compatible packages with `npx expo install`.
+- Dependency alignment follows [AGENTS.md](../../../AGENTS.md#push-notifications).
 - [ ] Verify the installed Clerk package exports and TypeScript declarations before finalizing hook calls.
 - [ ] Add config-plugin assertions, then register both plugins.
 - [ ] Run config tests and `npx expo config --type public` without printing secret values.
@@ -109,7 +88,7 @@
 
 - [ ] Run focused tests, full Jest, `npx tsc --noEmit`, and `npm run lint`.
 - [ ] Export development and production bundles for required platforms.
-- [ ] Scan tracked files and bundles for `CLERK_SECRET_KEY`, development secret values, public rider signup, and missing production publishable-key handling.
+- [ ] Scan tracked files and bundles for `CLERK_SECRET_KEY`, development secret values and missing production publishable-key handling.
 - [ ] Inspect rendered light/dark authentication screens where browser rendering is available.
 - [ ] Run `/home/kali/firstmate/bin/fm-ensure-agents-md.sh .` and retain only durable project guidance.
 - [ ] Review the complete diff, commit, push only `fm/gridgo-rider-clerk`, and open a direct PR with `gh-axi`.
