@@ -185,7 +185,7 @@ export default function AlertsScreen() {
             </View>
 
             <Text className="text-caption text-text-muted">
-              Swipe an alert away to mark it read. Read marks are kept on this phone.
+              Swipe an alert away to mark it read. Read status is saved to your GRIDGO account.
             </Text>
           </>
         ) : null}
