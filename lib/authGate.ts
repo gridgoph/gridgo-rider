@@ -18,12 +18,19 @@ export type AuthRedirect =
 /** Identity wait to paint instead of Welcome. */
 export type RiderAuthHold = "in" | "out" | null;
 
+/** Deadline per domain adoption attempt, also used for a signed-out Google return. */
+export const CLERK_JOIN_TIMEOUT_MS = 12_000;
+
 /**
  * Whether the door must stay closed.
  *
  * Google often relaunches the app at `/` with no GRIDGO user yet: Clerk is
- * still loading, or is signed in while `/auth/me` is in flight. Sending that
- * rider to Welcome is the flash before Active.
+ * still loading, or `/auth/me` is in flight. Sending that rider to Welcome is
+ * the flash before Active.
+ *
+ * After Clerk is loaded, signed-in alone does not hold. A restored session
+ * with no GRIDGO user used to spin on Signing you in forever when user
+ * metadata never arrived and `/auth/me` never ran.
  */
 export function riderAuthHold(input: {
   hasUser: boolean;
@@ -36,14 +43,18 @@ export function riderAuthHold(input: {
   signedOut?: boolean;
   /** Wrong-role / refused identity: show the login error, do not keep waiting. */
   hasError?: boolean;
+  /** Clerk knows this person; GRIDGO has no rider record — send them to apply. */
+  needsApplication?: boolean;
 }): RiderAuthHold {
   if (input.sessionWait === "out") return "out";
   if (input.signedOut) return null;
   if (input.hasError) return null;
+  if (input.needsApplication) return null;
+  if (input.clerkLoaded && input.clerkSignedIn && !input.loading) return null;
   if (input.sessionWait === "in") return "in";
   if (input.hasUser) return null;
   if (input.loading || input.googleReturn) return "in";
-  if (!input.clerkLoaded || input.clerkSignedIn) return "in";
+  if (!input.clerkLoaded) return "in";
   return null;
 }
 
@@ -114,24 +125,25 @@ export function resolveAuthRedirect(
     return alreadyOnLogin ? null : "/(auth)/login";
   }
 
-  // Google join stays put. Sign-out leaves the tabs — Welcome shows the wait.
-  if (sessionWait === "in") return null;
-  if (sessionWait === "out") {
-    const onWelcome = root === "(auth)" && segments[1] === "welcome";
-    return onWelcome ? null : "/(auth)/welcome";
-  }
-
   /*
     Signed in with Clerk, unknown to GRIDGO: the only thing this person can do
     is apply, so that is where they go — whether they arrived by signing in with
     an account that never applied, or by verifying a brand-new email.
 
     A stored Clerk failure already sent them to login above: that message has
-    to be visible. This branch is the unassigned-identity case, not an error.
+    to be visible. This branch is the unassigned-identity case, not an error,
+    and it outranks Signing you in so a finished adopt cannot leave them there.
   */
   if (!isSignedIn && needsApplication) {
     const alreadyApplying = root === "(auth)" && segments[1] === "signup";
     return alreadyApplying ? null : "/(auth)/signup";
+  }
+
+  // Google join stays put. Sign-out leaves the tabs — Welcome shows the wait.
+  if (sessionWait === "in") return null;
+  if (sessionWait === "out") {
+    const onWelcome = root === "(auth)" && segments[1] === "welcome";
+    return onWelcome ? null : "/(auth)/welcome";
   }
 
   const inProtected = PROTECTED_ROOTS.has(root);

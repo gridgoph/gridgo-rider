@@ -23,6 +23,8 @@ npm start
 
 The API host normally follows the Metro host, including on a physical device. For an explicit backend, set `EXPO_PUBLIC_API_URL` when starting Metro or building the bundle. See [API base configuration](AGENTS.md#mvp-stack-current-phase) for precedence and build-time configuration.
 
+On session restore or return from Google, the app checks the rider account. If that check times out, login shows a connection error and the API address. Check the phone's connection and, during development, that the API is running and reachable at that address before trying again.
+
 ## Scripts
 
 | Command | Does |

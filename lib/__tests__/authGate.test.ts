@@ -47,7 +47,7 @@ describe("resolveAuthRedirect", () => {
       riderAuthHold({
         hasUser: false,
         sessionWait: null,
-        loading: false,
+        loading: true,
         clerkLoaded: true,
         clerkSignedIn: true,
         googleReturn: false,
@@ -105,6 +105,60 @@ describe("resolveAuthRedirect", () => {
         signedOut: true,
       }),
     ).toBeNull();
+  });
+
+  it("does not keep Signing you in after a signed-in adopt has finished or timed out", () => {
+    // Clerk restored a session, GRIDGO has no rider, and /auth/me is not in
+    // flight: the old clerkSignedIn-only hold spun here forever.
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: null,
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: false,
+      }),
+    ).toBeNull();
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: "in",
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: false,
+        hasError: true,
+      }),
+    ).toBeNull();
+    expect(
+      riderAuthHold({
+        hasUser: false,
+        sessionWait: "in",
+        loading: false,
+        clerkLoaded: true,
+        clerkSignedIn: true,
+        googleReturn: false,
+        needsApplication: true,
+      }),
+    ).toBeNull();
+  });
+
+  it.each([false, true])("ignores a stale sign-in wait after adoption settles (Google return: %s)", (googleReturn) => {
+    expect(riderAuthHold({
+      hasUser: false,
+      sessionWait: "in",
+      loading: false,
+      clerkLoaded: true,
+      clerkSignedIn: true,
+      googleReturn,
+    })).toBeNull();
+  });
+
+  it("sends an unassigned Clerk identity to apply even while Signing you in", () => {
+    expect(resolveAuthRedirect(false, ["(auth)", "welcome"], false, true, "in")).toBe(
+      "/(auth)/signup",
+    );
   });
 
   it("leaves public routes alone when signed out", () => {

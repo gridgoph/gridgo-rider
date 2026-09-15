@@ -1,7 +1,8 @@
-import { useAuth, useClerk, useUser } from "@clerk/expo";
+import { useAuth, useClerk } from "@clerk/expo";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
+import { CLERK_JOIN_TIMEOUT_MS } from "@/lib/authGate";
 import {
   bindClerkSignOut,
   isClerkAdoptionBlocked,
@@ -13,16 +14,20 @@ import {
  * Joins Clerk identity to the existing domain session without changing feature
  * call sites. Clerk owns the bearer; `/auth/me` remains the API's projection
  * and authorization is still enforced by the server on every request.
+ *
+ * Adopt as soon as Clerk reports signed-in. Waiting on `useUser()` left a
+ * restored session on Signing you in forever when metadata never arrived,
+ * because `/auth/me` never ran and the join bound only covered signed-out.
  */
 export function useClerkSessionBridge(): boolean {
   const { isLoaded, isSignedIn, getToken, sessionClaims, sessionId: clerkSessionId } = useAuth();
-  const { isLoaded: userIsLoaded, user } = useUser();
   const { signOut } = useClerk();
   const adoptClerkSession = useSession((state) => state.adoptClerkSession);
   const beginClerkSession = useSession((state) => state.beginClerkSession);
   const clearSession = useSession((state) => state.clearSession);
   const authSource = useSession((state) => state.authSource);
   const needsApplication = useSession((state) => state.needsApplication);
+  const showErrorOnLogin = useSession((state) => state.showErrorOnLogin);
   const sessionId = typeof sessionClaims?.sid === "string" ? sessionClaims.sid : "active";
   const identityKey = isLoaded && isSignedIn ? sessionId : null;
   const [settledIdentity, setSettledIdentity] = useState<string | null>(null);
@@ -32,10 +37,9 @@ export function useClerkSessionBridge(): boolean {
   const currentIdentity = useRef(identityKey);
   useLayoutEffect(() => { currentIdentity.current = identityKey; }, [identityKey]);
   const handledSession = useRef<string | null>(null);
-  // A session GRIDGO has no rider record for stays signed in, so `authSource`
-  // never becomes "clerk" and the short-circuit below would miss. Without this
-  // the effect would ask `/auth/me` again on every render while someone fills
-  // in the application form.
+  // Applying can claim this identity before the bridge starts adoption. Keep
+  // that claim even when needsApplication clears, so the bridge cannot probe
+  // again and replace the application's token provider mid-submit.
   const settledUnassigned = useRef<string | null>(null);
 
   const claimsSessionId = (sessionClaims as { sid?: unknown } | null | undefined)?.sid;
@@ -67,7 +71,7 @@ export function useClerkSessionBridge(): boolean {
           if (!useSession.getState().user && !useSession.getState().loading) {
             useSession.getState().clearSessionWait();
           }
-        }, 12_000);
+        }, CLERK_JOIN_TIMEOUT_MS);
         return () => clearTimeout(timer);
       }
       return;
@@ -84,19 +88,7 @@ export function useClerkSessionBridge(): boolean {
       return;
     }
 
-    // A restored Clerk session owns the door immediately. Clear an older demo
-    // bearer before waiting for user metadata, so a slow metadata fetch cannot
-    // expose the previous session when the bounded launch deadline expires.
-    if (!userIsLoaded || !user) {
-      if (handledSession.current !== sessionId || authSource !== "clerk") {
-        beginClerkSession();
-      }
-      return;
-    }
-
-    // Clerk metadata names a primary role. Only the role-scoped API projection
-    // can establish this app's membership for a person with several roles.
-    if (handledSession.current === sessionId && authSource === "clerk") {
+    if (handledSession.current === sessionId) {
       return;
     }
 
@@ -104,6 +96,9 @@ export function useClerkSessionBridge(): boolean {
       return;
     }
 
+    // A restored Clerk session owns the door immediately. Clear an older demo
+    // bearer and probe `/auth/me` with `getToken()` — do not wait for user
+    // metadata. Membership is the API projection, not Clerk publicMetadata.
     beginClerkSession();
     handledSession.current = sessionId;
     const removeProvider = api.setTokenProvider(() => getToken());
@@ -151,13 +146,10 @@ export function useClerkSessionBridge(): boolean {
     sessionClaims,
     sessionId,
     signOut,
-    user,
-    userIsLoaded,
-    user?.publicMetadata,
   ]);
 
   return Boolean(isLoaded && (
-    !isSignedIn || needsApplication || isClerkAdoptionBlocked() ||
-    (userIsLoaded && user && settledIdentity === identityKey)
+    !isSignedIn || needsApplication || isClerkAdoptionBlocked() || showErrorOnLogin ||
+    settledIdentity === identityKey
   ));
 }

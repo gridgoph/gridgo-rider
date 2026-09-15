@@ -16,6 +16,7 @@ export function useRiderAuthHold(): RiderAuthHold {
   const loading = useSession((state) => state.loading);
   const showErrorOnLogin = useSession((state) => state.showErrorOnLogin);
   const error = useSession((state) => state.error);
+  const needsApplication = useSession((state) => state.needsApplication);
   const { isLoaded, isSignedIn } = useAuth();
   const url = Linking.useURL();
   return riderAuthHold({
@@ -27,5 +28,6 @@ export function useRiderAuthHold(): RiderAuthHold {
     googleReturn: Boolean(url && /sso-callback/i.test(url)),
     signedOut: isClerkAdoptionBlocked(),
     hasError: Boolean(showErrorOnLogin || error),
+    needsApplication,
   });
 }

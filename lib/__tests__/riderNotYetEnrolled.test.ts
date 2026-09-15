@@ -58,7 +58,20 @@ describe("a Clerk identity GRIDGO has no rider record for", () => {
       // Nothing to apologise for: the password was right and the code was right.
       error: null,
       showErrorOnLogin: false,
+      sessionWait: null,
     });
+  });
+
+  it("clears Signing you in when the probe reports an unassigned identity", async () => {
+    api.setTokenProvider(() => Promise.resolve("clerk_jwt"));
+    useSession.getState().beginClerkSession();
+    respond(401, { error: "unauthorized" });
+
+    await useSession.getState().adoptClerkSession();
+
+    expect(useSession.getState().needsApplication).toBe(true);
+    expect(useSession.getState().sessionWait).toBeNull();
+    expect(useSession.getState().loading).toBe(false);
   });
 
   it("leaves the bearer installed so the application can authenticate", async () => {
