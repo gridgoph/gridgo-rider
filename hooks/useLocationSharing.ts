@@ -1,5 +1,5 @@
 import { STALE_FIX_MS } from "@/lib/locationFreshness";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
 import type { LatLng } from "@/lib/geo";
@@ -42,25 +42,26 @@ export function useLocationSharing({
   const coordsRef = useRef(coords);
   const accuracyRef = useRef(accuracy);
   const fixRef = useRef(fixAtMs);
-  fixRef.current = fixAtMs;
-  orderIdRef.current = orderId;
-  stateRef.current = state;
-  coordsRef.current = coords;
-  accuracyRef.current = accuracy;
+  useLayoutEffect(() => {
+    fixRef.current = fixAtMs;
+    orderIdRef.current = orderId;
+    stateRef.current = state;
+    coordsRef.current = coords;
+    accuracyRef.current = accuracy;
+  }, [fixAtMs, orderId, state, coords, accuracy]);
 
   const hasCoords = coords != null;
-  useEffect(() => {
-    const active =
-      enabled &&
-      Boolean(orderId) &&
-      Boolean(state) &&
-      shouldShareLocation(state ?? "");
-
+  const active = enabled && Boolean(orderId) && shouldShareLocation(state ?? "");
+  const [previous, setPrevious] = useState({ orderId, state, enabled, hasCoords });
+  if (previous.orderId !== orderId || previous.state !== state ||
+      previous.enabled !== enabled || previous.hasCoords !== hasCoords) {
+    setPrevious({ orderId, state, enabled, hasCoords });
     setSharing(false);
-    if (!active) {
-      setLastError(null);
-      return;
-    }
+    if (!active) setLastError(null);
+  }
+
+  useEffect(() => {
+    if (!active) return;
 
     let cancelled = false;
     let inFlight = false;
@@ -73,7 +74,6 @@ export function useLocationSharing({
       const fix = fixRef.current;
       if (cancelled || inFlight || !id || !shouldShareLocation(tripState ?? "") || !point) return;
       if (fix == null || !Number.isFinite(fix) || Date.now() - fix >= STALE_FIX_MS || fix > Date.now() + 10_000) {
-        setSharing(false);
         return;
       }
       if (sentFix === fix) return;
@@ -98,16 +98,18 @@ export function useLocationSharing({
 
     void pingOnce();
     const handle = setInterval(() => {
+      const fix = fixRef.current;
+      if (fix == null || !Number.isFinite(fix) || Date.now() - fix >= STALE_FIX_MS || fix > Date.now() + 10_000) {
+        setSharing(false);
+      }
       void pingOnce();
     }, LOCATION_PING_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       clearInterval(handle);
-      // Sharing ends with the effect teardown — trip ended or foreground tracking disabled.
-      setSharing(false);
     };
-  }, [orderId, state, enabled, hasCoords]);
+  }, [orderId, state, enabled, hasCoords, active]);
 
   return { sharing, lastError };
 }

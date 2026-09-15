@@ -1,7 +1,7 @@
 import * as api from "@/lib/api";
 import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
 import { useRouter, useRootNavigationState, type Href } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
@@ -76,7 +76,7 @@ export function usePushNotifications(): void {
   const router = useRouter();
   const navigationReady = Boolean(useRootNavigationState()?.key);
   const ready = useRef(navigationReady);
-  ready.current = navigationReady;
+  useLayoutEffect(() => { ready.current = navigationReady; }, [navigationReady]);
   const user = useSession((s) => s.user);
   const signedIn = isSignedIn(user);
   const loading = useSession((s) => s.loading);
@@ -128,7 +128,7 @@ export function usePushNotifications(): void {
     }
   }
   const spend = useRef(spendPending);
-  spend.current = spendPending;
+  useLayoutEffect(() => { spend.current = spendPending; });
 
   useEffect(() => {
     // Register on **every launch**, signed in or not, and again whenever the

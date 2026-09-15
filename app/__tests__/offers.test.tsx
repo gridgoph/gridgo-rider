@@ -1,3 +1,4 @@
+import { invalidate } from "@/lib/live";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import type { Order } from "@/lib/api";
@@ -7,11 +8,13 @@ import { useNotifications } from "@/store/notifications";
 import { usePush } from "@/store/push";
 import { useSession } from "@/store/session";
 
+import OffersScreen from "@/app/(tabs)/offers";
+
 jest.mock("expo-router", () => ({
   router: { replace: jest.fn(), push: jest.fn() },
   useRouter: () => jest.requireMock("expo-router").router,
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -30,8 +33,6 @@ jest.mock("@/components/TripMap", () => ({
 jest.mock("@/components/PushEnableCard", () => ({
   PushEnableCard: () => null,
 }));
-
-import OffersScreen from "@/app/(tabs)/offers";
 
 const api = jest.requireMock("@/lib/api") as {
   listOffers: jest.Mock;
@@ -132,7 +133,6 @@ describe("Offers accept button", () => {
   });
 
   it("removes a competing rider's accepted offer while Offers stays open", async () => {
-    const { invalidate } = require("@/lib/live");
     view = await render(<OffersScreen />);
     await screen.findByText("Storefront tarpaulin");
     api.listOffers.mockResolvedValue([]);

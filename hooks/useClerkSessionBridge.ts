@@ -1,5 +1,5 @@
 import { useAuth, useClerk, useUser } from "@clerk/expo";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
 import {
@@ -23,7 +23,14 @@ export function useClerkSessionBridge(): boolean {
   const clearSession = useSession((state) => state.clearSession);
   const authSource = useSession((state) => state.authSource);
   const needsApplication = useSession((state) => state.needsApplication);
-  const [identityReady, setIdentityReady] = useState(false);
+  const sessionId = typeof sessionClaims?.sid === "string" ? sessionClaims.sid : "active";
+  const identityKey = isLoaded && isSignedIn ? sessionId : null;
+  const [settledIdentity, setSettledIdentity] = useState<string | null>(null);
+  if (needsApplication && identityKey && settledIdentity !== identityKey) {
+    setSettledIdentity(identityKey);
+  }
+  const currentIdentity = useRef(identityKey);
+  useLayoutEffect(() => { currentIdentity.current = identityKey; }, [identityKey]);
   const handledSession = useRef<string | null>(null);
   // A session GRIDGO has no rider record for stays signed in, so `authSource`
   // never becomes "clerk" and the short-circuit below would miss. Without this
@@ -40,7 +47,6 @@ export function useClerkSessionBridge(): boolean {
 
   useEffect(() => {
     if (!isLoaded) {
-      setIdentityReady(false);
       return;
     }
 
@@ -52,7 +58,6 @@ export function useClerkSessionBridge(): boolean {
       // Unassigned apply leaves `authSource` null, so a later Clerk sign-out
       // must still drop the apply hold — otherwise Sign in cannot leave Sign up.
       if (authSource === "clerk" || needsApplication) clearSession();
-      setIdentityReady(true);
       // A Google return can relaunch before Clerk reports signed-in. Keep the
       // wait briefly; if nobody arrives, drop it so a real signed-out rider
       // can see Welcome.
@@ -68,17 +73,14 @@ export function useClerkSessionBridge(): boolean {
       return;
     }
 
-    const sessionId = typeof sessionClaims?.sid === "string" ? sessionClaims.sid : "active";
     // Applying already owns this Clerk session. Restarting adoption here
     // clears the token provider mid-submit and leaves Apply stuck on sending.
     if (needsApplication) {
       settledUnassigned.current = sessionId;
-      setIdentityReady(true);
       return;
     }
 
     if (isClerkAdoptionBlocked()) {
-      setIdentityReady(true);
       return;
     }
 
@@ -89,29 +91,29 @@ export function useClerkSessionBridge(): boolean {
       if (handledSession.current !== sessionId || authSource !== "clerk") {
         beginClerkSession();
       }
-      setIdentityReady(false);
       return;
     }
 
     // Clerk metadata names a primary role. Only the role-scoped API projection
     // can establish this app's membership for a person with several roles.
     if (handledSession.current === sessionId && authSource === "clerk") {
-      setIdentityReady(true);
       return;
     }
 
     if (settledUnassigned.current === sessionId) {
-      setIdentityReady(true);
       return;
     }
 
     beginClerkSession();
     handledSession.current = sessionId;
-    setIdentityReady(false);
     const removeProvider = api.setTokenProvider(() => getToken());
     let cancelled = false;
 
     void adoptClerkSession().then((adoption) => {
+      // Adoption can update authSource and clean up this effect before its
+      // promise callback runs. Record completion for that identity regardless;
+      // an older identity cannot make the current session ready.
+      if (currentIdentity.current === sessionId) setSettledIdentity(sessionId);
       if (cancelled) return;
       /*
         Only a rejection ends the session.
@@ -129,7 +131,6 @@ export function useClerkSessionBridge(): boolean {
         removeProvider();
         void signOut().catch(() => {});
       }
-      setIdentityReady(true);
     });
 
     return () => {
@@ -148,11 +149,15 @@ export function useClerkSessionBridge(): boolean {
     isSignedIn,
     needsApplication,
     sessionClaims,
+    sessionId,
     signOut,
     user,
     userIsLoaded,
     user?.publicMetadata,
   ]);
 
-  return identityReady;
+  return Boolean(isLoaded && (
+    !isSignedIn || needsApplication || isClerkAdoptionBlocked() ||
+    (userIsLoaded && user && settledIdentity === identityKey)
+  ));
 }

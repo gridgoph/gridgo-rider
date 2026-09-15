@@ -1,9 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
+import RiderDetailsScreen from "@/app/rider-details";
+import { ApiError, getRiderProfile, updateRiderProfile, type RiderSelfProfile } from "@/lib/api";
+import { invalidate } from "@/lib/live";
+import { useSession } from "@/store/session";
+
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), back: jest.fn() },
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -26,11 +31,6 @@ jest.mock("@/lib/api", () => ({
   getRiderProfile: jest.fn(),
   updateRiderProfile: jest.fn(),
 }));
-
-import RiderDetailsScreen from "@/app/rider-details";
-import { ApiError, getRiderProfile, updateRiderProfile, type RiderSelfProfile } from "@/lib/api";
-import { invalidate } from "@/lib/live";
-import { useSession } from "@/store/session";
 
 const mockRouter = jest.requireMock("expo-router").router as { back: jest.Mock; push: jest.Mock };
 

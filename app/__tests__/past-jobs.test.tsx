@@ -3,11 +3,15 @@ import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { Order } from "@/lib/api";
 import { useSession } from "@/store/session";
 
+import EarningsScreen from "@/app/(tabs)/earnings";
+import { invalidate } from "@/lib/live";
+import PastJobsScreen from "@/app/past-jobs";
+
 jest.mock("expo-router", () => ({
   router: { replace: jest.fn(), push: jest.fn() },
   useRouter: () => jest.requireMock("expo-router").router,
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -16,10 +20,6 @@ jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   listOrders: jest.fn(),
 }));
-
-import EarningsScreen from "@/app/(tabs)/earnings";
-import { invalidate } from "@/lib/live";
-import PastJobsScreen from "@/app/past-jobs";
 
 const api = jest.requireMock("@/lib/api") as { listOrders: jest.Mock };
 

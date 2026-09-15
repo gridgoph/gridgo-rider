@@ -27,8 +27,8 @@ import { useSession } from "@/store/session";
 
 jest.mock("react-native", () => {
   const actual = jest.requireActual("react-native");
-  const styled = (name: "View" | "Pressable" | "Text") => (props: unknown) =>
-    require("react-native-css/native").useCssElement(actual[name], props, { className: "style" });
+  const styled = (name: "View" | "Pressable" | "Text") => (props: Record<string, unknown>) =>
+    jest.requireActual<typeof import("react-native-css/native")>("react-native-css/native").useCssElement(actual[name], props, { className: "style" });
   return Object.defineProperties({}, {
     ...Object.getOwnPropertyDescriptors(actual),
     View: { value: styled("View") },

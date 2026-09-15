@@ -2,11 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { invalidate } from "@/lib/live";
+import MapScreen from "@/app/(tabs)/map";
+
 const mockListCatalogShops = jest.fn();
 
 jest.mock("expo-router", () => ({
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react") as typeof import("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -17,7 +20,7 @@ jest.mock("@/lib/api", () => ({
 }));
 
 jest.mock("@/components/BrowseMap", () => {
-  const { Pressable } = require("react-native") as typeof import("react-native");
+  const { Pressable } = jest.requireActual<typeof import("react-native")>("react-native");
   return {
     BrowseMap: ({
       onSelectPlace,
@@ -49,9 +52,6 @@ jest.mock("@/hooks/useRiderLocation", () => ({
     error: null,
   }),
 }));
-
-import { invalidate } from "@/lib/live";
-import MapScreen from "@/app/(tabs)/map";
 
 const LIVE_SHOPS = [
   {

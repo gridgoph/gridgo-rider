@@ -49,14 +49,19 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
   );
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [wasEnabled, setWasEnabled] = useState(enabled);
+  if (wasEnabled !== enabled) {
+    setWasEnabled(enabled);
     if (!enabled) {
       setCoords(null);
       setAccuracy(null);
       setFixAtMs(null);
       setError(null);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!enabled) return;
 
     let cancelled = false;
     let sub: Location.LocationSubscription | null = null;

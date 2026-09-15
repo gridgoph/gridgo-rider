@@ -3,8 +3,12 @@ import { act, render, renderHook, screen } from "@testing-library/react-native";
 import type { Order } from "@/lib/api";
 import { useSession } from "@/store/session";
 
+import { useTripOrder } from "@/hooks/useTripOrder";
+import { invalidate } from "@/lib/live";
+import PastJobScreen from "@/app/past-job";
+
 jest.mock("expo-router", () => ({
-  useFocusEffect: (callback: () => void) => { require("react").useEffect(callback, [callback]); },
+  useFocusEffect: (callback: () => void) => { jest.requireActual<typeof import("react")>("react").useEffect(callback, [callback]); },
   useLocalSearchParams: () => ({ orderId: "ord_done" }),
 }));
 
@@ -12,10 +16,6 @@ jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   getOrder: jest.fn(),
 }));
-
-import { useTripOrder } from "@/hooks/useTripOrder";
-import { invalidate } from "@/lib/live";
-import PastJobScreen from "@/app/past-job";
 
 const api = jest.requireMock("@/lib/api") as { getOrder: jest.Mock };
 

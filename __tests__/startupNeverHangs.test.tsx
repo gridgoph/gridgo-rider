@@ -55,7 +55,7 @@ jest.mock("expo-router", () => {
     mockShellMounted();
     return null;
   };
-  Stack.Screen = () => null;
+  Stack.Screen = function MockStackScreen() { return null; };
   return {
     Stack,
     useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
