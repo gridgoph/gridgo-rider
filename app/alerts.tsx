@@ -1,3 +1,5 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
@@ -33,17 +35,17 @@ export default function AlertsScreen() {
   const router = useRouter();
   const colors = useThemeColors();
 
-  const adopt = useNotifications((s) => s.adopt);
+  const load = useNotifications((s) => s.load);
+  const items = useNotifications((s) => s.items);
+  const error = useNotifications((s) => s.loadError);
   const markRead = useNotifications((s) => s.markRead);
   const markAllRead = useNotifications((s) => s.markAllRead);
   const clear = useNotifications((s) => s.clear);
   const readIds = useNotifications((s) => s.readIds);
   const hydrate = useNotifications((s) => s.hydrate);
 
-  const [items, setItems] = useState<api.Notification[] | null>(null);
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [clearError, setClearError] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
 
@@ -51,35 +53,27 @@ export default function AlertsScreen() {
     void hydrate();
   }, [hydrate]);
 
+  const nextRead = useReadVersion();
   const reload = useCallback(
     async (mode: "load" | "refresh" = "load") => {
+      const current = nextRead();
       if (mode === "refresh") setRefreshing(true);
-      try {
-        const list = await api.listNotifications();
-        setItems(list);
-        adopt(list);
-        setError(null);
-        setClearError(null);
-      } catch (e) {
-        setError(
-          api.apiErrorMessage(
-            e,
-            "Alerts did not load. Check the phone's connection and pull down to try again.",
-          ),
-        );
-        setItems((current) => current ?? []);
-      } finally {
-        setRefreshing(false);
-      }
+      const loaded = await load().then(() => true, () => false);
+      if (!current()) return;
+      if (loaded) setClearError(null);
+      setRefreshing(false);
       // Separately, and quietly: the stage bars are an enrichment, not the list.
       try {
-        setOrders(await api.listOrders());
+        const orders = await api.listOrders();
+        if (current()) setOrders(orders);
       } catch {
-        setOrders([]);
+        if (current()) setOrders([]);
       }
     },
-    [adopt],
+    [nextRead, load],
   );
+
+  useLiveRefresh(["notifications", "orders"], reload);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,9 +108,6 @@ export default function AlertsScreen() {
     setClearError(null);
     try {
       const outcome = await clear(items);
-      const remaining = items.filter((item) => !outcome.cleared.includes(item.id));
-      setItems(remaining);
-      adopt(remaining);
       if (outcome.failed) {
         setClearError(
           outcome.cleared.length
@@ -164,7 +155,7 @@ export default function AlertsScreen() {
           />
         ) : null}
 
-        {items === null ? <AlertListSkeleton /> : null}
+        {items === null && !error ? <AlertListSkeleton /> : null}
 
         {items?.length ? (
           <>
@@ -194,7 +185,7 @@ export default function AlertsScreen() {
             </View>
 
             <Text className="text-caption text-text-muted">
-              Swipe an alert away to mark it read. Read marks are kept on this phone.
+              Swipe an alert away to mark it read. Read status is saved to your GRIDGO account.
             </Text>
           </>
         ) : null}

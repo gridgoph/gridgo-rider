@@ -49,14 +49,19 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
   );
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [wasEnabled, setWasEnabled] = useState(enabled);
+  if (wasEnabled !== enabled) {
+    setWasEnabled(enabled);
     if (!enabled) {
       setCoords(null);
       setAccuracy(null);
       setFixAtMs(null);
       setError(null);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!enabled) return;
 
     let cancelled = false;
     let sub: Location.LocationSubscription | null = null;
@@ -96,13 +101,13 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
             );
             // Age the cached fix from when it was taken, not from now — a
             // last-known position can be minutes old and must read as stale.
-            setFixAtMs(last.timestamp ?? Date.now());
+            setFixAtMs(Number.isFinite(last.timestamp) ? last.timestamp : null);
           }
         } catch {
           // ignore — watch will fill in
         }
 
-        sub = await Location.watchPositionAsync(
+        const watcher = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
             timeInterval: 8_000,
@@ -136,9 +141,11 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
                 ? pos.coords.speed
                 : null,
             );
-            setFixAtMs(pos.timestamp ?? Date.now());
+            setFixAtMs(Number.isFinite(pos.timestamp) ? pos.timestamp : null);
           },
         );
+        if (cancelled) watcher.remove();
+        else sub = watcher;
       } catch {
         if (!cancelled) {
           setError("Could not read GPS. Trip actions still work.");

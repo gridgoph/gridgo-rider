@@ -288,7 +288,7 @@ export function uploadEvidence({
           parameters: { purpose: target.purpose },
           headers: {
             Accept: "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
           },
         },
         (progress) => {
@@ -349,7 +349,7 @@ export function uploadEvidence({
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
         },
         body: JSON.stringify(
           target.milestoneCode

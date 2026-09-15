@@ -1,11 +1,14 @@
+import { sessionWaitHold } from "@/lib/sessionWait";
+import { cancelDeviceRegistrations, serializeDeviceMutation, usePush } from "@/store/push";
+import { useActiveTrip } from "@/store/activeTrip";
+import { useNotifications } from "@/store/notifications";
+import { setLiveOwner } from "@/lib/live";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
-import type { User } from "@/lib/api";
+import { ApiError, type User, type RiderEnrollment } from "@/lib/api";
 import * as api from "@/lib/api";
-import { ApiError } from "@/lib/api";
 import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
-import type { RiderEnrollment } from "@/lib/api";
 import {
   parseStoredSession,
   serialiseSession,
@@ -22,9 +25,6 @@ function persistGoogleJoin(on: boolean): void {
     : AsyncStorage.removeItem(GOOGLE_JOIN_KEY);
   void write.catch(() => undefined);
 }
-import { sessionWaitHold } from "@/lib/sessionWait";
-import { usePush } from "@/store/push";
-import { useActiveTrip } from "@/store/activeTrip";
 
 /** Hung /auth/logout must not keep the rider on Account. */
 export const LOGOUT_API_TIMEOUT_MS = 2500;
@@ -251,6 +251,8 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   rejectClerkSession: (message) => {
     sessionDecisionVersion += 1;
+    clerkAdoptionBlocked = true;
+    const identity = clerkSignOut;
     clerkOwnsSession = true;
     api.setToken(null);
     api.setTokenProvider(null);
@@ -265,6 +267,7 @@ export const useSession = create<SessionState>((set, get) => ({
       sessionWait: null,
     });
     persistGoogleJoin(false);
+    void identity?.().catch(() => {});
   },
   beginClerkSession: () => {
     sessionDecisionVersion += 1;
@@ -517,8 +520,11 @@ export const useSession = create<SessionState>((set, get) => ({
     try {
       const user = await api.me();
       // A late answer must not resurrect a session that has since been ended.
-      if (get().user) set({ user });
-    } catch {
+      if (user.role !== APP_ROLE) {
+        get().rejectClerkSession("This account no longer has rider access. Sign in with a rider account.");
+      } else if (get().user) set({ user });
+    } catch (error) {
+      if (error instanceof api.ApiError && error.status === 403) get().rejectClerkSession("This account no longer has rider access.");
       // A 401 already clears the session through the unauthorized handler;
       // anything else is a bad moment on the network, not a decision.
     }
@@ -544,6 +550,9 @@ export const useSession = create<SessionState>((set, get) => ({
     // is a new version" still has to reach it.
     const deviceToken = usePush.getState().token;
     const identity = clerkSignOut;
+    const logoutBearer = api.captureLogoutBearer();
+    cancelDeviceRegistrations();
+    const serverLogout = serializeDeviceMutation(() => api.logout(deviceToken, logoutBearer));
     api.setToken(null);
     api.setTokenProvider(null);
     persist(null);
@@ -560,9 +569,12 @@ export const useSession = create<SessionState>((set, get) => ({
     useActiveTrip.getState().clear();
     void usePush.getState().release();
     await Promise.all([
-      raceDeadline(api.logout(deviceToken).catch(() => undefined), LOGOUT_API_TIMEOUT_MS),
+      raceDeadline(serverLogout.catch(() => undefined), LOGOUT_API_TIMEOUT_MS),
       raceDeadline(
-        identity ? identity().catch(() => undefined) : Promise.resolve(),
+        identity
+          ? raceDeadline(serverLogout.catch(() => undefined), LOGOUT_API_TIMEOUT_MS)
+              .then(() => identity()).catch(() => undefined)
+          : Promise.resolve(),
         LOGOUT_CLERK_TIMEOUT_MS,
       ),
     ]);
@@ -598,3 +610,13 @@ export function bindApiUnauthorizedHandler(): () => void {
     useSession.getState().clearSession();
   });
 }
+
+useSession.subscribe((state, previous) => {
+  const next = state.user?.id ?? null;
+  const status = state.user?.verificationStatus;
+  if (next === (previous.user?.id ?? null) && status === previous.user?.verificationStatus) return;
+  if (next !== (previous.user?.id ?? null)) cancelDeviceRegistrations();
+  setLiveOwner(next ? `${next}:${status ?? "approved"}` : null);
+  useNotifications.getState().bindOwner(next);
+  useActiveTrip.getState().clear();
+});

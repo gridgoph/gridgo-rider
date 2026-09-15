@@ -1,3 +1,5 @@
+import { useTripTracking } from "@/hooks/useTripTracking";
+import { useAlertStream } from "@/hooks/useAlertStream";
 import "../global.css";
 
 import { ClerkProvider } from "@clerk/expo";
@@ -7,7 +9,7 @@ import {
   DefaultTheme,
   ThemeProvider,
   type Theme,
-} from "@react-navigation/native";
+} from "expo-router/react-navigation";
 import Constants from "expo-constants";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -75,6 +77,7 @@ function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function AppShell() {
+  const ownerId = useSession((s) => `${s.user?.id ?? "signed-out"}:${s.user?.verificationStatus ?? "approved"}`);
   const scheme = useThemeName();
   const token = useThemeColors();
   const fontsReady = useAppFonts();
@@ -88,8 +91,10 @@ function AppShell() {
   // only `PushEnableCard` does that. Expo Go throws from the native module;
   // the hook wraps every call so that costs push, never the first frame.
   usePushNotifications();
+  useAlertStream();
   // Same seat as push: arrival is about where the phone is, not which screen
   // is open, so the geofence lives here rather than on the Active tab.
+  useTripTracking();
   useArrivalAlert();
 
   // Read the stored session here, not in the gate: the gate lives inside the
@@ -154,6 +159,7 @@ function AppShell() {
         {launchReady ? (
         <AuthGate>
           <Stack
+            key={ownerId ?? "signed-out"}
             screenOptions={{
               headerStyle: { backgroundColor: token.surface },
               headerTintColor: token.textPrimary,

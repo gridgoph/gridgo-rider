@@ -1,3 +1,5 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useEffect, useState } from "react";
 
 import * as api from "@/lib/api";
@@ -12,32 +14,48 @@ import * as api from "@/lib/api";
 export function useTripOrder(orderId: string | null) {
   const [order, setOrder] = useState<api.Order | null>(null);
   const [loading, setLoading] = useState(Boolean(orderId));
-  const [error, setError] = useState<string | null>(null);
+  const missingOrderMessage = "This job could not be opened. Go back and try again.";
+  const [error, setError] = useState<string | null>(orderId ? null : missingOrderMessage);
+  const [previousOrderId, setPreviousOrderId] = useState(orderId);
+  if (previousOrderId !== orderId) {
+    setPreviousOrderId(orderId);
+    setOrder(null);
+    setLoading(Boolean(orderId));
+    setError(orderId ? null : missingOrderMessage);
+  }
 
-  const load = useCallback(async () => {
-    if (!orderId) {
-      setOrder(null);
-      setLoading(false);
-      setError("This job could not be opened. Go back and try again.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const next = await api.getOrder(orderId);
+  const nextRead = useReadVersion();
+  const load = useCallback(() => {
+    const current = nextRead();
+    if (!orderId) return Promise.resolve();
+    return api.getOrder(orderId).then((next) => {
+      if (!current()) return;
       setOrder(next);
       setError(null);
-    } catch (e) {
+    }).catch((e: unknown) => {
+      if (!current()) return;
+      if (e instanceof api.ApiError && (e.status === 403 || e.status === 404)) setOrder(null);
       setError(
         api.apiErrorMessage(e, "Could not load this job. Check your connection and try again."),
       );
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId]);
+    }).finally(() => {
+      if (current()) setLoading(false);
+    });
+  }, [orderId, nextRead]);
+
+  const reload = useCallback((mode: "load" | "refresh" = "load") => {
+    if (mode === "load" && orderId) setLoading(true);
+    return load();
+  }, [load, orderId]);
+
+  useLiveRefresh(
+    ["orders", "jobs", "dispatch", "escalations", "claims", "payouts"],
+    () => reload("refresh"),
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  return { order, setOrder, loading, error, reload: load };
+  return { order, setOrder, loading, error, reload };
 }

@@ -14,8 +14,8 @@ type Props = {
  * for anything.
  *
  * Deliberately quiet: on these screens the action is the loud element, and a
- * heavy header competes with it. Two lines, no chip, no icon — the screen title
- * in the navigation bar already says which step this is.
+ * heavy header competes with it. Overline, title, order id, stop — no chip, no
+ * icon. The screen title in the navigation bar already says which step this is.
  */
 export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
   return (
@@ -24,6 +24,7 @@ export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
         {stopKind === "pickup" ? "AT THE SHOP" : "AT THE DOOR"}
       </Text>
       <Text className="text-h2 text-text-primary">{order.title}</Text>
+      <Text className="text-caption text-text-muted">Order {order.id}</Text>
       <Text className="text-body-lg text-text-secondary">{stopLabel}</Text>
     </View>
   );

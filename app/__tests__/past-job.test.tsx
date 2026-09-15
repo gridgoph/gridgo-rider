@@ -1,9 +1,14 @@
-import { render, screen } from "@testing-library/react-native";
+import { act, render, renderHook, screen } from "@testing-library/react-native";
 
 import type { Order } from "@/lib/api";
 import { useSession } from "@/store/session";
 
+import { useTripOrder } from "@/hooks/useTripOrder";
+import { invalidate } from "@/lib/live";
+import PastJobScreen from "@/app/past-job";
+
 jest.mock("expo-router", () => ({
+  useFocusEffect: (callback: () => void) => { jest.requireActual<typeof import("react")>("react").useEffect(callback, [callback]); },
   useLocalSearchParams: () => ({ orderId: "ord_done" }),
 }));
 
@@ -11,8 +16,6 @@ jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   getOrder: jest.fn(),
 }));
-
-import PastJobScreen from "@/app/past-job";
 
 const api = jest.requireMock("@/lib/api") as { getOrder: jest.Mock };
 
@@ -83,6 +86,7 @@ describe("a past job", () => {
     await render(<PastJobScreen />);
 
     expect(await screen.findByText("Flyers x500")).toBeTruthy();
+    expect(screen.getByText("Order ord_done")).toBeTruthy();
     expect(screen.getByText("Delivery complete")).toBeTruthy();
     expect(screen.getByText("HISTORY")).toBeTruthy();
 
@@ -92,4 +96,41 @@ describe("a past job", () => {
     expect(screen.getByText("PrintRight Davao")).toBeTruthy();
     expect(screen.getByText("Matina Crossing")).toBeTruthy();
   });
+  it.each(["orders", "*"] as const)("keeps the job visible while %s refreshes it", async (resource) => {
+    jest.useFakeTimers();
+    let finish!: (order: Order) => void;
+    try {
+      await render(<PastJobScreen />);
+      expect(screen.getByText("Flyers x500")).toBeTruthy();
+      api.getOrder.mockReturnValueOnce(new Promise<Order>((resolve) => { finish = resolve; }));
+      await act(async () => { invalidate(resource); await jest.advanceTimersByTimeAsync(100); });
+      expect(api.getOrder).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Flyers x500")).toBeTruthy();
+      expect(screen.getByText("HISTORY")).toBeTruthy();
+      await act(async () => { finish({ ...completed, title: "Updated flyers" }); });
+      expect(screen.getByText("Updated flyers")).toBeTruthy();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("keeps initial loading until a superseding refresh supplies the job", async () => {
+    jest.useFakeTimers();
+    let finishInitial!: (order: Order) => void;
+    let finishRefresh!: (order: Order) => void;
+    api.getOrder
+      .mockReturnValueOnce(new Promise<Order>((resolve) => { finishInitial = resolve; }))
+      .mockReturnValueOnce(new Promise<Order>((resolve) => { finishRefresh = resolve; }));
+    try {
+      const view = await renderHook(() => useTripOrder("ord_done"));
+      expect(view.result.current.loading).toBe(true);
+      expect(view.result.current.order).toBeNull();
+      await act(async () => { invalidate("orders"); await jest.advanceTimersByTimeAsync(100); });
+      await act(async () => { finishInitial(completed); });
+      expect(view.result.current.loading).toBe(true);
+      expect(view.result.current.order).toBeNull();
+      await act(async () => { finishRefresh({ ...completed, title: "Latest job" }); });
+      expect(view.result.current.loading).toBe(false);
+      expect(view.result.current.order?.title).toBe("Latest job");
+    } finally { jest.useRealTimers(); }
+  });
+
 });

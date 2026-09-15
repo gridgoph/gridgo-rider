@@ -110,8 +110,8 @@ export function resolveAuthRedirect(
 
   const alreadyOnLogin = root === "(auth)" && segments[1] === "login";
   // A refused identity (wrong app) must reach login, not stay on Signing you in.
-  if (!isSignedIn && showErrorOnLogin && !alreadyOnLogin) {
-    return "/(auth)/login";
+  if (!isSignedIn && showErrorOnLogin) {
+    return alreadyOnLogin ? null : "/(auth)/login";
   }
 
   // Google join stays put. Sign-out leaves the tabs — Welcome shows the wait.

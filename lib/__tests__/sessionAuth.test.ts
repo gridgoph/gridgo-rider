@@ -106,7 +106,8 @@ describe("session clear + 401 wiring", () => {
   it("leaves the signed-in area before a hung API logout finishes", async () => {
     signedIn();
     jest.useFakeTimers();
-    const logoutSpy = jest.spyOn(api, "logout").mockReturnValue(new Promise(() => {}));
+    let finishLogout: () => void = () => {};
+    const logoutSpy = jest.spyOn(api, "logout").mockReturnValue(new Promise<void>((resolve) => { finishLogout = resolve; }));
 
     try {
       const pending = useSession.getState().logout();
@@ -115,6 +116,8 @@ describe("session clear + 401 wiring", () => {
       await jest.advanceTimersByTimeAsync(3_000);
       await pending;
     } finally {
+      finishLogout();
+      await Promise.resolve();
       logoutSpy.mockRestore();
       jest.useRealTimers();
     }
@@ -212,4 +215,22 @@ describe("session clear + 401 wiring", () => {
       unbind();
     }
   });
+});
+
+it("cancels a device claim while its bearer is unresolved", async () => {
+  let finish!: (token: string) => void;
+  api.setTokenProvider(() => new Promise<string>((resolve) => { finish = resolve; }));
+  const fetchSpy = jest.spyOn(global, "fetch");
+  const controller = new AbortController();
+  try {
+    const request = api.registerDevice("device", "android", controller.signal);
+    controller.abort();
+    await expect(request).rejects.toThrow();
+    finish("late-token");
+    await Promise.resolve();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  } finally {
+    api.setTokenProvider(null);
+    fetchSpy.mockRestore();
+  }
 });

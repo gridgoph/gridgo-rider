@@ -1,3 +1,5 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
@@ -29,6 +31,7 @@ import { useSession } from "@/store/session";
  */
 export default function EarningsScreen() {
   const colors = useThemeColors();
+  const beginRead = useReadVersion();
   const user = useSession((s) => s.user);
   const approval = approvalPresentation(user);
 
@@ -37,10 +40,14 @@ export default function EarningsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
+    const isCurrent = beginRead();
     try {
-      setOrders(await api.listOrders());
+      const next = await api.listOrders();
+      if (!isCurrent()) return;
+      setOrders(next);
       setError(null);
     } catch (e) {
+      if (!isCurrent()) return;
       setError(
         api.apiErrorMessage(
           e,
@@ -49,7 +56,7 @@ export default function EarningsScreen() {
       );
       setOrders((current) => current ?? []);
     }
-  }, []);
+  }, [beginRead]);
 
   /*
     The pull gesture owns `refreshing`. Setting it on focus spun the
@@ -65,6 +72,8 @@ export default function EarningsScreen() {
       setRefreshing(false);
     }
   }, [reload]);
+
+  useLiveRefresh(["orders", "payouts", "identity"], reload);
 
   useFocusEffect(
     useCallback(() => {

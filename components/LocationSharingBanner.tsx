@@ -73,7 +73,7 @@ export function LocationSharingBanner({ sharing, freshness = null }: Props) {
         ) : null}
         {sharing && !degraded ? (
           <Text className="text-caption text-text-muted">
-            Sent only while this trip is active, and never saved on this phone.
+            Keep GRIDGO open to share your position during this trip. Positions are not saved on this phone.
           </Text>
         ) : null}
       </View>

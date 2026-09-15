@@ -1,9 +1,14 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import RiderDetailsScreen from "@/app/rider-details";
+import { ApiError, getRiderProfile, updateRiderProfile, type RiderSelfProfile } from "@/lib/api";
+import { invalidate } from "@/lib/live";
+import { useSession } from "@/store/session";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), back: jest.fn() },
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -26,10 +31,6 @@ jest.mock("@/lib/api", () => ({
   getRiderProfile: jest.fn(),
   updateRiderProfile: jest.fn(),
 }));
-
-import RiderDetailsScreen from "@/app/rider-details";
-import { ApiError, getRiderProfile, updateRiderProfile, type RiderSelfProfile } from "@/lib/api";
-import { useSession } from "@/store/session";
 
 const mockRouter = jest.requireMock("expo-router").router as { back: jest.Mock; push: jest.Mock };
 
@@ -136,4 +137,68 @@ describe("the rider's own details", () => {
     expect(mockRouter.back).not.toHaveBeenCalled();
     await view.unmount();
   });
+  it("keeps the edited draft paired with its original version until explicit reload", async () => {
+    jest.useFakeTimers();
+    load();
+    (updateRiderProfile as jest.Mock).mockRejectedValue(new ApiError(409, { error: "rider_profile_stale" }));
+    try {
+      await render(<RiderDetailsScreen />);
+      await fireEvent.changeText(screen.getByLabelText("Plate number"), "XYZ 9876");
+      load({ ...PROFILE, phone: "+639189876543", version: 4 });
+      await act(async () => { invalidate("identity"); await jest.advanceTimersByTimeAsync(100); });
+      expect(screen.getByLabelText("Mobile number").props.value).toBe(PROFILE.phone);
+      await fireEvent.press(screen.getByText("Save changes"));
+      expect(updateRiderProfile).toHaveBeenLastCalledWith(3, { plateNumber: "XYZ 9876" });
+      await fireEvent.press(screen.getByText("Load the latest"));
+      expect(screen.getByLabelText("Mobile number").props.value).toBe("+639189876543");
+      await fireEvent.changeText(screen.getByLabelText("Plate number"), "NEW 1234");
+      await fireEvent.press(screen.getByText("Save changes"));
+      expect(updateRiderProfile).toHaveBeenLastCalledWith(4, { plateNumber: "NEW 1234" });
+    } finally { jest.useRealTimers(); }
+  });
+
+  it.each(["success", "failure"])("ignores an older profile %s after newer details arrive", async (outcome) => {
+    jest.useFakeTimers();
+    let finish!: (value: RiderSelfProfile) => void;
+    let fail!: (error: Error) => void;
+    (getRiderProfile as jest.Mock).mockReturnValueOnce(new Promise<RiderSelfProfile>((resolve, reject) => { finish = resolve; fail = reject; }))
+      .mockResolvedValue({ ...PROFILE, phone: "+639189876543", version: 4 });
+    try {
+      await render(<RiderDetailsScreen />);
+      await act(async () => { invalidate("identity"); await jest.advanceTimersByTimeAsync(100); });
+      await act(async () => { if (outcome === "success") finish(PROFILE); else fail(new Error("offline")); });
+      expect(screen.getByLabelText("Mobile number").props.value).toBe("+639189876543");
+      expect(screen.queryByText("Could not refresh")).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it.each([false, true])("preserves explicit reload intent across a background read, then edited: %s", async (editAgain) => {
+    jest.useFakeTimers();
+    load();
+    (updateRiderProfile as jest.Mock).mockRejectedValue(new ApiError(409, { error: "rider_profile_stale" }));
+    let finishExplicit!: (profile: RiderSelfProfile) => void;
+    let finishBackground!: (profile: RiderSelfProfile) => void;
+    try {
+      await render(<RiderDetailsScreen />);
+      await fireEvent.changeText(screen.getByLabelText("Plate number"), "XYZ 9876");
+      await fireEvent.press(screen.getByText("Save changes"));
+      (getRiderProfile as jest.Mock)
+        .mockReturnValueOnce(new Promise<RiderSelfProfile>((resolve) => { finishExplicit = resolve; }))
+        .mockReturnValueOnce(new Promise<RiderSelfProfile>((resolve) => { finishBackground = resolve; }));
+      await fireEvent.press(screen.getByText("Load the latest"));
+      await act(async () => { invalidate("identity"); await jest.advanceTimersByTimeAsync(100); });
+      if (editAgain) await fireEvent.changeText(screen.getByLabelText("Plate number"), "NEW 1234");
+      await act(async () => { finishExplicit({ ...PROFILE, phone: "+639189876543", version: 4 }); });
+      await act(async () => { finishBackground({ ...PROFILE, phone: "+639199876543", version: 5 }); });
+      expect(screen.getByLabelText("Mobile number").props.value).toBe(editAgain ? PROFILE.phone : "+639199876543");
+      expect(screen.getByLabelText("Plate number").props.value).toBe(editAgain ? "NEW 1234" : PROFILE.plateNumber);
+      if (!editAgain) {
+        expect(screen.queryByText("Load the latest")).toBeNull();
+        await fireEvent.changeText(screen.getByLabelText("Plate number"), "NEW 1234");
+      }
+      await fireEvent.press(screen.getByText("Save changes"));
+      expect(updateRiderProfile).toHaveBeenLastCalledWith(editAgain ? 3 : 5, { plateNumber: "NEW 1234" });
+    } finally { jest.useRealTimers(); }
+  });
+
 });

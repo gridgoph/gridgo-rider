@@ -17,21 +17,8 @@ import { isSignedIn, useSession } from "@/store/session";
  * drawn where the value is already obvious and states in one line what will
  * arrive; the dialog follows a deliberate tap and nothing else.
  *
- * Where it is drawn is this app's decision, and it is four places:
- *
- * - **Alerts**, where a rider is already reading the things push would
- *   deliver.
- * - **Offers**, where the next job appears, and where an unapproved rider
- *   is waiting on Operations — the moment "we will tell you" is the answer
- *   to a question the screen has already raised.
- * - **Active**, the trip in hand, for the same reason: a rider standing
- *   between steps, or waiting on a failed-check answer, is the person the
- *   phone has to reach.
- * - **The sign-in screen**, which is the only surface a rider that installs
- *   GRIDGO and does not sign in will ever see. On Android 13+ the permission
- *   can only be asked once and only while the app is open, so a door that never
- *   asks is a phone GRIDGO can never tell to update. Its copy promises only
- *   what an unclaimed phone actually gets — see `pushOfferCopy`.
+ * Placement follows AGENTS.md's Push notifications guidance. Keep the request
+ * beside the job or alert that makes its value clear.
  *
  * Refusal is a first-class outcome. Nothing is blocked, no screen changes, and
  * Alerts keeps every update: the card simply becomes a pointer to the phone's

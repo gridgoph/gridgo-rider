@@ -1,10 +1,16 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import AlertsScreen from "@/app/alerts";
+import type { Notification, Order } from "@/lib/api";
+import { invalidate } from "@/lib/live";
+import { askConfirm } from "@/store/sheets";
+import { useNotifications } from "@/store/notifications";
 
 jest.mock("expo-router", () => ({
   router: { replace: jest.fn(), push: jest.fn() },
   useRouter: () => jest.requireMock("expo-router").router,
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -18,12 +24,8 @@ jest.mock("@/lib/api", () => ({
   listNotifications: jest.fn(),
   listOrders: jest.fn(),
   deleteNotification: jest.fn(),
+  markNotificationsRead: jest.fn(async () => undefined),
 }));
-
-import AlertsScreen from "@/app/alerts";
-import type { Notification } from "@/lib/api";
-import { askConfirm } from "@/store/sheets";
-import { useNotifications } from "@/store/notifications";
 
 const api = jest.requireMock("@/lib/api") as {
   listNotifications: jest.Mock;
@@ -44,7 +46,7 @@ const dispatch: Notification = {
 describe("AlertsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    useNotifications.setState({ unread: 0, readIds: [], hydrated: true });
+    useNotifications.setState({ items: null, loadError: null, unread: 0, readIds: [], hydrated: true });
     api.listNotifications.mockResolvedValue([dispatch]);
     api.listOrders.mockResolvedValue([]);
     api.deleteNotification.mockResolvedValue({
@@ -95,4 +97,98 @@ describe("AlertsScreen", () => {
     expect(screen.queryByText(dispatch.title)).toBeNull();
     expect(screen.queryByText("Clear notifications")).toBeNull();
   });
+});
+
+it.each([
+  ["older first", "failure"],
+  ["newer first", "failure"],
+  ["older first", "success"],
+  ["newer first", "success"],
+])("shows the latest background load outcome: %s, %s", async (order, outcome) => {
+  useNotifications.setState({ items: null, loadError: null, unread: 0, readIds: [], hydrated: true });
+  let failOlder!: (error: Error) => void;
+  let failNewer!: (error: Error) => void;
+  let finishNewer!: (items: Notification[]) => void;
+  api.listNotifications.mockReset()
+    .mockReturnValueOnce(new Promise<Notification[]>((_, reject) => { failOlder = reject; }))
+    .mockReturnValueOnce(new Promise<Notification[]>((resolve, reject) => {
+      finishNewer = resolve;
+      failNewer = reject;
+    }))
+    .mockResolvedValue([dispatch]);
+  api.listOrders.mockResolvedValue([]);
+  await render(<AlertsScreen />);
+  let refreshing!: Promise<void>;
+  await act(async () => { refreshing = useNotifications.getState().refreshUnread(); });
+  const finishLatest = async () => {
+    if (outcome === "failure") failNewer(new Error("offline"));
+    else finishNewer([dispatch]);
+    await refreshing;
+  };
+  if (order === "older first") {
+    await act(async () => { failOlder(new Error("offline")); });
+    expect(screen.queryByText("Alerts did not load")).toBeNull();
+    await act(finishLatest);
+  } else {
+    await act(finishLatest);
+    await act(async () => { failOlder(new Error("offline")); });
+  }
+  if (outcome === "failure") {
+    expect(screen.getByText("Alerts did not load")).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Try again"));
+  }
+  expect(await screen.findByText(dispatch.title)).toBeTruthy();
+  expect(screen.queryByText("Alerts did not load")).toBeNull();
+  expect(useNotifications.getState().unread).toBe(1);
+});
+
+
+it("updates the visible inbox from a silent notification event without navigation", async () => {
+  api.listNotifications.mockResolvedValue([]);
+  api.listOrders.mockResolvedValue([]);
+  await render(<AlertsScreen />);
+  await waitFor(() => expect(api.listNotifications).toHaveBeenCalled());
+  const incoming = { id:"ntf_live", userId:"owner", title:"Live decision arrived", body:"Open your account", read:false, at:"2026-09-08T00:00:00Z" };
+  api.listNotifications.mockResolvedValue([incoming]);
+  await act(async () => { invalidate("notifications"); });
+  expect(await screen.findByText("Live decision arrived")).toBeTruthy();
+});
+
+it("keeps an incoming notification visible when an earlier clear completes", async () => {
+  jest.useFakeTimers();
+  useNotifications.setState({ items: null, unread: 0, readIds: [], hydrated: true });
+  api.listNotifications.mockResolvedValue([dispatch]);
+  api.listOrders.mockResolvedValue([]);
+  (askConfirm as jest.Mock).mockResolvedValue(true);
+  let finish!: () => void;
+  api.deleteNotification.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+  try {
+    await render(<AlertsScreen />);
+    await fireEvent.press(screen.getByText("Clear notifications"));
+    const incoming = { ...dispatch, id: "b", title: "New dispatch" };
+    api.listNotifications.mockResolvedValue([dispatch, incoming]);
+    await act(async () => { invalidate("notifications"); await jest.advanceTimersByTimeAsync(100); });
+    expect(screen.getByText("New dispatch")).toBeTruthy();
+    await act(async () => { finish(); });
+    expect(screen.getByText("New dispatch")).toBeTruthy();
+    expect(screen.queryByText(dispatch.title)).toBeNull();
+    expect(useNotifications.getState().unread).toBe(1);
+  } finally { jest.useRealTimers(); }
+});
+
+it("keeps newer order stages when an earlier enrichment fails", async () => {
+  jest.useFakeTimers();
+  useNotifications.setState({ items: null, unread: 0, readIds: [], hydrated: true });
+  api.listNotifications.mockResolvedValue([dispatch]);
+  let fail!: (error: Error) => void;
+  api.listOrders.mockReturnValueOnce(new Promise<Order[]>((_, reject) => { fail = reject; }))
+    .mockResolvedValue([{ id: "ord_1", state: "delivered", timeline: [] }]);
+  try {
+    await render(<AlertsScreen />);
+    await act(async () => { invalidate("orders"); await jest.advanceTimersByTimeAsync(100); });
+    expect(screen.getByRole("button", { name: /Delivered/ })).toBeTruthy();
+    await act(async () => { fail(new Error("offline")); });
+    expect(screen.getByRole("button", { name: /Delivered/ })).toBeTruthy();
+  } finally { jest.useRealTimers(); }
 });

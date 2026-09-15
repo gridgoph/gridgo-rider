@@ -31,13 +31,15 @@ function applyPreference(next: ThemePreference) {
   // which is what an in-app theme switch did on Expo web, the one target this
   // project screenshots from. The CSS layer below is what actually repaints,
   // so losing the native echo costs nothing on the platform that lacks it.
-  Appearance.setColorScheme?.(next === "system" ? null : next);
+  Appearance.setColorScheme?.(next === "system" ? "unspecified" : next);
 
   // react-native-css keeps its own colour-scheme observable, seeded from
   // Appearance and updated by its change listener. Push the value directly so
   // the CSS layer switches on the same frame rather than waiting for the
   // native echo, which platforms deliver at different times.
-  cssColorScheme.set(next === "system" ? Appearance.getColorScheme() : next);
+  cssColorScheme.set(
+    next === "system" ? (Appearance.getColorScheme() ?? "unspecified") : next,
+  );
 }
 
 function notify() {

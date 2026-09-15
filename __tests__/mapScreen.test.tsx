@@ -2,11 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { invalidate } from "@/lib/live";
+import MapScreen from "@/app/(tabs)/map";
+
 const mockListCatalogShops = jest.fn();
 
 jest.mock("expo-router", () => ({
   useFocusEffect: (callback: () => void) => {
-    const { useEffect } = require("react") as typeof import("react");
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
     useEffect(callback, [callback]);
   },
 }));
@@ -17,7 +20,7 @@ jest.mock("@/lib/api", () => ({
 }));
 
 jest.mock("@/components/BrowseMap", () => {
-  const { Pressable } = require("react-native") as typeof import("react-native");
+  const { Pressable } = jest.requireActual<typeof import("react-native")>("react-native");
   return {
     BrowseMap: ({
       onSelectPlace,
@@ -50,8 +53,6 @@ jest.mock("@/hooks/useRiderLocation", () => ({
   }),
 }));
 
-import MapScreen from "@/app/(tabs)/map";
-
 const LIVE_SHOPS = [
   {
     supplierId: "user_lovis_printshop",
@@ -77,7 +78,7 @@ const LIVE_SHOPS = [
   },
 ];
 
-async function renderMap(ui: ReactElement) {
+function renderMap(ui: ReactElement) {
   return render(ui, {
     wrapper: ({ children }) => (
       <SafeAreaProvider
@@ -186,4 +187,22 @@ describe("Map tab", () => {
     });
     expect(screen.getByLabelText("Try loading shops again")).toBeTruthy();
   });
+});
+
+it.each(["success", "failure"])("keeps the newest catalog when an old %s arrives late", async (outcome) => {
+  jest.useFakeTimers();
+  let finish!: (shops: typeof LIVE_SHOPS) => void;
+  let fail!: (error: Error) => void;
+  mockListCatalogShops.mockReset();
+  mockListCatalogShops.mockReturnValueOnce(new Promise((resolve, reject) => { finish = resolve; fail = reject; }))
+    .mockResolvedValue(LIVE_SHOPS);
+  try {
+    await renderMap(<MapScreen />);
+    await act(async () => { invalidate("catalog"); await jest.advanceTimersByTimeAsync(100); });
+    await fireEvent.changeText(screen.getByLabelText("Find a shop or the office"), "Lovis");
+    expect(screen.getByLabelText("Lovis Printshop")).toBeTruthy();
+    await act(async () => { if (outcome === "success") finish([]); else fail(new Error("offline")); });
+    expect(screen.getByLabelText("Lovis Printshop")).toBeTruthy();
+    expect(screen.queryByText(/Could not load print shops/i)).toBeNull();
+  } finally { jest.useRealTimers(); }
 });

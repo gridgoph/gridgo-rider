@@ -139,9 +139,9 @@ each cost real time to discover. They apply to any future test in this repo.
    controls what Jest *skips*, not what a transform *matches*. `package.json`
    already maps `lucide-react-native` to its CJS build for this reason.
 
-6. **`jest-expo` is pinned to `^54.0.17`** to track the Expo SDK major. Do not
-   let a tool upgrade it — `jest-expo@57` requires `react@^19.2.3` and this
-   project is on `19.1.0`.
+6. **Jest dependencies and setup:** See [package.json](../../../package.json)
+   and [jest.setup.js](../../../jest.setup.js) for the current versions and
+   native mock ordering.
 
 7. **NativeWind `className` produces no styles under Jest.** It resolves
    through Metro, not Babel, and there is no Metro in a test run. Never assert

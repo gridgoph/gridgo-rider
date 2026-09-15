@@ -1,5 +1,7 @@
-import { useRouter, type Href } from "expo-router";
-import { useEffect, useRef } from "react";
+import * as api from "@/lib/api";
+import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
+import { useRouter, useRootNavigationState, type Href } from "expo-router";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
@@ -14,12 +16,12 @@ const Notifications = loadExpoNotifications();
  * screen when a rider taps an alert.
  *
  * Mounted once, from the root layout. Everything it decides comes from
- * `lib/push.ts`; everything it stores goes through `store/push.ts`. Ported from
- * `gridgo-supplier`; the one rider difference is that a tap is spent as soon as
- * someone is signed in. Supplier defers until the shop is `matchable`, because
- * its job workspace sits behind an accreditation guard. This app does not:
- * an unapproved rider lives in the tab shell, reads Alerts, and is exactly
- * the person whose approval they most want to hear about with the app closed.
+ * `lib/push.ts`; everything it stores goes through `store/push.ts`.
+ * Taps wait for a ready navigator and settled sign-in, then verify the referenced
+ * notification or order through the API. Missing inbox rows and revoked access
+ * go to Alerts; offline taps stay pending for a live refresh retry. Changing
+ * accounts drops taps captured for the previous owner. Approval is not required
+ * to open Alerts.
  */
 
 /**
@@ -65,22 +67,20 @@ if (Notifications) {
   );
 }
 
-/**
- * Make the unread badge agree with the platform.
- *
- * A foreground arrival is spent on this and nothing else. The Alerts list
- * already holds the same record, so this recomputes from the list rather than
- * adding to it. A failure costs nothing: every list in this app reloads on
- * focus.
- */
+/** Reconcile from the authorized inbox rather than trusting push payload counts. */
 async function refreshUnread(): Promise<void> {
   await useNotifications.getState().refreshUnread();
 }
 
 export function usePushNotifications(): void {
   const router = useRouter();
+  const navigationReady = Boolean(useRootNavigationState()?.key);
+  const ready = useRef(navigationReady);
+  useLayoutEffect(() => { ready.current = navigationReady; }, [navigationReady]);
   const user = useSession((s) => s.user);
   const signedIn = isSignedIn(user);
+  const loading = useSession((s) => s.loading);
+  const sessionWait = useSession((s) => s.sessionWait);
 
   /**
    * A tap that arrived before there was anywhere to send it.
@@ -91,9 +91,44 @@ export function usePushNotifications(): void {
    * when a session appears. This app persists the session, so the usual
    * cold-start path already has a user by the time the layout mounts.
    */
-  const pending = useRef<string | null>(null);
+  const pending = useRef<{identifier:string; data:unknown; owner:string|null} | null>(null);
   /** Response identifiers already routed, so a tap opens its screen once. */
   const routed = useRef(new Set<string>());
+
+  async function spendPending(): Promise<void> {
+    const target = pending.current;
+    const session = useSession.getState().user;
+    if (!target || !isSignedIn(session) || !ready.current || useSession.getState().loading || useSession.getState().sessionWait) return;
+    if (target.owner && target.owner !== session?.id) { pending.current = null; return; }
+    const generation = liveGeneration();
+    const data = parsePushData(target.data);
+    try {
+      // A device may carry an old owner's push. Never trust its orderId as access.
+      if (data.notificationId) {
+        const items = await api.listNotifications();
+        const owned = items.find((item) => item.id === data.notificationId);
+        // Older notifications may be outside the inbox page. The authorized inbox is a safe fallback.
+        data.orderId = owned?.orderId ?? null;
+        if (!owned) data.type = null;
+      } else if (data.orderId) {
+        await api.getOrder(data.orderId);
+      }
+      if (generation !== liveGeneration() || pending.current !== target || !ready.current) return;
+      pending.current = null;
+      invalidate("*");
+      const destination = pushTargetRoute(data);
+      router.push(destination as Href);
+      withoutNativeModule(() => Notifications?.clearLastNotificationResponseAsync().catch(noop));
+    } catch (error) {
+      // Offline taps stay pending until reconnect. Explicit revocation goes to the inbox only.
+      if (generation === liveGeneration() && pending.current === target && error instanceof api.ApiError && (error.status === 403 || error.status === 404)) {
+        pending.current = null;
+        router.push("/alerts");
+      }
+    }
+  }
+  const spend = useRef(spendPending);
+  useLayoutEffect(() => { spend.current = spendPending; });
 
   useEffect(() => {
     // Register on **every launch**, signed in or not, and again whenever the
@@ -117,18 +152,10 @@ export function usePushNotifications(): void {
     const route = (identifier: string, data: unknown) => {
       if (routed.current.has(identifier)) return;
       routed.current.add(identifier);
-      const target = pushTargetRoute(parsePushData(data));
-      if (!isSignedIn(useSession.getState().user)) {
-        pending.current = target;
-        return;
-      }
-      // The push carries no job state by design, so the screen fetches the
-      // trip itself. Re-read the list too: the record behind this push is
-      // already in it, and its unread badge should not survive the tap.
-      void refreshUnread();
-      // `pushTargetRoute` returns a route this app declares; typed routes
-      // cannot see that through a string it built at runtime.
-      router.push(target as Href);
+      const owner = useSession.getState().user?.id ?? null;
+      pending.current = {identifier, data, owner};
+      // Defer capture; spending separately requires navigator and session readiness.
+      setTimeout(() => { void spend.current(); }, 0);
     };
 
     if (!Notifications) {
@@ -157,9 +184,10 @@ export function usePushNotifications(): void {
     );
 
     // A push landing in the foreground shows nothing (see the handler above);
-    // its whole effect is that the unread badge catches up.
+    // it invalidates live resources and reconciles the unread badge.
     const received = withoutNativeModule(() =>
       Notifications.addNotificationReceivedListener(() => {
+        invalidate("*");
         void refreshUnread();
       }),
     );
@@ -181,10 +209,13 @@ export function usePushNotifications(): void {
     };
   }, [router]);
 
+  useEffect(() => subscribeLive(() => { if (pending.current) void spend.current(); }), []);
+
   useEffect(() => {
+    const pendingOwner = pending.current?.owner;
+    if (pendingOwner && pendingOwner !== user?.id) pending.current = null;
     if (!signedIn || !pending.current) return;
-    const target = pending.current;
-    pending.current = null;
-    router.push(target as Href);
-  }, [signedIn, router]);
+    const timer = setTimeout(() => { void spend.current(); }, 0);
+    return () => clearTimeout(timer);
+  }, [signedIn, user?.id, navigationReady, loading, sessionWait, router]);
 }

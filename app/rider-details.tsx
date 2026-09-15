@@ -1,6 +1,8 @@
+import { useReadVersion } from "@/hooks/useReadVersion";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { ChevronRight } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
@@ -62,8 +64,14 @@ export default function RiderDetailsScreen() {
   const [portraitBusy, setPortraitBusy] = useState(false);
   const [portraitError, setPortraitError] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<RiderSelfProfile | null>(null);
-  const [draft, setDraft] = useState<RiderDetailDraft | null>(null);
+  const [details, setDetails] = useState<{
+    profile: RiderSelfProfile;
+    draft: RiderDetailDraft;
+  } | null>(null);
+  const profile = details?.profile ?? null;
+  const draft = details?.draft ?? null;
+  const nextRead = useReadVersion();
+  const reloadDraft = useRef(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
@@ -77,16 +85,20 @@ export default function RiderDetailsScreen() {
     reloadable: boolean;
   } | null>(null);
 
-  const load = useCallback(async (adoptDraft: boolean) => {
+  const load = useCallback(async (replaceDraft: boolean) => {
+    if (replaceDraft) reloadDraft.current = true;
+    const current = nextRead();
     setLoading(true);
     const outcome = await loadRiderDetails();
+    if (!current()) return;
     setLoading(false);
 
     if (outcome.status === "ok") {
-      setProfile(outcome.value);
-      setDraft((current) =>
+      const adoptDraft = reloadDraft.current;
+      reloadDraft.current = false;
+      setDetails((current) =>
         adoptDraft || !current
-          ? draftFromProfile(outcome.value, clerkName)
+          ? { profile: outcome.value, draft: draftFromProfile(outcome.value, clerkName) }
           : current,
       );
       setLoadProblem(null);
@@ -106,7 +118,9 @@ export default function RiderDetailsScreen() {
             message: outcome.status === "failed" ? outcome.message : RIDER_DETAILS_STALE,
           },
     );
-  }, [clerkName]);
+  }, [clerkName, nextRead]);
+
+  useLiveRefresh(["identity"], () => load(false));
 
   useFocusEffect(
     useCallback(() => {
@@ -122,7 +136,10 @@ export default function RiderDetailsScreen() {
   }
 
   function edit(patch: Partial<RiderDetailDraft>) {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
+    reloadDraft.current = false;
+    nextRead();
+    setLoading(false);
+    setDetails((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
     setRefusals({});
   }
 
@@ -137,6 +154,8 @@ export default function RiderDetailsScreen() {
     const patch = riderDetailPatch(profile, draft);
     if (!Object.keys(patch).length) return;
 
+    reloadDraft.current = false;
+    nextRead();
     setSaving(true);
     setSaveNotice(null);
     setRefusals({});
@@ -154,8 +173,9 @@ export default function RiderDetailsScreen() {
     setSaving(false);
 
     if (outcome.status === "ok") {
-      setProfile(outcome.value);
-      setDraft(draftFromProfile(outcome.value, clerkName));
+      nextRead();
+      setLoading(false);
+      setDetails({ profile: outcome.value, draft: draftFromProfile(outcome.value, clerkName) });
       await refreshUser();
       router.back();
       return;

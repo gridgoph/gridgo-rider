@@ -96,6 +96,10 @@ describe("a Clerk identity GRIDGO has no rider record for", () => {
     );
   });
 
+  it("keeps the stored failure visible on login without bouncing back to apply", () => {
+    expect(resolveAuthRedirect(false, ["(auth)", "login"], true, true)).toBeNull();
+  });
+
   it("keeps a genuine failure a failure", async () => {
     api.setTokenProvider(() => Promise.resolve("clerk_jwt"));
     respond(500, { error: "server_error" });

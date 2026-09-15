@@ -45,7 +45,7 @@ const OFFER_MAP_HEIGHT = 120;
 const TRIP_MAP_HEIGHT = 200;
 
 /**
- * One offer card, in the shape of `OfferCard`: title and payment chip, the
+ * One offer card, in the shape of `OfferCard`: title, order id, the
  * spec caption, the fee and the route on one row, the map, both stops, and the
  * accept button at the bottom.
  */
@@ -53,10 +53,8 @@ function OfferCardSkeleton() {
   return (
     <View className="gg-card gap-4">
       <View className="gap-1">
-        <View className="flex-row items-start justify-between gap-3">
-          <SkeletonText width="55%" height={26} />
-          <SkeletonText width={110} height={26} />
-        </View>
+        <SkeletonText width="55%" height={26} />
+        <SkeletonText width="40%" height={16} />
         <SkeletonText width="70%" height={16} />
       </View>
 
@@ -204,14 +202,20 @@ export function PastJobsSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 /**
- * One past job while its record loads: title, progress, the facts, then HISTORY.
+ * One past job while its record loads: title, order id, progress, the facts, then HISTORY.
  */
 export function PastJobDetailSkeleton() {
   return (
     <Loading label="Loading this job">
-      <View className="gap-2">
-        <SkeletonText width="80%" height={30} />
-        <SkeletonText width={120} height={26} />
+      <View className="gap-3">
+        <View className="flex-row items-start justify-between gap-3">
+          <View className="min-w-0 flex-1 gap-1">
+            <SkeletonText width="80%" height={26} />
+            <SkeletonText width="45%" height={16} />
+          </View>
+          <SkeletonText width={120} height={26} />
+        </View>
+        <SkeletonText width="70%" height={20} />
       </View>
 
       <View className="gg-card">
@@ -288,12 +292,13 @@ export function EarningsSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
-/** The two-line header every pushed trip step opens with. */
+/** The header every pushed trip step opens with: overline, title, order id, stop. */
 function TripStepHeaderSkeleton() {
   return (
     <View className="gap-1">
       <SkeletonText width={110} height={16} />
       <SkeletonText width="80%" height={30} />
+      <SkeletonText width="40%" height={16} />
       <SkeletonText width="60%" height={24} />
     </View>
   );

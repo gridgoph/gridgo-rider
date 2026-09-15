@@ -51,7 +51,10 @@ export default function PastJobScreen() {
           <>
             <View className="gap-3">
               <View className="flex-row items-start justify-between gap-3">
-                <Text className="min-w-0 flex-1 text-h3 text-text-primary">{order.title}</Text>
+                <View className="min-w-0 flex-1 gap-1">
+                  <Text className="text-h3 text-text-primary">{order.title}</Text>
+                  <Text className="text-caption text-text-muted">Order {order.id}</Text>
+                </View>
                 {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>
               <Text className="text-body text-text-secondary">{progress?.summary}</Text>

@@ -131,6 +131,20 @@ async function fetchToken(): Promise<string | null> {
   return typeof data === "string" && data ? data : null;
 }
 
+let registrationQueue: Promise<void> = Promise.resolve();
+const registrations = new Set<AbortController>();
+export const DEVICE_REGISTRATION_TIMEOUT_MS = 5_000;
+
+export function cancelDeviceRegistrations(): void {
+  for (const controller of registrations) controller.abort();
+}
+
+/** Claims and authenticated release must reach the server in this order. */
+export function serializeDeviceMutation(action: () => Promise<void>): Promise<void> {
+  registrationQueue = registrationQueue.catch(() => {}).then(action);
+  return registrationQueue;
+}
+
 export const usePush = create<PushState>((set, get) => ({
   supported: pushSupported(),
   permission: "unknown",
@@ -177,47 +191,59 @@ export const usePush = create<PushState>((set, get) => ({
     return get().permission === "granted";
   },
 
-  registerIfGranted: async () => {
-    const state = get();
-    if (!Notifications || !state.supported) return;
-
-    const platform = devicePlatform();
-    if (!platform) return;
-
-    const permission =
-      state.permission === "unknown" ? await get().syncPermission() : state.permission;
-    if (permission !== "granted") return;
-
-    // A bearer means the rider is signed in and this registration names them.
-    // Clerk sessions keep that bearer on a provider, not in getToken() memory,
-    // so this has to ask the same way every other authenticated call does.
-    // Without one the phone is registered unclaimed, so an announcement can
-    // still reach a handset nobody has signed in on.
-    const signedIn = await api.sessionBearerPresent();
-
-    set({ busy: true, error: null });
-    try {
-      const token = await fetchToken();
-      if (!token) {
-        set({ busy: false, error: "This phone did not return a notification token." });
+  registerIfGranted: () => {
+    const controller = new AbortController();
+    const isCurrent = () => !controller.signal.aborted;
+    registrations.add(controller);
+    const run = async () => {
+      if (!isCurrent()) return;
+      const state = get();
+      if (!Notifications || !state.supported) return;
+      const platform = devicePlatform();
+      if (!platform) return;
+      const permission = state.permission === "unknown" ? await get().syncPermission() : state.permission;
+      if (!isCurrent() || permission !== "granted") return;
+      const signedIn = await api.sessionBearerPresent();
+      if (!isCurrent()) return;
+      set({ busy: true, error: null });
+      try {
+        const token = await fetchToken();
+        if (!isCurrent()) return;
+        if (!token) {
+          set({ busy: false, error: "This phone did not return a notification token." });
+          return;
+        }
+        if (signedIn) set({ token });
+        if (signedIn) await api.registerDevice(token, platform, controller.signal);
+        else await api.registerDeviceUnclaimed(token, platform, controller.signal);
+        if (isCurrent()) set({ token, claimed: signedIn, busy: false, error: null });
+      } catch (e) {
+        if (!isCurrent()) return;
+        set({ busy: false, error: !signedIn && isUnclaimedRouteAbsent(e) ? null : errorText(e) });
+      }
+    };
+    return serializeDeviceMutation(async () => {
+      if (!isCurrent()) {
+        registrations.delete(controller);
         return;
       }
-      // Idempotent by contract, so no comparison against the stored token is
-      // worth the risk of skipping a call the server never actually received.
-      if (signedIn) await api.registerDevice(token, platform);
-      else await api.registerDeviceUnclaimed(token, platform);
-      set({ token, claimed: signedIn, busy: false, error: null });
-    } catch (e) {
-      if (!signedIn && isUnclaimedRouteAbsent(e)) {
-        // The provisional route is not deployed here. Nothing is wrong and
-        // nobody is told: the phone registers for real at the next sign-in.
-        set({ busy: false, error: null });
-        return;
+      let finish: () => void = () => {};
+      const cancelled = new Promise<void>((resolve) => { finish = resolve; });
+      controller.signal.addEventListener("abort", finish, { once: true });
+      const timer = setTimeout(() => {
+        if (!isCurrent()) return;
+        set({ error: errorText(null) });
+        controller.abort();
+      }, DEVICE_REGISTRATION_TIMEOUT_MS);
+      try {
+        await Promise.race([run(), cancelled]);
+      } finally {
+        clearTimeout(timer);
+        controller.signal.removeEventListener("abort", finish);
+        registrations.delete(controller);
+        set({ busy: false });
       }
-      // A failed registration costs push until the next launch; it must never
-      // interrupt the sign-in or the screen that triggered it.
-      set({ busy: false, error: errorText(e) });
-    }
+    });
   },
 
   adoptToken: async (token) => {

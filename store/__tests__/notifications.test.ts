@@ -9,6 +9,7 @@ jest.mock("@/lib/api", () => {
     ...actual,
     listNotifications: jest.fn(),
     deleteNotification: jest.fn(),
+    markNotificationsRead: jest.fn(async () => undefined),
   };
 });
 
@@ -16,6 +17,7 @@ jest.mock("@/lib/api", () => {
 const api = require("@/lib/api") as {
   listNotifications: jest.Mock;
   deleteNotification: jest.Mock;
+  markNotificationsRead: jest.Mock;
 };
 
 function alert(patch: Partial<Notification> & Pick<Notification, "id">): Notification {
@@ -36,9 +38,11 @@ async function flush() {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  api.listNotifications.mockReset().mockResolvedValue([]);
+  api.markNotificationsRead.mockReset().mockResolvedValue(undefined);
   api.deleteNotification.mockReset();
   api.deleteNotification.mockResolvedValue({ id: "a", deletedAt: "2026-09-01T04:00:00.000Z" });
-  useNotifications.setState({ unread: 0, readIds: [], hydrated: false });
+  useNotifications.setState({ items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
 });
 
 describe("the unread count", () => {
@@ -73,7 +77,7 @@ describe("read marks live on this phone", () => {
     useNotifications.getState().markRead("a");
     await flush();
 
-    useNotifications.setState({ unread: 0, readIds: [], hydrated: false });
+    useNotifications.setState({ items: null, unread: 0, readIds: [], confirmedReadIds: [], hydrated: false });
     await useNotifications.getState().hydrate();
 
     expect(useNotifications.getState().isRead(alert({ id: "a" }))).toBe(true);
@@ -127,4 +131,107 @@ describe("clearing the inbox", () => {
     });
     expect(api.deleteNotification).not.toHaveBeenCalled();
   });
+});
+
+it("writes only the displayed snapshot and accepts another device's read state",async()=>{
+  api.markNotificationsRead.mockResolvedValue(undefined);
+  await useNotifications.getState().markAllRead([alert({id:"a"}),alert({id:"b"})]);
+  expect(api.markNotificationsRead).toHaveBeenCalledWith(["a","b"]);
+  api.listNotifications.mockResolvedValue([alert({id:"new",read:true})]);
+  await useNotifications.getState().refreshUnread();
+  expect(useNotifications.getState().unread).toBe(0);
+});
+it("rolls back a failed read and refetches the authoritative badge",async()=>{
+  api.markNotificationsRead.mockRejectedValueOnce(new Error("offline"));
+  api.listNotifications.mockResolvedValue([alert({id:"a"})]);
+  await useNotifications.getState().markRead("a");
+  expect(useNotifications.getState().readIds).not.toContain("a");
+  expect(useNotifications.getState().unread).toBe(1);
+});
+
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+it.each(["acknowledge", "clear"])("persists only confirmed marks through %s", async (operation) => {
+  useNotifications.getState().bindOwner("concurrent-rider");
+  const pending = deferred();
+  api.markNotificationsRead.mockReturnValueOnce(pending.promise).mockResolvedValue(undefined);
+  api.listNotifications.mockResolvedValue([alert({ id: "a" }), alert({ id: "b", read: true })]);
+  const a = useNotifications.getState().markRead("a");
+  if (operation === "acknowledge") await useNotifications.getState().markRead("b");
+  else await useNotifications.getState().clear([alert({ id: "b" })]);
+  await flush();
+  expect(JSON.parse((await AsyncStorage.getItem("gridgo.alertsRead.v1.concurrent-rider"))!)).not.toContain("a");
+  pending.reject(new Error("offline"));
+  await a;
+  await flush();
+  useNotifications.getState().bindOwner(null);
+  useNotifications.getState().bindOwner("concurrent-rider");
+  await useNotifications.getState().hydrate();
+  expect(useNotifications.getState().isRead(alert({ id: "a" }))).toBe(false);
+  expect(useNotifications.getState().isRead(alert({ id: "b" }))).toBe(operation === "acknowledge");
+});
+
+function pendingList() {
+  let resolve!: (items: Notification[]) => void;
+  const promise = new Promise<Notification[]>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+it.each(["refresh", "adopt"])("keeps a newer %s ahead of an old unread response", async (source) => {
+  const old = pendingList();
+  const b = alert({ id: "b" });
+  api.listNotifications.mockReturnValueOnce(old.promise).mockResolvedValueOnce([b]);
+  const first = useNotifications.getState().refreshUnread();
+  if (source === "refresh") await useNotifications.getState().refreshUnread();
+  else useNotifications.getState().adopt([b]);
+  old.resolve([]);
+  await first;
+  expect(useNotifications.getState().unread).toBe(1);
+  expect(useNotifications.getState().items).toEqual([b]);
+});
+
+it("applies deletion to the current inbox and rejects reads started before it completed", async () => {
+  const a = alert({ id: "a" });
+  const b = alert({ id: "b" });
+  useNotifications.getState().adopt([a]);
+  const deletion = deferred();
+  api.deleteNotification.mockReturnValueOnce(deletion.promise);
+  const clear = useNotifications.getState().clear([a]);
+  useNotifications.getState().adopt([a, b]);
+  const old = pendingList();
+  api.listNotifications.mockReturnValueOnce(old.promise);
+  const read = useNotifications.getState().refreshUnread();
+  deletion.resolve();
+  await clear;
+  expect(useNotifications.getState().items).toEqual([b]);
+  expect(useNotifications.getState().unread).toBe(1);
+  old.resolve([a]);
+  await read;
+  expect(useNotifications.getState().items).toEqual([b]);
+  expect(useNotifications.getState().unread).toBe(1);
+});
+
+it.each([false, true])("restores the badge before offline recovery, with newer inbox: %s", async (newerInbox) => {
+  const a = alert({ id: "offline-a" });
+  const b = alert({ id: "offline-b" });
+  useNotifications.getState().adopt([a]);
+  const patch = deferred();
+  const recovery = deferred();
+  api.markNotificationsRead.mockReturnValueOnce(patch.promise);
+  api.listNotifications.mockReturnValueOnce(recovery.promise);
+  const marking = useNotifications.getState().markRead(a.id);
+  expect(useNotifications.getState().unread).toBe(0);
+  if (newerInbox) useNotifications.getState().adopt([a, b]);
+  patch.reject(new Error("offline"));
+  await flush();
+  expect(useNotifications.getState().isRead(a)).toBe(false);
+  expect(useNotifications.getState().unread).toBe(newerInbox ? 2 : 1);
+  recovery.reject(new Error("still offline"));
+  await marking;
+  expect(useNotifications.getState().unread).toBe(newerInbox ? 2 : 1);
 });
