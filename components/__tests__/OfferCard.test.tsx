@@ -45,7 +45,7 @@ describe("OfferCard accept control", () => {
     await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
 
     expect(screen.getByText("Storefront tarpaulin")).toBeTruthy();
-    expect(screen.getByText("Order ord_1")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
   });
 
   it("says Accepting only while this card's accept is in flight", async () => {

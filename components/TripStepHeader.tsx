@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 
+import { OrderReference } from "@/components/OrderReference";
 import type { Order } from "@/lib/api";
 
 type Props = {
@@ -14,8 +15,8 @@ type Props = {
  * for anything.
  *
  * Deliberately quiet: on these screens the action is the loud element, and a
- * heavy header competes with it. Overline, title, order id, stop — no chip, no
- * icon. The screen title in the navigation bar already says which step this is.
+ * heavy header competes with it. Overline, title, order reference, stop — no
+ * chip. The screen title in the navigation bar already says which step this is.
  */
 export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
   return (
@@ -24,7 +25,7 @@ export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
         {stopKind === "pickup" ? "AT THE SHOP" : "AT THE DOOR"}
       </Text>
       <Text className="text-h2 text-text-primary">{order.title}</Text>
-      <Text className="text-caption text-text-muted">Order {order.id}</Text>
+      <OrderReference id={order.id} />
       <Text className="text-body-lg text-text-secondary">{stopLabel}</Text>
     </View>
   );

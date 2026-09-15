@@ -2,6 +2,7 @@ import { Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { OrderReference } from "@/components/OrderReference";
 import { StopList } from "@/components/StopList";
 import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
@@ -49,7 +50,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
     <View className="gg-card gap-4">
       <View className="gap-1">
         <Text className="text-h3 text-text-primary">{offer.title}</Text>
-        <Text className="text-caption text-text-muted">Order {offer.id}</Text>
+        <OrderReference id={offer.id} />
         <Text className="text-caption text-text-muted">
           {offer.size} · {offer.material} · {offer.quantity} pcs
         </Text>
@@ -92,6 +93,11 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
       ) : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
+
+      <Text className="text-body text-text-secondary">
+        Accept, travel to the shop, then run all six pickup checks together with the supplier
+        before carrying the package.
+      </Text>
 
       <PrimaryButton
         label={accepting ? "Accepting…" : "Accept this job"}

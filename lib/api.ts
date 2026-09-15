@@ -113,6 +113,19 @@ export type PayoutMilestone = {
   pofFileIds: string[];
 };
 
+export type ProductionItem = {
+  id: string;
+  itemName: string;
+  quantity: number;
+  pricingUnit: string | null;
+  packageQty: number | null;
+  measurement: { pages?: number; widthMilli?: number; heightMilli?: number; lengthMilli?: number; unit?: string | null } | null;
+  structuredSpec: Record<string, unknown>;
+  options: { groupName: string; label: string }[];
+  artworkFileId: string | null;
+  mockupFileId: string | null;
+};
+
 export type Order = {
   id: string;
   clientId: string;
@@ -144,6 +157,8 @@ export type Order = {
   paymentMethod: string | null;
   paymentStatus: string;
   payments?: {
+    initial?: PaymentInstallment;
+    final_online?: PaymentInstallment;
     downpayment?: PaymentInstallment;
     balance?: PaymentInstallment;
   } | null;
@@ -160,6 +175,9 @@ export type Order = {
   issueWindowExpiresAt?: string | null;
   promisedDate: string | null;
   artworkName: string | null;
+  artworkFileIds?: string[];
+  mockupFileIds?: string[];
+  productionItems?: ProductionItem[];
   createdAt: string;
   updatedAt: string;
   cancelledAt?: string | null;
@@ -174,6 +192,37 @@ export type Order = {
    * stop is GRIDGO Office, not a client door.
    */
   fulfillmentMode?: "delivery" | "pickup" | null;
+};
+
+export type StoredFile = {
+  fileId: string;
+  /** `verification_document` is provisional — see the note above `logout`. */
+  purpose:
+    | "artwork"
+    | "mockup"
+    | "fulfilment_proof"
+    | "delivery_photo"
+    | "service_image"
+    | "verification_document"
+    /** A sample photo on one of the shop's own listings. Provisional. */
+    | "catalog_item_photo";
+  originalFilename: string;
+  declaredContentType: string;
+  detectedContentType: string;
+  size: number;
+  ownerId: string;
+  state: "pending_upload" | "ready" | "delete_pending" | "deleted";
+  createdAt: string;
+  readyAt: string | null;
+  references: { type: string; id: string; field: string }[];
+};
+
+/** A short-lived capability, never file identity. Do not persist or rewrite. */
+export type DownloadUrl = {
+  fileId: string;
+  url: string;
+  expiresAt: string;
+  expiresInSeconds: number;
 };
 
 export type Notification = {
@@ -1078,4 +1127,14 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
     return error.message;
   }
   return fallback;
+}
+
+/** Authorized file metadata and fresh signed links; never persist signed URLs. */
+export async function getFile(fileId: string): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`);
+  return result.file;
+}
+
+export async function getDownloadUrl(fileId: string): Promise<DownloadUrl> {
+  return request(`/files/${encodeURIComponent(fileId)}/download-url`);
 }

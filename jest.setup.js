@@ -155,3 +155,11 @@ jest.mock("@react-native-async-storage/async-storage", () => {
     },
   };
 });
+
+// Expo installs `fetch` lazily, on first read, through a getter that also
+// requires expo-modules-core. A state update that lands after a test file has
+// finished (a store settling a permission read, say) makes React look at the
+// global for the first time, the install logs a warning into a console Jest
+// has already frozen, and the whole run exits 1 with every test green. Reading
+// it once here installs it while the Expo globals still exist.
+void globalThis.fetch;

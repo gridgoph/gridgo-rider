@@ -86,7 +86,7 @@ export function riderAction(
         kind: "pickup-checks",
         glyph: "checklist",
         label: "Check it",
-        spoken: "Run the six pickup checks before carrying the package.",
+        spoken: "At the shop, run the six pickup checks together with the supplier before carrying the package.",
         route: "/trip/pickup",
         needsOrderId: true,
       };

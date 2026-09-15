@@ -1,5 +1,6 @@
 import type { PickupCheckCode } from "@/lib/api";
 import {
+  canRunPickupChecks,
   allAnswered,
   allPassed,
   checkDefinition,
@@ -188,5 +189,20 @@ describe("what a recorded checklist reads as on the trip screen", () => {
     expect(
       checklistSummary({ pickupChecklist: { ...base, status: "legacy_passed" } }),
     ).toMatch(/passed/i);
+  });
+});
+
+
+describe("joint pickup eligibility", () => {
+  it("opens checks only after a rider accepts, including a resolved retry", () => {
+    expect(canRunPickupChecks({ state: "rider_assigned", pickupChecklist: null })).toBe(true);
+    for (const state of ["ready_for_dispatch", "production", "picked_up", "out_for_delivery"]) {
+      expect(canRunPickupChecks({ state, pickupChecklist: null })).toBe(false);
+    }
+  });
+  it("keeps a failed pickup blocked until Operations resolves it", () => {
+    const record = { status: "failed_escalated" } as NonNullable<import("@/lib/api").Order["pickupChecklist"]>;
+    expect(canRunPickupChecks({ state: "rider_assigned", pickupChecklist: record })).toBe(false);
+    expect(canRunPickupChecks({ state: "rider_assigned", pickupChecklist: { ...record, status: "escalation_resolved" } })).toBe(true);
   });
 });

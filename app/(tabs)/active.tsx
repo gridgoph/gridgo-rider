@@ -1,3 +1,5 @@
+import { ArtworkPanel } from "@/components/ArtworkPanel";
+import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native";
@@ -276,6 +278,15 @@ export default function ActiveScreen() {
               button here would be the app offering a move the business has
               already stopped.
             */}
+            {phase === "pickup_checks" ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="Check together at the shop"
+                body="Travel to the supplier, then run all six pickup checks together at the counter. Keep the package there until every check passes."
+              />
+            ) : null}
+
             {phase === "pickup_blocked" ? (
               <InlineNotice
                 tone="error"
@@ -380,12 +391,15 @@ export default function ActiveScreen() {
                 {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>
 
-              <View className="gg-card-flush px-4">
-                <SpecRow label="Size" value={trip.size} />
-                <SpecRow label="Material" value={trip.material} />
-                <SpecRow label="Quantity" value={String(trip.quantity)} />
+              <View className="gap-3">
+                <ProductionSpecifications order={trip} />
                 <SpecRow label="Your fee" value={api.formatPhp(trip.deliveryFeeMinor)} last />
               </View>
+            </View>
+
+            <View className="gap-3">
+              <Text className="text-overline text-text-muted">ARTWORK AND REFERENCES</Text>
+              <ArtworkPanel order={trip} />
             </View>
 
             <View className="gap-3">

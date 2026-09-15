@@ -1,5 +1,7 @@
+import { ArtworkPanel } from "@/components/ArtworkPanel";
+import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
@@ -18,6 +20,7 @@ import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { PICKUP_FAILURE_TARGETS } from "@/lib/attachments";
 import {
+  canRunPickupChecks,
   allAnswered,
   allPassed,
   checklistActionLabel,
@@ -60,6 +63,7 @@ export default function PickupChecklistScreen() {
   const [answers, setAnswers] = useState<ChecklistAnswers>(() => ({ ...EMPTY_ANSWERS }));
   const [failureNote, setFailureNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
   // The action bar rides above the keyboard, so the escalation note has to
@@ -94,7 +98,11 @@ export default function PickupChecklistScreen() {
 
   const blocked = !order
     ? "Loading the job."
-    : checklistBlockReason(answers, {
+    : !canRunPickupChecks(order)
+      ? "Pickup checks are unavailable. Return to the trip for the current step or Operations update."
+      : !restored
+        ? "Restoring your pickup checks…"
+        : checklistBlockReason(answers, {
         note: failureNote,
         evidenceStored: Boolean(evidenceFileId),
       });
@@ -107,7 +115,8 @@ export default function PickupChecklistScreen() {
   }
 
   async function submit() {
-    if (!order || blocked) return;
+    if (!order || blocked || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setSubmitError(null);
     try {
@@ -135,6 +144,7 @@ export default function PickupChecklistScreen() {
         ),
       );
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -163,17 +173,20 @@ export default function PickupChecklistScreen() {
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
             <Text className="text-body-lg text-text-secondary">
-              Check all six before the package leaves the counter. A fault that rides away
-              unlogged stops being the supplier&apos;s and becomes GRIDGO&apos;s — that is what
-              the reprint guarantee costs when nobody looks.
+              At the shop, check all six together with the supplier before the package leaves
+              the counter. Record the answers here. If any check fails, leave the package at
+              the shop and send the photo and note for Operations to resolve.
             </Text>
+
+            <ProductionSpecifications order={order} />
+            <ArtworkPanel order={order} />
 
             {order.pickupChecklist?.status === "escalation_resolved" ? (
               <InlineNotice
                 tone="info"
                 icon="info"
                 title="Operations has answered"
-                body="Run all six again on the batch in front of you now, not the one you saw before."
+                body="Run all six again together with the supplier on the batch in front of you now."
               />
             ) : null}
 
@@ -185,7 +198,7 @@ export default function PickupChecklistScreen() {
                   check={check}
                   answer={answers[check.code]}
                   onAnswer={(passed) => answer(check.code, passed)}
-                  disabled={busy}
+                  disabled={busy || !canRunPickupChecks(order)}
                 />
               ))}
             </View>
@@ -209,7 +222,7 @@ export default function PickupChecklistScreen() {
                   onTakePhoto={() => void evidence.takePhoto()}
                   onRetry={evidence.retry}
                   onClear={evidence.clear}
-                  disabled={busy}
+                  disabled={busy || !canRunPickupChecks(order)}
                 />
 
                 <View className="gap-2">
@@ -220,6 +233,7 @@ export default function PickupChecklistScreen() {
                       setFailureNote(next);
                       if (id) saveFailureNote(id, next);
                     }}
+                    editable={!busy}
                     multiline
                     className="min-h-24 rounded-field border border-outline bg-surface px-3 py-3 text-body text-text-primary"
                     placeholder="Colour is off across the whole batch, first 40 pieces are smudged…"
