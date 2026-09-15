@@ -246,15 +246,10 @@ jobs:
             echo "| Public config | deployed API and Clerk values verified inside the bundle |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.config.outputs.stem }}
-          path: ${{ runner.temp }}/out/*.apk
-          if-no-files-found: error
-          retention-days: 90
-
       # Only the default branch names a release. A build from anywhere else is
-      # downloadable as a run artifact and nothing more.
+      # downloadable as a run artifact and nothing more. This step uses the
+      # on-disk APK, so it must run before upload-artifact: a full Actions
+      # storage quota fails that step and would otherwise skip the Release.
       - name: Publish the GitHub Release
         if: github.ref == 'refs/heads/main' || github.event.inputs.publish_release == 'true'
         env:
@@ -282,6 +277,9 @@ jobs:
       # The deploy key carries a forced command server-side; `upload-apk rider`
       # arrives as SSH_ORIGINAL_COMMAND. The server validates the bytes are a
       # real APK, stores it as gridgo-rider.apk and writes a sha256 sidecar.
+      #
+      # Runs before upload-artifact: Actions storage quota filling that step
+      # must not leave https://gridgo.talasora.com/download on a stale APK.
       - name: Publish the APK to the captain's server
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
@@ -333,6 +331,17 @@ jobs:
           fi
 
           echo "| Published | \`gridgo-rider.apk\` on the captain's server |" >> "$GITHUB_STEP_SUMMARY"
+
+      # Best-effort CI convenience. Quota-full here used to skip the two
+      # publish steps above and leave the landing site stale. continue-on-error
+      # keeps a green job when the APK already reached riders.
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ steps.config.outputs.stem }}
+          path: ${{ runner.temp }}/out/*.apk
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Remove the signing key and deploy credentials
         if: always()
