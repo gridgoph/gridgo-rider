@@ -144,6 +144,17 @@ describe("resolveAuthRedirect", () => {
     ).toBeNull();
   });
 
+  it.each([false, true])("ignores a stale sign-in wait after adoption settles (Google return: %s)", (googleReturn) => {
+    expect(riderAuthHold({
+      hasUser: false,
+      sessionWait: "in",
+      loading: false,
+      clerkLoaded: true,
+      clerkSignedIn: true,
+      googleReturn,
+    })).toBeNull();
+  });
+
   it("sends an unassigned Clerk identity to apply even while Signing you in", () => {
     expect(resolveAuthRedirect(false, ["(auth)", "welcome"], false, true, "in")).toBe(
       "/(auth)/signup",

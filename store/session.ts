@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { ApiError, type User, type RiderEnrollment } from "@/lib/api";
 import * as api from "@/lib/api";
 import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
+import { CLERK_JOIN_TIMEOUT_MS } from "@/lib/authGate";
 import {
   parseStoredSession,
   serialiseSession,
@@ -203,6 +204,10 @@ export const useSession = create<SessionState>((set, get) => ({
   needsApplication: false,
   sessionWait: null,
   beginSessionWait: (tone) => {
+    if (tone === "in" && (clerkAdoptionBlocked || (clerkOwnsSession && !get().loading))) {
+      if (get().sessionWait !== "out") get().clearSessionWait();
+      return;
+    }
     persistGoogleJoin(tone === "in");
     set({ sessionWait: tone });
   },
@@ -440,6 +445,12 @@ export const useSession = create<SessionState>((set, get) => ({
     api.setToken(null);
     persist(null);
     set({ loading: true, error: null, showErrorOnLogin: false, needsApplication: false });
+    const timer = setTimeout(() => {
+      if (decisionAtStart !== sessionDecisionVersion) return;
+      get().rejectClerkSession(
+        `Cannot reach GRIDGO at ${api.getApiBase()}. Check the phone's connection, then try again.`,
+      );
+    }, CLERK_JOIN_TIMEOUT_MS);
     try {
       // Probed, not spent: a 401 here is an answer about the account, not proof
       // that the bearer is dead, so it must not trip the session-wiping handler.
@@ -520,6 +531,8 @@ export const useSession = create<SessionState>((set, get) => ({
         sessionWait: null,
       });
       return "rejected";
+    } finally {
+      clearTimeout(timer);
     }
   },
   refreshUser: async () => {

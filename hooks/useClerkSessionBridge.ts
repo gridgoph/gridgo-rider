@@ -50,25 +50,6 @@ export function useClerkSessionBridge(): boolean {
     [signOut, signOutSessionId],
   );
 
-  // Signed-in join is bounded the same way signed-out Google return is. If
-  // `/auth/me` never answers — emulator on 127.0.0.1, hung metadata, anything
-  // — leave Signing you in rather than spin until the rider kills the app.
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || settledIdentity === sessionId || isClerkAdoptionBlocked()) return;
-    const timer = setTimeout(() => {
-      const state = useSession.getState();
-      if (
-        currentIdentity.current !== sessionId || isClerkAdoptionBlocked() ||
-        !state.loading || state.sessionWait === "out" ||
-        state.user || state.needsApplication || state.showErrorOnLogin
-      ) return;
-      state.rejectClerkSession(
-        `Cannot reach GRIDGO at ${api.getApiBase()}. Check the phone's connection, then try again.`,
-      );
-    }, CLERK_JOIN_TIMEOUT_MS);
-    return () => clearTimeout(timer);
-  }, [isLoaded, isSignedIn, sessionId, settledIdentity]);
-
   useEffect(() => {
     if (!isLoaded) {
       return;

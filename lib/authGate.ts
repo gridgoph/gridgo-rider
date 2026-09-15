@@ -50,6 +50,7 @@ export function riderAuthHold(input: {
   if (input.signedOut) return null;
   if (input.hasError) return null;
   if (input.needsApplication) return null;
+  if (input.clerkLoaded && input.clerkSignedIn && !input.loading) return null;
   if (input.sessionWait === "in") return "in";
   if (input.hasUser) return null;
   if (input.loading || input.googleReturn) return "in";
