@@ -71,6 +71,20 @@ export type PickupChecklistStatus =
   | "escalation_resolved"
   | "legacy_passed";
 
+/**
+ * The supplier's signature over the six passed checks, drawn on the rider's
+ * phone at the counter. Recorded by the server in the same step that moves
+ * the package, so it exists only on a checklist that passed.
+ */
+export type HandoffSignatureRecord = {
+  fileId: string;
+  signerName: string;
+  signedAt: string;
+  riderId: string;
+  /** Digest of the six answers the signature attests. */
+  checklistHash: string;
+};
+
 export type PickupChecklistRecord = {
   status: PickupChecklistStatus;
   checks: PickupCheckResult[];
@@ -81,6 +95,14 @@ export type PickupChecklistRecord = {
   escalationId: string | null;
   /** The trained line the rider says at sign-off. The server owns the words. */
   signOffPrompt: string | null;
+  /** Absent on checklists recorded before signing existed; null when escalated. */
+  handoffSignature?: HandoffSignatureRecord | null;
+};
+
+/** Who is at the shop counter, from the shop's profile. Prefills the signer. */
+export type SupplierContact = {
+  shopName: string | null;
+  contactName: string | null;
 };
 
 /**
@@ -165,6 +187,7 @@ export type Order = {
   payoutMilestones?: PayoutMilestone[];
   payoutHold?: boolean;
   pickupChecklist?: PickupChecklistRecord | null;
+  supplierContact?: SupplierContact | null;
   deliveryEvidence?: {
     fileId: string;
     evidenceType: "photo" | "signature";
@@ -847,26 +870,45 @@ export type PickupChecklistResult = {
   order: Order;
   /** Present only when all six passed. The line the rider says out loud. */
   signOffPrompt?: string;
+  /** Present only when all six passed: the signature as the server recorded it. */
+  handoffSignature?: HandoffSignatureRecord;
   /** Present only when a check failed and transport is now blocked. */
   escalation?: { id: string; status: string };
+};
+
+/** What the supplier signed, as the checklist request names it. */
+export type HandoffSignatureInput = {
+  /** A `handoff_signature` file already attached to the order. */
+  fileId: string;
+  signerName: string;
 };
 
 /**
  * Submit all six pickup checks.
  *
- * All passing moves the job to "package with you" and returns the sign-off
- * line. Any failure needs the note and at least one already-attached photo, and
- * leaves the job where it is with an escalation open — the rider does not
- * transport.
+ * All passing needs the supplier's signature — a `handoff_signature` file
+ * already attached to the order, see `lib/attachments.ts` — and moves the job
+ * to "package with you" with the sign-off line. Without it the server answers
+ * `409 handoff_signature_required` and nothing moves. Any failure needs the
+ * note and at least one already-attached photo, and leaves the job where it
+ * is with an escalation open — the rider does not transport.
  */
 export async function submitPickupChecklist(
   orderId: string,
   checks: PickupCheckResult[],
-  failure?: { failureNote: string; evidenceFileIds: string[] },
+  outcome?:
+    | { failure: { failureNote: string; evidenceFileIds: string[] } }
+    | { signature: HandoffSignatureInput },
 ): Promise<PickupChecklistResult> {
+  const extra =
+    outcome && "failure" in outcome
+      ? outcome.failure
+      : outcome && "signature" in outcome
+        ? { signature: outcome.signature }
+        : {};
   return request(`/dispatch/${orderId}/pickup-checklist`, {
     method: "POST",
-    body: JSON.stringify({ checks, ...(failure ?? {}) }),
+    body: JSON.stringify({ checks, ...extra }),
   });
 }
 
@@ -1079,6 +1121,14 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
         return "Photograph the problem and describe it before the escalation can be filed.";
       case "invalid_checklist_evidence":
         return "The photo did not reach the job. Take it again and send it before escalating.";
+      case "handoff_signature_required":
+        return "The package cannot move until the supplier has signed on your phone. Hand it over to sign, then send again.";
+      case "invalid_handoff_signature":
+        return "The signature did not reach the job. Ask the supplier to sign again and wait for it to save.";
+      case "handoff_signer_name_required":
+        return "Type the name of the person at the shop who signed.";
+      case "handoff_signature_upload_not_allowed":
+        return "This job has already left the shop, so a signature cannot be added now. Pull down to refresh the trip.";
       case "balance_not_confirmed":
         return "Operations has not confirmed the client's final payment yet, so this delivery cannot be closed. Call Operations before handing the package over.";
       case "pof_required":

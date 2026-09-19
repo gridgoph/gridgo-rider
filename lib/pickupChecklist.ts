@@ -77,7 +77,7 @@ export const PICKUP_CHECKS: readonly PickupCheckDefinition[] = [
   {
     code: "supplier_sign_off",
     label: "Supplier signs off",
-    verify: "After checking together, the supplier confirms the handoff — a signature, or a chat message with a photo.",
+    verify: "After checking together, the supplier agrees to hand the job over and will sign on your phone next.",
     failure: "the supplier would not sign the handoff off",
   },
 ] as const;
@@ -156,7 +156,7 @@ export function checklistBlockReason(
 /** What the confirm button says, given where the checklist has landed. */
 export function checklistActionLabel(answers: ChecklistAnswers): string {
   if (!allAnswered(answers)) return "Confirm all six checks";
-  return allPassed(answers) ? "All six pass — take the package" : "Do not transport — escalate this";
+  return allPassed(answers) ? "All six pass — supplier signs next" : "Do not transport — escalate this";
 }
 
 /**
@@ -169,7 +169,7 @@ export function checklistActionLabel(answers: ChecklistAnswers): string {
 export function checklistConsequence(answers: ChecklistAnswers): string | null {
   if (!allAnswered(answers)) return null;
   if (allPassed(answers)) {
-    return "GRIDGO records the check, the package becomes yours to carry, and you close the checkpoint out loud with the supplier.";
+    return "Nothing is recorded yet. Next, the supplier signs on your phone — that is what makes the package yours to carry.";
   }
   const failed = failedCodes(answers);
   const which =

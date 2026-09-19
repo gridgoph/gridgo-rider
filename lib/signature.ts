@@ -64,3 +64,30 @@ export function hasEnoughInk(strokes: SignatureStroke[]): boolean {
 export const SIGNATURE_INK = "#1A1A1A";
 export const SIGNATURE_PAPER = "#FFFFFF";
 export const SIGNATURE_STROKE_WIDTH = 2.5;
+
+/**
+ * Fit strokes drawn on a pad of one width onto a pad of another.
+ *
+ * A signature restored from a draft was drawn in the coordinates of the pad
+ * it was drawn on. If the pad comes back a different width — a rotated
+ * phone, a different device — the same strokes scaled uniformly are still
+ * the same signature; left unscaled they are a signature clipped at the
+ * edge. Scaled about the origin, so the baseline the pad draws stays under it.
+ */
+export function scaleStrokes(
+  strokes: SignatureStroke[],
+  fromWidth: number,
+  toWidth: number,
+): SignatureStroke[] {
+  if (!(fromWidth > 0) || !(toWidth > 0) || fromWidth === toWidth) return strokes;
+  const factor = toWidth / fromWidth;
+  return strokes.map((stroke) =>
+    stroke.map((point) => ({
+      x: Number((point.x * factor).toFixed(DECIMALS)),
+      y: Number((point.y * factor).toFixed(DECIMALS)),
+    })),
+  );
+}
+
+/** The signature baseline on a form: a hairline with the cross at its left. */
+export const SIGNATURE_BASELINE = "#DCDCDC";
