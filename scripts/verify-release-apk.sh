@@ -21,6 +21,7 @@
 # Usage:
 #   ANDROID_KEYSTORE_PATH=… ANDROID_KEYSTORE_PASSWORD=… ANDROID_KEY_ALIAS=… \
 #   EXPO_PUBLIC_API_URL=… EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=… \
+#   EXPO_PUBLIC_CARTO_API_KEY=… \
 #   scripts/verify-release-apk.sh path/to/app-release.apk
 
 set -euo pipefail
@@ -41,6 +42,7 @@ require_env ANDROID_KEYSTORE_PASSWORD
 require_env ANDROID_KEY_ALIAS
 require_env EXPO_PUBLIC_API_URL
 require_env EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+require_env EXPO_PUBLIC_CARTO_API_KEY
 
 case "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" in
   pk_live_*) ;;
@@ -94,7 +96,7 @@ key_digest="$(grep -im1 'SHA256:' "$work/keystore.txt" |
 
 echo "OK: signed by alias '$ANDROID_KEY_ALIAS' (cert SHA-256 $apk_digest)"
 
-# --- 2. deployed API and Clerk config are baked into the bundle -------------
+# --- 2. deployed API, Clerk, and CARTO config are baked into the bundle -----
 
 bundle="assets/index.android.bundle"
 unzip -p "$apk" "$bundle" >"$work/bundle.bin" 2>/dev/null ||
@@ -111,5 +113,14 @@ fi
 grep -aqF -- "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" "$work/bundle.bin" ||
   fail "the production Clerk publishable key is not in $bundle"
 
-echo "OK: the deployed API URL and Clerk production key are inlined in $bundle"
+# lib/cartoTiles.ts emits `{s}.basemaps.cartocdn.com/...png?key=`. Never print
+# the key: fail on host + query shape, then a quiet presence check like Clerk.
+grep -aqF -- 'basemaps.cartocdn.com' "$work/bundle.bin" ||
+  fail "the CARTO dark-tile host is not in $bundle"
+grep -aqF -- '?key=' "$work/bundle.bin" ||
+  fail "the CARTO tile URL in $bundle is missing the ?key= query"
+grep -aqF -- "$EXPO_PUBLIC_CARTO_API_KEY" "$work/bundle.bin" ||
+  fail "the CARTO basemap key is not in $bundle — EXPO_PUBLIC_CARTO_API_KEY was not set for the build step"
+
+echo "OK: the deployed API URL, Clerk production key, and CARTO basemap key are inlined in $bundle"
 echo "OK: $(basename "$apk") is a real signed release build"
