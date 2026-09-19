@@ -20,8 +20,9 @@ import { pickupLabel } from "@/lib/riderOrder";
  * that they said it, not the app congratulating them.
  *
  * The words come from the server, on the order, so the app can never drift from
- * what the team trained. Nothing is submitted here; the checks already moved
- * the job. Backing out costs nothing and the step reappears on the trip screen.
+ * what the team trained. Nothing is submitted here; the checks and the
+ * supplier's signature already moved the job. Backing out costs nothing and
+ * the step reappears on the trip screen.
  */
 export default function SignOffScreen() {
   const router = useRouter();
@@ -54,7 +55,7 @@ export default function SignOffScreen() {
             <InlineNotice
               tone="success"
               icon="circle-check"
-              title="All six checks passed"
+              title="Checked and signed"
               body="The package is yours to carry. One thing left before you ride."
             />
 
@@ -72,9 +73,9 @@ export default function SignOffScreen() {
             ) : null}
 
             <Text className="text-body text-text-secondary">
-              Out loud, to whoever handed it over. It is how the supplier knows the check is
-              done and closed, and it is what keeps the handover a conversation rather than a
-              signature on a phone.
+              Out loud, to whoever signed. The signature is the record; this is how the
+              supplier hears the check is done and closed, so the handover ends as a
+              conversation and not a form.
             </Text>
           </>
         ) : null}
