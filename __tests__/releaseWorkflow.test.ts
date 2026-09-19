@@ -6,12 +6,14 @@ import { join } from "path";
  * neither shows up in a build log.
  *
  * `EXPO_PUBLIC_*` values are inlined by Babel while the JS bundle is built, so
- * `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` have to be in
- * the environment of every command that evaluates app config or bundles JS —
- * `expo config`, `expo prebuild`, and gradle. Extra is written at prebuild;
- * the static process.env read is the Gradle-time fallback. Missing either is
- * green in CI but dead on a rider's phone. `scripts/verify-release-apk.sh`
- * catches it against the built artifact; this catches it against the workflow
+ * `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, and
+ * `EXPO_PUBLIC_CARTO_API_KEY` have to be in the environment of every command
+ * that evaluates app config or bundles JS — `expo config`, `expo prebuild`,
+ * and gradle. Extra is written at prebuild; the static process.env read is
+ * the Gradle-time fallback. Missing the API or Clerk values is green in CI
+ * but dead on a rider's phone; missing the CARTO key ships dark maps with
+ * an "API KEY REQUIRED" watermark. `scripts/verify-release-apk.sh` catches
+ * it against the built artifact; this catches it against the workflow
  * before a 20-minute build.
  *
  * And a pull request must never produce a signed release build, so the job
@@ -63,6 +65,8 @@ const publicApiUrlEnv =
   /EXPO_PUBLIC_API_URL:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_API_URL\s*\}\}/;
 const clerkPublishableEnv =
   /EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY\s*\}\}/;
+const cartoApiKeyEnv =
+  /EXPO_PUBLIC_CARTO_API_KEY:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_CARTO_API_KEY\s*\}\}/;
 
 function stepEnv(step: string): string {
   return /\n\s+env:\n([\s\S]*?)\n\s+run:/.exec(step)?.[1] ?? "";
@@ -70,7 +74,7 @@ function stepEnv(step: string): string {
 
 function hasReleasePublicEnv(step: string): boolean {
   const env = stepEnv(step);
-  return publicApiUrlEnv.test(env) && clerkPublishableEnv.test(env);
+  return publicApiUrlEnv.test(env) && clerkPublishableEnv.test(env) && cartoApiKeyEnv.test(env);
 }
 
 describe("the release workflow bakes the deployed API and Clerk config into the bundle", () => {
@@ -78,7 +82,7 @@ describe("the release workflow bakes the deployed API and Clerk config into the 
     expect(apkSteps.filter((step) => step.includes("gradlew assembleRelease"))).toHaveLength(1);
   });
 
-  it("sets both public values on every release config and bundle step", () => {
+  it("sets the public API, Clerk, and CARTO values on every release config and bundle step", () => {
     const config = apkSteps.find((step) => step.includes("expo config --type public"));
     const prebuild = apkSteps.find((step) => step.includes("expo prebuild"));
     const build = apkSteps.find((step) => step.includes("gradlew assembleRelease"));
@@ -90,9 +94,10 @@ describe("the release workflow bakes the deployed API and Clerk config into the 
     expect(hasReleasePublicEnv(prebuild as string)).toBe(true);
     expect(hasReleasePublicEnv(build as string)).toBe(true);
     expect(build).toContain("pk_live_*");
+    expect(build).toContain("::error::EXPO_PUBLIC_CARTO_API_KEY is not set for the build step");
   });
 
-  it("passes both public values to the artifact verifier", () => {
+  it("passes the public API, Clerk, and CARTO values to the artifact verifier", () => {
     const verify = apkSteps.find((step) => step.includes("scripts/verify-release-apk.sh"));
     expect(verify).toBeDefined();
     expect(hasReleasePublicEnv(verify as string)).toBe(true);
