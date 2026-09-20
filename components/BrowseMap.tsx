@@ -15,6 +15,11 @@ type Props = {
   riderHeading?: number | null;
   view?: MapView | null;
   onSelectPlace?: (id: string) => void;
+  /**
+   * False while another tab is showing. The Leaflet iframe is a compositor
+   * surface and keeps eating clicks on Active after you leave Map.
+   */
+  interactive?: boolean;
 };
 
 /**
@@ -30,6 +35,7 @@ export function BrowseMap({
   riderHeading = null,
   view = null,
   onSelectPlace,
+  interactive = true,
 }: Props) {
   const theme = useThemeName();
   const colors = useThemeColors();
@@ -67,6 +73,7 @@ export function BrowseMap({
       <MapFrame
         ref={frameRef}
         html={html}
+        interactive={interactive}
         accessibilityLabel="Map of Davao with supplier placeholders"
         onReady={() => {
           readyRef.current = true;

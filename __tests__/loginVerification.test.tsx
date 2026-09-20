@@ -92,7 +92,7 @@ describe("Sign in new-device verification", () => {
     await act(async () => {
       fireEvent.changeText(
         screen.getByLabelText("Email"),
-        "mddprado00290@usep.edu.ph",
+        "sgeto509@gmail.com",
       );
       fireEvent.changeText(screen.getByLabelText("Password"), "Ilovekali@0990-mark");
     });
@@ -110,7 +110,7 @@ describe("Sign in new-device verification", () => {
     expect(screen.queryByText("Wrong email or password.")).toBeNull();
     expect(screen.getByText("Confirm it’s you.")).toBeTruthy();
     expect(
-      screen.getByText(/GRIDGO sent a 6-digit code to mddprado00290@usep.edu.ph/),
+      screen.getByText(/GRIDGO sent a 6-digit code to sgeto509@gmail.com/),
     ).toBeTruthy();
     expect(mockFinalize).not.toHaveBeenCalled();
   });

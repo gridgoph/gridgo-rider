@@ -50,6 +50,7 @@ export default function MapScreen() {
   const [view, setView] = useState<MapView | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
+  const [mapActive, setMapActive] = useState(false);
 
   const loadShops = useCallback(async () => {
     const isCurrent = beginRead();
@@ -71,7 +72,9 @@ export default function MapScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setMapActive(true);
       void loadShops();
+      return () => setMapActive(false);
     }, [loadShops]),
   );
 
@@ -113,13 +116,20 @@ export default function MapScreen() {
 
   return (
     <Screen edges={[]}>
-      <View className="flex-1">
+      <View
+        className="flex-1"
+        pointerEvents={mapActive ? "auto" : "none"}
+        // visibility inherits into the Leaflet iframe. pointer-events on a
+        // parent is not enough — the iframe is its own compositor surface.
+        style={{ visibility: mapActive ? "visible" : "hidden" }}
+      >
         <BrowseMap
           places={shopsToMapPlaces(matches)}
           selectedPlaceId={selectedId}
           rider={location.coords}
           riderHeading={location.heading}
           view={view}
+          interactive={mapActive}
           onSelectPlace={(id) => {
             const shop = shops.find((entry) => entry.id === id);
             if (shop) focusShop(shop);

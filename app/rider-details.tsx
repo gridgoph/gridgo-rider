@@ -449,12 +449,9 @@ function SignInPasswordRow({
         <Text className="text-body text-text-primary">••••••••</Text>
         <View className="mt-1 flex-row items-center">
           <Text className="flex-1 text-body text-text-secondary">Change password</Text>
-          <ChevronRight
-            size={20}
-            color={chevronColor}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
+          <View accessibilityElementsHidden importantForAccessibility="no">
+            <ChevronRight size={20} color={chevronColor} />
+          </View>
         </View>
       </Pressable>
       <Text className="text-caption text-text-muted">

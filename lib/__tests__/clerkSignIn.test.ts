@@ -55,12 +55,12 @@ describe("pickSupportedSecondFactor", () => {
 
 describe("loginVerifyCopy", () => {
   it("names the emailed address for device trust", () => {
-    expect(loginVerifyCopy("email_code", "mddprado00290@usep.edu.ph")).toMatchObject({
+    expect(loginVerifyCopy("email_code", "sgeto509@gmail.com")).toMatchObject({
       heading: "Confirm it’s you.",
       resend: true,
     });
-    expect(loginVerifyCopy("email_code", "mddprado00290@usep.edu.ph").body).toContain(
-      "mddprado00290@usep.edu.ph",
+    expect(loginVerifyCopy("email_code", "sgeto509@gmail.com").body).toContain(
+      "sgeto509@gmail.com",
     );
     expect(loginVerifyCopy("totp", "").resend).toBe(false);
   });
