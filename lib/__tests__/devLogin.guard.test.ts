@@ -17,7 +17,7 @@ const ROOT = resolve(__dirname, "../..");
 const GUARDED_MODULE = resolve(ROOT, "lib/devLogin.ts");
 /** No `g` flag — this is reused with `.test()`, which is stateful when global. */
 const ACCOUNT_ADDRESS =
-  /(?:[A-Za-z0-9._%+-]+@(?:gridgo\.(?:ph|local)|usep\.edu\.ph)\b|sgeto509@gmail\.com)/;
+  /[A-Za-z0-9._%+-]+@(?:gridgo\.(?:ph|local)|usep\.edu\.ph)\b/;
 /** The pilot password from gridgo-api `DEMO_PASSWORD`. */
 const PILOT_PASSWORD = "Ilovegridgo-0990";
 
@@ -75,7 +75,7 @@ describe("dev login credential guard", () => {
   it("prefills the official Clerk rider, not a @gridgo.ph fixture", () => {
     // Jest runs with __DEV__ true, so the live branch is what we assert on.
     expect(DEV_LOGIN).not.toBeNull();
-    expect(DEV_LOGIN?.email).toBe("sgeto509@gmail.com");
+    expect(DEV_LOGIN?.email).toBe("mddprado00290@usep.edu.ph");
     expect(DEV_LOGIN?.password).toBe(PILOT_PASSWORD);
   });
 });

@@ -35,7 +35,7 @@ export type DevLoginCredentials = {
 export const DEV_LOGIN: DevLoginCredentials | null = __DEV__
   ? {
       // Official Clerk rider. Password: gridgo-api DEMO_PASSWORD.
-      email: "sgeto509@gmail.com",
+      email: "mddprado00290@usep.edu.ph",
       password: "Ilovegridgo-0990",
     }
   : null;
