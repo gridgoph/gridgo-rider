@@ -1236,22 +1236,50 @@ export type SupportChatMessage = {
 };
 
 export async function getSupportChatMe(): Promise<{
+  threads?: SupportChatThread[];
   thread: SupportChatThread | null;
   messages: SupportChatMessage[];
+  unreadCount?: number;
 }> {
   return request("/support-chat/me");
 }
 
-export async function sendSupportChatMessage(body: string): Promise<{
+export async function getSupportChatThread(threadId: string): Promise<{
+  thread: SupportChatThread;
+  messages: SupportChatMessage[];
+}> {
+  return request(`/support-chat/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function openSupportChatThread(): Promise<{ thread: SupportChatThread }> {
+  return request("/support-chat/me/threads", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function sendSupportChatMessage(
+  body: string,
+  threadId?: string,
+): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return request("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
   });
 }
 
-export async function markSupportChatRead(): Promise<{ thread: SupportChatThread | null }> {
+export async function markSupportChatRead(threadId?: string): Promise<{
+  thread: SupportChatThread | null;
+  unreadCount?: number;
+}> {
+  if (threadId) {
+    return request(`/support-chat/threads/${encodeURIComponent(threadId)}/read`, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    });
+  }
   return request("/support-chat/me/read", { method: "PATCH", body: JSON.stringify({}) });
 }

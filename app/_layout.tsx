@@ -246,7 +246,11 @@ function RootStack() {
         options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
-        name="chat"
+        name="chat/index"
+        options={{ title: "Chat", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="chat/[thread]"
         options={{ title: "Chat", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
