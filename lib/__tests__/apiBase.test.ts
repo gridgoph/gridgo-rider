@@ -140,6 +140,18 @@ describe("resolveApiBase", () => {
       }),
     ).toBe(`http://127.0.0.1:${defaultPort}`);
   });
+
+  it("on web uses the page host so *.localhost isolation can reach the API", () => {
+    expect(
+      resolveApiBase({
+        envUrl: undefined,
+        envPort: defaultPort,
+        devHostUri: "localhost:8083",
+        platformOS: "web",
+        pageHostname: "rider.localhost",
+      }),
+    ).toBe("http://rider.localhost:8787");
+  });
 });
 
 describe("hostnameFromDevHostUri", () => {

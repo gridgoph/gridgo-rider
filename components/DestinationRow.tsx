@@ -53,7 +53,9 @@ export function DestinationRow({
         ) : null}
       </View>
       {value ? <Text className="text-body text-text-secondary">{value}</Text> : null}
-      <ChevronRight size={20} color={colors.textMuted} accessibilityElementsHidden />
+      <View accessibilityElementsHidden>
+        <ChevronRight size={20} color={colors.textMuted} />
+      </View>
     </Pressable>
   );
 }

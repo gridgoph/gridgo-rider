@@ -82,7 +82,9 @@ export default function AccountScreen() {
               </Text>
               <Text className="text-caption text-text-muted">GRIDGO rider</Text>
             </View>
-            <ChevronRight size={20} color={colors.textMuted} accessibilityElementsHidden />
+            <View accessibilityElementsHidden>
+              <ChevronRight size={20} color={colors.textMuted} />
+            </View>
           </View>
         </Pressable>
 

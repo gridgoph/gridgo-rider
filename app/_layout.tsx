@@ -1,5 +1,6 @@
 import { useTripTracking } from "@/hooks/useTripTracking";
 import { useAlertStream } from "@/hooks/useAlertStream";
+import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
 import "../global.css";
 
 import { ClerkProvider } from "@clerk/expo";
@@ -41,6 +42,7 @@ import {
 } from "@/lib/navigationHeaders";
 import { nativeHeaderInsetOptions } from "@/lib/nativeHeaderInsets";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
+import { bounceToIsolatedDevWebHost, GRIDGO_DEV_WEB_HOST } from "@/lib/devWebHost";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
 // Nothing may throw out of the launch path, including this.
@@ -96,6 +98,7 @@ function AppShell() {
   // the hook wraps every call so that costs push, never the first frame.
   usePushNotifications();
   useAlertStream();
+  useSupportChatUnread();
   // Same seat as push: arrival is about where the phone is, not which screen
   // is open, so the geofence lives here rather than on the Active tab.
   useTripTracking();
@@ -243,6 +246,14 @@ function RootStack() {
         options={{ title: "Alerts", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
+        name="chat/index"
+        options={{ title: "Chat", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="chat/[thread]"
+        options={{ title: "Chat", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
         name="past-jobs"
         options={{ title: "Past jobs", ...multiOriginPushedScreenOptions }}
       />
@@ -317,6 +328,10 @@ function RootStack() {
 }
 
 export default function RootLayout() {
+  if (bounceToIsolatedDevWebHost(GRIDGO_DEV_WEB_HOST)) {
+    return null;
+  }
+
   const publishableKey = resolveClerkPublishableKey(
     Constants.expoConfig?.extra?.clerkPublishableKey,
     __DEV__,

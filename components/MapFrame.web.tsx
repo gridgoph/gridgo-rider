@@ -7,6 +7,7 @@ type Props = {
   onReady: () => void;
   accessibilityLabel: string;
   onMessage?: (raw: string) => void;
+  interactive?: boolean;
 };
 
 /**
@@ -19,7 +20,7 @@ type Props = {
  * phone — same HTML, same tiles, same route.
  */
 export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
-  { html, onReady, accessibilityLabel, onMessage },
+  { html, onReady, accessibilityLabel, onMessage, interactive = true },
   ref,
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -45,6 +46,17 @@ export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
     srcDoc: html,
     onLoad: onReady,
     title: accessibilityLabel,
-    style: { border: "none", width: "100%", height: "100%", display: "block" },
+    hidden: !interactive,
+    tabIndex: interactive ? 0 : -1,
+    // Hidden + no pointer events: an unfocused Leaflet iframe still sits
+    // full-bleed over Active and swallows Browse offers taps on web.
+    style: {
+      border: "none",
+      width: "100%",
+      height: "100%",
+      display: interactive ? "block" : "none",
+      pointerEvents: interactive ? "auto" : "none",
+      visibility: interactive ? "visible" : "hidden",
+    },
   });
 });

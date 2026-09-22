@@ -6,6 +6,7 @@ import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
+import { ChatButton } from "@/components/ChatButton";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
@@ -220,7 +221,12 @@ export default function ActiveScreen() {
           */
           subtitle={approval.canWork && loaded && !trip ? "Nothing with you right now." : null}
           status={<ApprovalChip />}
-          action={<AlertsButton />}
+          action={
+            <View className="flex-row items-center gap-2">
+              <ChatButton />
+              <AlertsButton />
+            </View>
+          }
         />
 
         {!approval.canWork ? <ApprovalNotice /> : null}
