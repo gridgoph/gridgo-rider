@@ -35,11 +35,23 @@ jest.mock("react-native-keyboard-controller", () => {
   };
 });
 
-const mockGetSupportChatMe = jest.fn(async () => ({ thread: null, threads: [], messages: [], unreadCount: 0 }));
+const mockGetSupportChatMe = jest.fn(
+  async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
+    thread: null,
+    threads: [],
+    messages: [],
+    unreadCount: 0,
+  }),
+);
 const mockGetSupportChatThread = jest.fn();
 const mockOpenSupportChatThread = jest.fn();
 const mockSendSupportChatMessage = jest.fn();
-const mockMarkSupportChatRead = jest.fn(async () => ({ thread: null, unreadCount: 0 }));
+const mockMarkSupportChatRead = jest.fn(
+  async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
+    thread: null,
+    unreadCount: 0,
+  }),
+);
 
 jest.mock("@/lib/api", () => ({
   getSupportChatMe: (...args: unknown[]) => mockGetSupportChatMe(...args),
