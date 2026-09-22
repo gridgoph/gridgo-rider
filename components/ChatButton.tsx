@@ -1,37 +1,27 @@
 import { useRouter } from "expo-router";
-import { Bell } from "lucide-react-native";
+import { MessageSquare } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
-import { useNotifications } from "@/store/notifications";
+import { useSupportChatStore } from "@/store/supportChat";
 
-/**
- * The way into Alerts, and the only place the unread count is shown.
- *
- * Alerts stopped being a tab because its content restates the offer list and
- * the trip timeline, but the count still has to be visible without opening
- * anything — so it rides on the two screens a rider sits on, Offers and Active.
- *
- * The badge is a count, not a dot: "3 waiting" is worth stopping for and "1"
- * usually is not, and the number is the difference.
- */
-export function AlertsButton() {
+export function ChatButton() {
   const router = useRouter();
   const colors = useThemeColors();
-  const unread = useNotifications((s) => s.unread);
+  const unread = useSupportChatStore((s) => s.unreadCount);
   const badge = unread > 9 ? "9+" : String(unread);
 
   return (
     <Pressable
-      onPress={() => router.push("/alerts")}
+      onPress={() => router.push("/chat")}
       accessibilityRole="button"
-      accessibilityLabel={unread > 0 ? `Alerts, ${unread} unread` : "Alerts"}
-      testID="alerts-button"
+      accessibilityLabel={unread > 0 ? `Chat, ${unread} unread` : "Chat"}
+      testID="chat-button"
       className="h-11 w-11 items-center justify-center rounded-pill border border-outline bg-surface"
       style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
     >
       <View accessibilityElementsHidden>
-        <Bell size={20} color={colors.textPrimary} strokeWidth={2} />
+        <MessageSquare size={20} color={colors.textPrimary} strokeWidth={2} />
         {unread > 0 ? (
           <View className="absolute -right-2.5 -top-1.5 min-h-4 min-w-4 items-center justify-center rounded-pill bg-error px-1">
             <Text

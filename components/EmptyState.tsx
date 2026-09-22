@@ -47,7 +47,10 @@ export function EmptyState({
 
   return (
     <View className="items-center gap-4 px-2 py-10">
-      <View className="h-16 w-16 items-center justify-center rounded-pill border border-outline bg-surface">
+      <View
+        className="h-16 w-16 items-center justify-center rounded-pill border border-outline bg-surface"
+        accessibilityElementsHidden
+      >
         <Icon size={26} color={colors.textMuted} strokeWidth={1.75} />
       </View>
       <View className="gap-2">

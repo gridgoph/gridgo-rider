@@ -3,7 +3,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect } from "expo-router";
 import { LocateFixed, Search, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, Text, TextInput, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApprovalChip } from "@/components/ApprovalChip";
@@ -50,6 +50,7 @@ export default function MapScreen() {
   const [view, setView] = useState<MapView | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
+  const [mapActive, setMapActive] = useState(false);
 
   const loadShops = useCallback(async () => {
     const isCurrent = beginRead();
@@ -71,7 +72,9 @@ export default function MapScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setMapActive(true);
       void loadShops();
+      return () => setMapActive(false);
     }, [loadShops]),
   );
 
@@ -113,13 +116,26 @@ export default function MapScreen() {
 
   return (
     <Screen edges={[]}>
-      <View className="flex-1">
+      <View
+        className="flex-1"
+        pointerEvents={mapActive ? "auto" : "none"}
+        // visibility inherits into the Leaflet iframe. pointer-events on a
+        // parent is not enough — the iframe is its own compositor surface.
+        // The property is CSS only, so it is set on web alone; native has no
+        // iframe and takes pointerEvents.
+        style={
+          Platform.OS === "web"
+            ? ({ visibility: mapActive ? "visible" : "hidden" } as ViewStyle)
+            : undefined
+        }
+      >
         <BrowseMap
           places={shopsToMapPlaces(matches)}
           selectedPlaceId={selectedId}
           rider={location.coords}
           riderHeading={location.heading}
           view={view}
+          interactive={mapActive}
           onSelectPlace={(id) => {
             const shop = shops.find((entry) => entry.id === id);
             if (shop) focusShop(shop);

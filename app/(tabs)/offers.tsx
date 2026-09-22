@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
 import { AlertsButton } from "@/components/AlertsButton";
+import { ChatButton } from "@/components/ChatButton";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
@@ -139,7 +140,12 @@ export default function OffersScreen() {
             approval.canWork ? "Jobs ready for pickup. You carry one at a time." : null
           }
           status={<ApprovalChip />}
-          action={<AlertsButton />}
+          action={
+            <View className="flex-row items-center gap-2">
+              <ChatButton />
+              <AlertsButton />
+            </View>
+          }
         />
 
         {!approval.canWork ? <ApprovalNotice /> : null}

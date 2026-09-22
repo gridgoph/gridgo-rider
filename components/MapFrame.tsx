@@ -17,6 +17,8 @@ type Props = {
   accessibilityLabel: string;
   /** Raw JSON from a pin tap inside the Leaflet document. */
   onMessage?: (raw: string) => void;
+  /** False hides the native WebView from hit-testing while another tab is open. */
+  interactive?: boolean;
 };
 
 /**
@@ -30,7 +32,7 @@ type Props = {
  * OSRM routing, exactly as before.
  */
 export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
-  { html, onReady, accessibilityLabel, onMessage },
+  { html, onReady, accessibilityLabel, onMessage, interactive = true },
   ref,
 ) {
   const colors = useThemeColors();
@@ -49,6 +51,7 @@ export const MapFrame = forwardRef<MapFrameHandle, Props>(function MapFrame(
       source={{ html, baseUrl: "https://localhost" }}
       onLoadEnd={onReady}
       onMessage={onMessage ? (event) => onMessage(event.nativeEvent.data) : undefined}
+      pointerEvents={interactive ? "auto" : "none"}
       style={{ flex: 1, backgroundColor: colors.surfaceVariant }}
       // Map gestures should not fight the parent ScrollView on Android.
       nestedScrollEnabled

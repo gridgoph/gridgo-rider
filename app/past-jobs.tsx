@@ -179,12 +179,9 @@ function PastJobRow({
           {entry.statusLabel}
         </Text>
       </View>
-      <ChevronRight
-        size={20}
-        color={colors.textMuted}
-        accessibilityElementsHidden
-        style={{ marginTop: 4 }}
-      />
+      <View accessibilityElementsHidden style={{ marginTop: 4 }}>
+        <ChevronRight size={20} color={colors.textMuted} />
+      </View>
     </Pressable>
   );
 }

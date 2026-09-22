@@ -273,6 +273,7 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
     >
       <View
         testID="gridgo-tab-bar-surface"
+        pointerEvents="none"
         className="absolute inset-0 border-t border-outline bg-surface"
       />
 
@@ -346,7 +347,10 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
             colour moves — nothing is filled, swapped or rescaled when a tab
             opens, so the row never shifts under your thumb.
           */}
-          <View className={pressed ? "opacity-60" : undefined}>
+          <View
+            accessibilityElementsHidden
+            className={pressed ? "opacity-60" : undefined}
+          >
             <Icon
               size={TAB_ICON_SIZE}
               strokeWidth={2}
