@@ -3,7 +3,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect } from "expo-router";
 import { LocateFixed, Search, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, Text, TextInput, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApprovalChip } from "@/components/ApprovalChip";
@@ -121,7 +121,13 @@ export default function MapScreen() {
         pointerEvents={mapActive ? "auto" : "none"}
         // visibility inherits into the Leaflet iframe. pointer-events on a
         // parent is not enough — the iframe is its own compositor surface.
-        style={{ visibility: mapActive ? "visible" : "hidden" }}
+        // The property is CSS only, so it is set on web alone; native has no
+        // iframe and takes pointerEvents.
+        style={
+          Platform.OS === "web"
+            ? ({ visibility: mapActive ? "visible" : "hidden" } as ViewStyle)
+            : undefined
+        }
       >
         <BrowseMap
           places={shopsToMapPlaces(matches)}
