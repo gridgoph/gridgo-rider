@@ -182,8 +182,12 @@ export function captureFailureMessage(
 }
 
 /** Wrap a rendered signature file as evidence. */
-export async function signatureEvidence(uri: string, capturedAtMs: number): Promise<ProofEvidence> {
-  const fileName = evidenceFileName("delivery", "signature", capturedAtMs, "png");
+export async function signatureEvidence(
+  uri: string,
+  capturedAtMs: number,
+  step: CaptureStep = "delivery",
+): Promise<ProofEvidence> {
+  const fileName = evidenceFileName(step, "signature", capturedAtMs, "png");
   const persisted = await persistCaptureUri(uri, fileName);
   return {
     kind: "signature",
@@ -193,4 +197,9 @@ export async function signatureEvidence(uri: string, capturedAtMs: number): Prom
     capturedAt: new Date(capturedAtMs).toISOString(),
     sizeBytes: fileSize(persisted),
   };
+}
+
+/** The supplier's signature from the pad at the shop counter, as evidence. */
+export function handoffSignatureEvidence(uri: string): Promise<ProofEvidence> {
+  return signatureEvidence(uri, Date.now(), "pickup");
 }

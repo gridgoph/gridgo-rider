@@ -41,7 +41,8 @@ import { useTripProof } from "@/store/tripProof";
  * This is the screen that decides whether a package moves at all. Every check
  * has to be answered, and one problem stops the job: the package stays at the
  * shop, GRIDGO logs the fault against the supplier who caused it, and the
- * founder is put in the loop.
+ * founder is put in the loop. Six passes go on to the supplier's signature
+ * (`app/trip/handoff.tsx`), which is what sends them.
  *
  * The reason is on the screen, not just in the rules, because a rider under
  * time pressure needs to know why the app is being difficult: a defect that
@@ -65,7 +66,7 @@ export default function PickupChecklistScreen() {
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [restored, setRestored] = useState(false);
+  const [restoredFor, setRestoredFor] = useState<string | null>(null);
   // The action bar rides above the keyboard, so the escalation note has to
   // clear the bar as well as the keyboard to stay readable while it is typed.
   const [actionBarHeight, setActionBarHeight] = useState(0);
@@ -75,15 +76,17 @@ export default function PickupChecklistScreen() {
   }, [hydrate]);
 
   // Six answers half-given survive the app being killed at the counter.
-  useEffect(() => {
-    if (!hydrated || !id || restored) return;
+  // Restored on render, once per job, so the first frame after hydration
+  // already shows them rather than a blank list that fills in a beat later.
+  const restored = Boolean(id) && restoredFor === id;
+  if (hydrated && id && !restored) {
     const draft = getChecklist(id);
     if (draft) {
       setAnswers(draft.answers);
       setFailureNote(draft.failureNote);
     }
-    setRestored(true);
-  }, [hydrated, id, restored, getChecklist]);
+    setRestoredFor(id);
+  }
 
   const evidence = useProofEvidence({
     orderId: id ?? "",
@@ -116,6 +119,17 @@ export default function PickupChecklistScreen() {
 
   async function submit() {
     if (!order || blocked || submitting.current) return;
+    if (passing) {
+      /*
+        Six passes are not sent from here. The supplier still has to sign on
+        this phone, and the server records the checks and the signature in
+        one step — so the answers stay in the draft and the signature screen
+        sends both. It replaces this screen rather than stacking on it: the
+        signature is the next step, not a confirmation of this one.
+      */
+      router.replace({ pathname: "/trip/handoff", params: { orderId: order.id } });
+      return;
+    }
     submitting.current = true;
     setBusy(true);
     setSubmitError(null);
@@ -123,18 +137,12 @@ export default function PickupChecklistScreen() {
       const result = await api.submitPickupChecklist(
         order.id,
         toChecklistPayload(answers),
-        passing || !evidenceFileId
-          ? undefined
-          : { failureNote: failureNote.trim(), evidenceFileIds: [evidenceFileId] },
+        evidenceFileId
+          ? { failure: { failureNote: failureNote.trim(), evidenceFileIds: [evidenceFileId] } }
+          : undefined,
       );
       setActiveOrder(result.order);
       clearChecklist(order.id);
-      if (passing) {
-        // The sign-off is the next step, not a confirmation of this one, so it
-        // replaces this screen rather than stacking on it.
-        router.replace({ pathname: "/trip/sign-off", params: { orderId: order.id } });
-        return;
-      }
       router.back();
     } catch (e) {
       setSubmitError(
@@ -277,10 +285,7 @@ export default function PickupChecklistScreen() {
         </StickyActionBar>
       ) : null}
 
-      <BlockingOverlay
-        visible={busy}
-        label={passing ? "Recording the checks…" : "Escalating this pickup…"}
-      />
+      <BlockingOverlay visible={busy} label="Escalating this pickup…" />
     </Screen>
   );
 }

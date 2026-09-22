@@ -295,6 +295,10 @@ function RootStack() {
         options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
+        name="trip/handoff"
+        options={{ title: "Supplier signature", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
         name="trip/sign-off"
         options={{ title: "Quality checkpoint", ...multiOriginPushedScreenOptions }}
       />

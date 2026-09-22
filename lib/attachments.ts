@@ -33,15 +33,19 @@ import {
  */
 
 /**
- * The two purposes a rider may upload under.
+ * The purposes a rider may upload under.
  *
- * A delivery needs both, from the same moment at the door: the delivery photo
- * is the rider's evidence that the handover happened, and the delivered Proof
- * of Fulfilment is what releases the supplier's third milestone. The server
- * binds a file to exactly one purpose and will not rebind it, so one capture is
- * sent twice rather than asking a rider to photograph the same doorstep twice.
+ * A delivery needs the first two, from the same moment at the door: the
+ * delivery photo is the rider's evidence that the handover happened, and the
+ * delivered Proof of Fulfilment is what releases the supplier's third
+ * milestone. The server binds a file to exactly one purpose and will not
+ * rebind it, so one capture is sent twice rather than asking a rider to
+ * photograph the same doorstep twice.
+ *
+ * The third is the supplier's signature at the shop counter: a PNG of the
+ * pad, attached before the pickup checklist names it.
  */
-export type EvidencePurpose = "delivery_photo" | "fulfilment_proof";
+export type EvidencePurpose = "delivery_photo" | "fulfilment_proof" | "handoff_signature";
 
 export type EvidenceTarget = {
   purpose: EvidencePurpose;
@@ -58,6 +62,11 @@ export const DELIVERY_TARGETS: readonly EvidenceTarget[] = [
 /** What a failed pickup check has to store before it can be escalated. */
 export const PICKUP_FAILURE_TARGETS: readonly EvidenceTarget[] = [
   { purpose: "delivery_photo" },
+];
+
+/** What the supplier's signature is stored as before the checklist can name it. */
+export const HANDOFF_SIGNATURE_TARGETS: readonly EvidenceTarget[] = [
+  { purpose: "handoff_signature" },
 ];
 
 /** Contract limit for `delivery_photo` — the smaller of the two, so it governs. */
@@ -122,6 +131,8 @@ export function storageErrorMessage(code: string | undefined, status: number): s
       return "The photo did not come through in one piece. Retake it and send again.";
     case "delivery_photo_upload_not_allowed":
       return "This job is not at a stage that accepts evidence. Pull down on your trip to refresh it.";
+    case "handoff_signature_upload_not_allowed":
+      return "This job has already left the shop, so a signature cannot be added now. Pull down on your trip to refresh it.";
     case "forbidden":
       return "This job is not assigned to you any more. Refresh your trip.";
     case "unauthorized":
@@ -388,9 +399,9 @@ export function uploadEvidence({
 
     settled = true;
     inFlight = null;
-    // The delivery photo is the id the delivery route is filed against; a
-    // pickup failure escalation uses the same one.
-    onPhase({ phase: "stored", fileId: stored.delivery_photo ?? "" });
+    // The first target is the id the step is filed against: the delivery photo
+    // for a delivery or a pickup escalation, the signature for a handoff.
+    onPhase({ phase: "stored", fileId: stored[targets[0]!.purpose] ?? "" });
     return stored;
   })();
 

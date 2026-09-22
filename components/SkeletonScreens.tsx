@@ -370,6 +370,51 @@ export function PickupChecklistSkeleton({ rows = 6 }: { rows?: number }) {
 }
 
 /**
+ * The supplier's signature while its job loads.
+ *
+ * Header, the six-check receipt, the signer's heading and name field, then
+ * the paper: the pad is the tallest thing on the finished screen, so the
+ * block standing in for it is the tallest thing here.
+ */
+export function HandoffSkeleton() {
+  return (
+    <Loading label="Loading the handoff">
+      <TripStepHeaderSkeleton />
+
+      <View className="gg-card gap-3">
+        <SkeletonText width="45%" height={24} />
+        <View className="flex-row flex-wrap">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <View key={index} className="w-1/2 flex-row items-center gap-2 py-1 pr-2">
+              <SkeletonCircle size={20} />
+              <SkeletonText width="70%" height={20} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View className="gap-1">
+        <SkeletonText width="60%" height={30} />
+        <SkeletonText width="85%" height={24} />
+      </View>
+
+      <View className="gap-2">
+        <SkeletonText width={160} height={16} />
+        <SkeletonBlock height={48} />
+      </View>
+
+      <SkeletonBlock height={200} />
+
+      <View className="gap-1">
+        <SkeletonText width="100%" height={20} />
+        <SkeletonText width="90%" height={20} />
+        <SkeletonText width="40%" height={20} />
+      </View>
+    </Loading>
+  );
+}
+
+/**
  * The quality checkpoint while its job loads.
  *
  * The spoken line is the largest thing on the finished screen, so the block

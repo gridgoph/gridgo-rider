@@ -93,7 +93,7 @@ describe("nothing is submitted until all six are answered", () => {
     expect(allAnswered(passed)).toBe(true);
     expect(allPassed(passed)).toBe(true);
     expect(checklistBlockReason(passed, { note: "", evidenceStored: false })).toBeNull();
-    expect(checklistActionLabel(passed)).toMatch(/take the package/i);
+    expect(checklistActionLabel(passed)).toMatch(/supplier signs next/i);
   });
 });
 
@@ -126,8 +126,10 @@ describe("a failed check cannot be escalated on a tap alone", () => {
     expect(consequence).toContain(checkDefinition("visible_defects").failure);
     expect(consequence).not.toMatch(/_/);
 
+    // Six passes send nothing: the supplier's signature is the step that does.
     const passing = checklistConsequence(allPass());
-    expect(passing).toMatch(/out loud/i);
+    expect(passing).toMatch(/nothing is recorded yet/i);
+    expect(passing).toMatch(/supplier signs on your phone/i);
 
     // Nothing to promise until every answer is in.
     expect(checklistConsequence(EMPTY_ANSWERS)).toBeNull();

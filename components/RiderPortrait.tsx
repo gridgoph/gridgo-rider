@@ -1,5 +1,5 @@
 import { Bike } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
@@ -26,9 +26,9 @@ type Props = {
  */
 export function RiderPortrait({ imageUrl, name, size }: Props) {
   const colors = useThemeColors();
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => setFailed(false), [imageUrl]);
+  // A failure belongs to the URL that failed: a new picture gets a fresh try.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl != null && failedUrl === imageUrl;
 
   const showing = imageUrl && !failed;
 
@@ -45,7 +45,7 @@ export function RiderPortrait({ imageUrl, name, size }: Props) {
           source={{ uri: imageUrl }}
           resizeMode="cover"
           style={{ width: "100%", height: "100%" }}
-          onError={() => setFailed(true)}
+          onError={() => setFailedUrl(imageUrl ?? null)}
           accessibilityElementsHidden
         />
       ) : (

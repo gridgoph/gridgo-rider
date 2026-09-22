@@ -49,3 +49,18 @@ describe("ink", () => {
     );
   });
 });
+
+describe("refitting a restored signature", () => {
+  const { scaleStrokes } = jest.requireActual<typeof import("@/lib/signature")>("@/lib/signature");
+
+  it("scales strokes uniformly onto a pad of another width", () => {
+    const drawn: SignatureStroke[] = [[{ x: 100, y: 50 }, { x: 200, y: 75 }]];
+    expect(scaleStrokes(drawn, 400, 200)).toEqual([[{ x: 50, y: 25 }, { x: 100, y: 37.5 }]]);
+  });
+
+  it("leaves strokes alone for the same width or an unknown one", () => {
+    const drawn: SignatureStroke[] = [[{ x: 1, y: 2 }]];
+    expect(scaleStrokes(drawn, 300, 300)).toBe(drawn);
+    expect(scaleStrokes(drawn, 0, 300)).toBe(drawn);
+  });
+});
