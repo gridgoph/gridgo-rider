@@ -54,7 +54,10 @@ describe("a field a rider is typing into stays visible", () => {
     ].map((name) => join("components", name));
     // Full-bleed map: the search sits at the top of the canvas. FormScroll
     // would own the map itself, which is the wrong viewport.
-    const overlays = [join("app", "(tabs)", "map.tsx")];
+    // Chat: the message list is the viewport and the composer is pinned under
+    // it. FormScroll would nest one scroll inside another and unpin the
+    // composer; the column shrinks with the keyboard instead (see below).
+    const overlays = [join("app", "(tabs)", "map.tsx"), join("app", "chat.tsx")];
 
     const offenders = withFields
       .filter((file) => !primitives.some((primitive) => file.endsWith(primitive)))
@@ -70,10 +73,17 @@ describe("a field a rider is typing into stays visible", () => {
     // is the point rather than a violation of it.
     const rendered = /<KeyboardAvoidingView\b/;
     const imported = /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*"react-native"/s;
+    // `react-native-keyboard-controller` ships a component of the same name
+    // that reads the keyboard frame from its own controller, so it does move
+    // on edge-to-edge Android. A render backed by that import is not a reach
+    // back to React Native's.
+    const fromController =
+      /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*"react-native-keyboard-controller"/s;
 
     const offenders = files.filter((file) => {
       const source = readFileSync(file, "utf8");
-      return rendered.test(source) || imported.test(source);
+      if (imported.test(source)) return true;
+      return rendered.test(source) && !fromController.test(source);
     });
 
     expect(offenders).toEqual([]);
