@@ -13,7 +13,7 @@ jest.mock("react-native-keyboard-controller", () => {
 });
 
 jest.mock("@/lib/api", () => ({
-  getSupportChatMe: (...args: unknown[]) => mockGetSupportChatMe(...args),
+  getSupportChatMe: () => mockGetSupportChatMe(),
   sendSupportChatMessage: (...args: unknown[]) => mockSendSupportChatMessage(...args),
   markSupportChatRead: jest.fn(async () => ({ thread: null })),
   apiErrorMessage: (_error: unknown, fallback: string) => fallback,
