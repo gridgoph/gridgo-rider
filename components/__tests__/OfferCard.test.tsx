@@ -48,6 +48,15 @@ describe("OfferCard accept control", () => {
     expect(screen.getByText("1")).toBeTruthy();
   });
 
+  it("marks the fee as earnings without making it a second button", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("₱50.00")).toBeTruthy();
+    expect(screen.getByTestId("earning-mark", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Accept this job" })).toBeTruthy();
+  });
+
   it("says Accepting only while this card's accept is in flight", async () => {
     await render(<OfferCard offer={offer} accepting onAccept={jest.fn()} />);
 

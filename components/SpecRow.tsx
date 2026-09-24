@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
 type Props = {
   label: string;
-  value: string;
+  /** A string sets the plain value; a node (e.g. `EarningAmount`) renders as given. */
+  value: string | ReactNode;
   /** Drop the hairline on the last row so it does not double the card edge. */
   last?: boolean;
 };
@@ -22,7 +24,11 @@ export function SpecRow({ label, value, last = false }: Props) {
       }
     >
       <Text className="text-body text-text-secondary">{label}</Text>
-      <Text className="shrink text-body text-text-primary">{value}</Text>
+      {typeof value === "string" ? (
+        <Text className="shrink text-body text-text-primary">{value}</Text>
+      ) : (
+        value
+      )}
     </View>
   );
 }

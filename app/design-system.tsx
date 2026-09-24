@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 
+import { EarningAmount } from "@/components/EarningAmount";
 import { GridgoLogo, type GridgoLogoRole } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -291,6 +292,27 @@ export default function DesignSystemScreen() {
               <Text className="text-caption text-text-muted">
                 Disabled controls stay at 38% and keep their label. The disabled example is
                 a secondary button, because a second yellow would break the rule above.
+              </Text>
+            </View>
+          </View>
+
+          {/* Earnings */}
+          <View className="gap-4">
+            <SectionHead
+              title="EARNINGS"
+              rule="The rider's own money is marked, never boxed. Yellow digits in Dark, a yellow band under dark digits in Light."
+            />
+            <View className="gg-card gap-3">
+              <View className="gap-1">
+                <Text className="text-overline text-text-muted">EARNED TODAY</Text>
+                <EarningAmount minor={42000} size="display" className="self-start" />
+              </View>
+              <View className="flex-row items-center justify-between gap-4">
+                <Text className="text-body text-text-secondary">Per delivery</Text>
+                <EarningAmount minor={8500} size="h3" />
+              </View>
+              <Text className="text-caption text-text-muted">
+                A cancelled job paid nothing, so its fee stays unmarked.
               </Text>
             </View>
           </View>
