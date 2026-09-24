@@ -5,12 +5,12 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { OrderStageBar } from "@/components/OrderStageBar";
 import { Screen } from "@/components/Screen";
 import { PastJobDetailSkeleton } from "@/components/SkeletonScreens";
+import { RiderPayRows } from "@/components/RiderPayRows";
 import { SpecRow } from "@/components/SpecRow";
 import { OrderReference } from "@/components/OrderReference";
 import { StatusChip } from "@/components/StatusChip";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useTripOrder } from "@/hooks/useTripOrder";
-import { formatPhp } from "@/lib/api";
 import { orderStage } from "@/lib/orderStage";
 import {
   dropoffLabel,
@@ -74,7 +74,12 @@ export default function PastJobScreen() {
             <View className="gg-card-flush px-4">
               <SpecRow label="Pickup" value={pickupLabel(order)} />
               <SpecRow label="Drop-off" value={dropoffLabel(order)} />
-              <SpecRow label="Your fee" value={formatPhp(order.deliveryFeeMinor)} last />
+              {/* A cancelled job paid nothing, so its share is not called earnings. */}
+              <RiderPayRows
+                order={order}
+                label={order.state === "cancelled" ? "Your share" : "You earned"}
+                last
+              />
             </View>
 
             <View className="gap-3">

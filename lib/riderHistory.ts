@@ -6,6 +6,7 @@ import {
   pickupLabel,
   sortTimelineNewestFirst,
 } from "@/lib/riderOrder";
+import { riderPay } from "@/lib/riderPay";
 
 /**
  * Jobs this rider already accepted that are no longer the trip in hand.
@@ -23,6 +24,7 @@ export type PastJobEntry = {
   dropoff: string;
   /** When this job last moved, newest event on the trail. */
   at: string;
+  /** What the rider earns for this job — their share of the fee — in centavos. */
   feeMinor: number;
   state: string;
   statusLabel: string;
@@ -61,7 +63,7 @@ export function listPastJobs(orders: Order[], riderId: string | null): PastJobEn
       pickup: pickupLabel(order),
       dropoff: dropoffLabel(order),
       at: pastJobAt(order),
-      feeMinor: order.deliveryFeeMinor,
+      feeMinor: riderPay(order).earnedMinor,
       state: order.state,
       statusLabel: orderStateLabel(order.state),
     });

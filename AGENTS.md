@@ -25,7 +25,7 @@ The app includes:
 - Delivery evidence (photo, or signature when the camera cannot be used)
 - Active-trip location pings (live GPS while package is with the rider)
 
-**No cash.** Operational model v2 removed cash on delivery outright — the captain's risk decision about riders carrying the client's balance. There is no cash screen, no COD path, and no peso figure on any screen except the rider's own delivery fee. Do not reintroduce one.
+**No cash.** Operational model v2 removed cash on delivery outright — the captain's risk decision about riders carrying the client's balance. There is no cash screen, no COD path, and no peso figure on any screen except the rider's own earnings and, as secondary detail, the gross delivery fee they are a share of. Do not reintroduce one.
 
 **Cross-cutting**
 
@@ -61,7 +61,7 @@ Every screen that needs network uses **`lib/api.ts`** against the shared local *
 - **Clerk auth** — Google, recovery, and Operations invitation tickets. Clerk tokens use SecureStore and flow through `lib/api.ts`; rider membership follows [Authentication](#authentication). Password apply and sign-in use the domain API (`POST /auth/signup`, `POST /auth/login`) while `AUTH_MODE` is still `legacy`. Do not flip `AUTH_MODE` from this app.
 - **Custom domain API** — orders, dispatch, pickup checklist, delivery evidence, files, settings, notifications.
 - **Zustand** — session and feature stores (not React Context for global session).
-- **Money** — PHP minor units only, formatted at the edge. The only figure this app renders is `deliveryFeeMinor`, the rider's own fee.
+- **Money** — PHP minor units only, formatted at the edge. The only figures this app renders are the rider's earnings and the gross fee beside them, both read through `riderPay` in `lib/riderPay.ts` (see *Earnings* below).
 - **Contract** — `gridgo-api` `docs/OPERATIONAL_MODEL_V2_API.md` is authoritative for routes, states, transitions and role projections; `docs/STORAGE_API.md` for file bytes. Read them before changing a call site rather than inferring from the app.
 - **Stable API surface** — feature call sites continue through `lib/api.ts`; auth chooses a fresh Clerk bearer or the development-only legacy bearer there.
 - **API base** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → Expo dev-server hostname from `expo-constants` + `EXPO_PUBLIC_API_PORT` (default `8787`) → Android emulator `10.0.2.2` when that host is loopback → `127.0.0.1`. Do not hardcode a LAN IP; a physical device inherits the host it loaded the bundle from. Unit tests: `lib/__tests__/apiBase.test.ts`.
@@ -352,7 +352,7 @@ Be concise. Explain what changed and how to test it.
 - **Settings:** pushed route `app/settings.tsx` (theme + View onboarding). Account keeps identity, the way into Alerts and Settings, and Sign out — and nothing diagnostic: the API base belongs on login (with its reachability chip), not on a rider's account screen.
 - **Illustrations:** source SVGs in `assets/illustrations/` (provenance in `NOTICE.md`); RN components collapse fills onto the five-step ramp in `palette.ts` — no yellow in art. Do not hand-edit generated `*Illustration.tsx`; re-convert from the SVG.
 - **Nothing on screen names an internal:** `apiErrorMessage` in `lib/api.ts` maps known API codes to recovery copy and swaps anything code-shaped (`isInternalCode`) for the caller's own sentence, so a raw `not_offerable` or `HTTP 500` can never reach a rider.
-- **Earnings are derived, not fetched:** the demo API has no payouts route, so `lib/riderEarnings.ts` builds them from the rider's delivered orders. One number, and it is the rider's own: the delivery fee, banded by distance (`feeDistanceLabel` captions it, so a varying fee does not read as arbitrary).
+- **Earnings are derived, not fetched:** the demo API has no payouts route, so `lib/riderEarnings.ts` builds them from the rider's delivered orders. One number, and it is the rider's own: `riderPayoutMinor`, their snapshotted share of the distance-banded delivery fee (gridgo-api `#rider-delivery-split`). Every money render goes through `riderPay` (`lib/riderPay.ts`), which falls back to the whole `deliveryFeeMinor` when the API omits the split and never recomputes the server's rounding; the gross appears only as secondary detail (`riderPayDetail`, `components/RiderPayRows.tsx`).
 - **Alerts show where the job actually is.** `components/AlertCard.tsx` carries an unread state, a swipe that marks read, an absolute date and time, and a four-step stage bar (`lib/orderStage.ts` + `components/OrderStageBar.tsx`: Assigned · Checked · On the way · Delivered). The stage is derived from the **order**, never the message — a message was true when it was sent. The bar is monochrome on purpose: an active stepper step may take `actionYellow`, but several cards to a list would put four yellow discs on one screen. `store/notifications.ts` owns account-scoped read acknowledgements, persistence, rollback, deletion, and ordered inbox adoption. See its contract comment before changing alert state.
 
 ## Push notifications

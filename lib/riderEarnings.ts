@@ -1,4 +1,5 @@
 import type { Order } from "@/lib/api";
+import { riderPay, riderPayDetail } from "@/lib/riderPay";
 
 /**
  * What a shift is worth.
@@ -9,7 +10,9 @@ import type { Order } from "@/lib/api";
  * holds the client's money — so there is one number left, and it is theirs.
  *
  * Everything is derived from the orders the API already returns for this rider,
- * because the demo backend has no payouts endpoint. The screen says so.
+ * because the demo backend has no payouts endpoint. The screen says so. That
+ * number is the rider's share of each delivery fee (`riderPay`), not the gross
+ * the client paid — GRIDGO keeps the rest.
  */
 
 /** Order states that mean the delivery happened and the fee is earned. */
@@ -27,17 +30,23 @@ export type EarningsEntry = {
   dropoff: string;
   /** ISO timestamp of the delivery, best available from the order. */
   at: string;
-  /** The rider's fee for this job, in centavos. */
+  /** What the rider earned for this job — their share of the fee — in centavos. */
   feeMinor: number;
+  /** The gross delivery fee the client paid, in centavos. */
+  deliveryFeeMinor: number;
+  /** "85% of the ₱25.00 delivery fee", or null when the rider kept it all. */
+  detail: string | null;
 };
 
 export type EarningsSummary = {
-  /** Fees for deliveries completed today, in centavos. */
+  /** Earnings from deliveries completed today, in centavos. */
   todayMinor: number;
   /** Number of deliveries completed today. */
   todayCount: number;
-  /** Fees for every completed delivery this account has, in centavos. */
+  /** Earnings from every completed delivery this account has, in centavos. */
   allTimeMinor: number;
+  /** GRIDGO kept a share of at least one fee, so the footnote says so. */
+  split: boolean;
   /** Newest first. */
   entries: EarningsEntry[];
 };
@@ -83,12 +92,15 @@ export function summariseEarnings(
     if (!riderId || order.riderId !== riderId) continue;
     if (!isDeliveredState(order.state)) continue;
 
+    const pay = riderPay(order);
     entries.push({
       orderId: order.id,
       title: order.title,
       dropoff: order.dropoff?.label?.trim() || order.address || "Client address",
       at: deliveredAt(order),
-      feeMinor: order.deliveryFeeMinor,
+      feeMinor: pay.earnedMinor,
+      deliveryFeeMinor: pay.deliveryFeeMinor,
+      detail: riderPayDetail(pay),
     });
   }
 
@@ -100,6 +112,7 @@ export function summariseEarnings(
     todayMinor: today.reduce((sum, entry) => sum + entry.feeMinor, 0),
     todayCount: today.length,
     allTimeMinor: entries.reduce((sum, entry) => sum + entry.feeMinor, 0),
+    split: entries.some((entry) => entry.detail !== null),
     entries,
   };
 }
