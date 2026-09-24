@@ -6,6 +6,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
+import { EarningAmount } from "@/components/EarningAmount";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
@@ -126,9 +127,7 @@ export default function EarningsScreen() {
             {/* Today, as one number. The reason a rider opens this tab. */}
             <View className="gg-card gap-1">
               <Text className="text-overline text-text-muted">EARNED TODAY</Text>
-              <Text className="text-display text-text-primary">
-                {api.formatPhp(summary.todayMinor)}
-              </Text>
+              <EarningAmount minor={summary.todayMinor} size="display" className="self-start" />
               <Text className="text-body text-text-secondary">
                 {summary.todayCount === 0
                   ? "No deliveries closed yet today."
@@ -165,9 +164,7 @@ export default function EarningsScreen() {
                         </Text>
                       </View>
                       <View className="items-end gap-0.5">
-                        <Text className="text-h3 text-text-primary">
-                          {api.formatPhp(entry.feeMinor)}
-                        </Text>
+                        <EarningAmount minor={entry.feeMinor} size="h3" />
                         {entry.detail ? (
                           <Text className="text-caption text-text-muted">
                             {`of ${api.formatPhp(entry.deliveryFeeMinor)}`}

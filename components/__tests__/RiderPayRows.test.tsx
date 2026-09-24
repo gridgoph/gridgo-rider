@@ -25,4 +25,30 @@ describe("RiderPayRows", () => {
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.queryByText("Delivery fee")).toBeNull();
   });
+
+  it("marks only the share as earned, never the gross", async () => {
+    await render(
+      <RiderPayRows
+        order={{ deliveryFeeMinor: 2500, riderCommissionBps: 8500, riderPayoutMinor: 2125 }}
+        label="You earn"
+        last
+      />,
+    );
+
+    expect(screen.getAllByTestId("earning-mark", { includeHiddenElements: true })).toHaveLength(1);
+  });
+
+  it("leaves a cancelled job's share unmarked", async () => {
+    await render(
+      <RiderPayRows
+        order={{ deliveryFeeMinor: 2500, riderCommissionBps: 8500, riderPayoutMinor: 2125 }}
+        label="Your share"
+        marked={false}
+        last
+      />,
+    );
+
+    expect(screen.getByText("₱21.25")).toBeTruthy();
+    expect(screen.queryByTestId("earning-mark", { includeHiddenElements: true })).toBeNull();
+  });
 });

@@ -74,10 +74,11 @@ export default function PastJobScreen() {
             <View className="gg-card-flush px-4">
               <SpecRow label="Pickup" value={pickupLabel(order)} />
               <SpecRow label="Drop-off" value={dropoffLabel(order)} />
-              {/* A cancelled job paid nothing, so its share is not called earnings. */}
+              {/* A cancelled job paid nothing, so its share is neither called earnings nor marked. */}
               <RiderPayRows
                 order={order}
                 label={order.state === "cancelled" ? "Your share" : "You earned"}
+                marked={order.state !== "cancelled"}
                 last
               />
             </View>

@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { ApprovalNotice } from "@/components/ApprovalNotice";
+import { EarningAmount } from "@/components/EarningAmount";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
@@ -174,7 +175,11 @@ function PastJobRow({
         <Text className="text-caption text-text-muted">{when}</Text>
       </View>
       <View className="items-end gap-0.5">
-        <Text className="text-h3 text-text-primary">{api.formatPhp(entry.feeMinor)}</Text>
+        {failed ? (
+          <Text className="text-h3 text-text-primary">{api.formatPhp(entry.feeMinor)}</Text>
+        ) : (
+          <EarningAmount minor={entry.feeMinor} size="h3" />
+        )}
         <Text className={failed ? "text-caption text-error" : "text-caption text-text-muted"}>
           {entry.statusLabel}
         </Text>

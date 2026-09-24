@@ -53,6 +53,11 @@ export const colors = {
     /** Recessive ink on the yellow field - the mark's "GO" and the launch line. */
     actionYellowOnMuted: "#5B5B5B",
 
+    /** Digits of the rider's own earnings - dark on the yellow mark in Light */
+    earningInk: "#1A1A1A",
+    /** Highlighter band behind earnings. Transparent in Dark, where the ink is yellow. */
+    earningMark: "#FFDE58",
+
     /** Approved, completed */
     success: "#2E7D32",
     /** Blocked, failed */
@@ -89,6 +94,9 @@ export const colors = {
     actionYellowOn: "#1A1A1A",
     /** Recessive ink on the yellow field - the mark's "GO" and the launch line. */
     actionYellowOnMuted: "#5B5B5B",
+
+    earningInk: "#FFDE58",
+    earningMark: "transparent",
 
     success: "#66BB6A",
     error: "#EF5350",
