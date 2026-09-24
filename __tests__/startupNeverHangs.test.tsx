@@ -48,6 +48,10 @@ jest.mock("@/components/BrandIntro", () => ({
   BrandIntro: () => null,
 }));
 
+// The update prompt is its own suite (app/__tests__/layout-app-update.test.tsx);
+// here it would only add a release read and its development log.
+jest.mock("@/hooks/useAppUpdateCheck", () => ({ useAppUpdateCheck: jest.fn() }));
+
 // The layout only needs a navigator shaped like a Stack. The routes themselves
 // are covered by their own screens' tests; what matters here is whether the
 // shell is reached at all.
