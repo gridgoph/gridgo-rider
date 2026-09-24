@@ -1,6 +1,7 @@
 import { Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
+import { EarningAmount } from "@/components/EarningAmount";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { OrderReference } from "@/components/OrderReference";
 import { StopList } from "@/components/StopList";
@@ -8,7 +9,6 @@ import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
-import { formatPhp } from "@/lib/api";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
 import { tripDestination } from "@/lib/tripNav";
@@ -33,7 +33,9 @@ type Props = {
  * the number a rider chooses on off the bottom of the screen. Distance comes
  * from OSRM; when routing fails the card says the line is direct and offers no
  * travel time rather than guessing one. One yellow Accept per card, and the
- * card is the bounded panel that owns it.
+ * card is the bounded panel that owns it. The fee carries the earnings mark
+ * (`EarningAmount`), a highlighter band rather than a filled box, so the two
+ * yellows never read as two buttons.
  *
  * The fee is banded by distance now rather than flat per zone, so it is
  * captioned with the distance it was set from. Without that a rider sees two
@@ -60,7 +62,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
       <View className="flex-row items-end justify-between gap-4">
         <View className="gap-0.5">
           <Text className="text-overline text-text-muted">YOU EARN</Text>
-          <Text className="text-h1 text-text-primary">{formatPhp(offer.deliveryFeeMinor)}</Text>
+          <EarningAmount minor={offer.deliveryFeeMinor} size="h1" className="self-start" />
           {feeDistanceLabel(offer.deliveryDistanceMeters) ? (
             <Text className="text-caption text-text-muted">
               {feeDistanceLabel(offer.deliveryDistanceMeters)}

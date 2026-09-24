@@ -167,6 +167,7 @@ Define tokens once in `constants/theme.ts` and consume them by semantic name. Ne
 
 - One primary CTA per screen or bounded panel. Nothing else.
 - Also allowed: the active stepper step, the selected bottom-nav item, and the map route/highlight.
+- Also allowed: the rider's own earnings, only through `components/EarningAmount.tsx` — a highlighter band behind dark digits in Light (yellow text fails contrast on white), yellow digits with no band in Dark (`earning-ink` / `earning-mark` tokens). Never a filled box, so it cannot read as a second CTA. A cancelled job's fee was not earned and stays unmarked.
 - Navigation, secondary buttons, filters, inputs, tabs, and routine controls stay black/white/charcoal.
 - Yellow buttons use black text and a clear verb.
 - No yellow page backgrounds and no large black slabs in Light. In Dark, cards must stay visibly elevated from the canvas — never let a surface disappear into black.

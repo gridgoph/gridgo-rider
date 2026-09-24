@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 
+import { EarningAmount } from "@/components/EarningAmount";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OrderStageBar } from "@/components/OrderStageBar";
 import { Screen } from "@/components/Screen";
@@ -74,7 +75,18 @@ export default function PastJobScreen() {
             <View className="gg-card-flush px-4">
               <SpecRow label="Pickup" value={pickupLabel(order)} />
               <SpecRow label="Drop-off" value={dropoffLabel(order)} />
-              <SpecRow label="Your fee" value={formatPhp(order.deliveryFeeMinor)} last />
+              {/* A cancelled job paid nothing, so its fee is not marked as earned. */}
+              <SpecRow
+                label="Your fee"
+                value={
+                  order.state === "cancelled" ? (
+                    formatPhp(order.deliveryFeeMinor)
+                  ) : (
+                    <EarningAmount minor={order.deliveryFeeMinor} size="body" />
+                  )
+                }
+                last
+              />
             </View>
 
             <View className="gap-3">

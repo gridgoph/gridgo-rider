@@ -1,4 +1,5 @@
 import { ArtworkPanel } from "@/components/ArtworkPanel";
+import { EarningAmount } from "@/components/EarningAmount";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -399,7 +400,11 @@ export default function ActiveScreen() {
 
               <View className="gap-3">
                 <ProductionSpecifications order={trip} />
-                <SpecRow label="Your fee" value={api.formatPhp(trip.deliveryFeeMinor)} last />
+                <SpecRow
+                  label="Your fee"
+                  value={<EarningAmount minor={trip.deliveryFeeMinor} size="body" />}
+                  last
+                />
               </View>
             </View>
 
