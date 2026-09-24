@@ -378,6 +378,8 @@ The **third** delivery leg, beside `GET /notifications`: the server sends the sa
 
 - **A sideloaded build must not call itself 1.0.0 forever.** There is no store listing to tell two APKs apart, and Android refuses to install over an equal `versionCode`. So `app.config.ts` — which now sits over `app.json` and is the config Expo actually evaluates — stamps a build identity: `app.json` keeps MAJOR.MINOR as the release line, CI's run number owns the patch segment and the `versionCode` (`GRIDGO_BUILD_NUMBER`). Locally the `app.json` version stands unchanged, so nothing on a developer's machine pretends to be a release. The rule lives in `app.config.ts` rather than `lib/` because @expo/config's loader will not resolve an extensionless relative `.ts` import and the `.ts` spelling that does resolve is a `tsc` error; `__tests__/appConfigVersion.test.ts` tests it where it runs.
 
+- **The app offers its own updates.** On launch and on foreground (throttled 4h) it reads this repo's latest GitHub Release, and when that release's tag suffix is above the installed `versionCode` it opens the `app/app-update.tsx` sheet: "Update now" opens the landing APK, and "Later" quiets that release until the next day. On the first launch of a newer build it says "Update completed" once. The rules are pure in `lib/appUpdate.ts`, and gridgo-client and gridgo-supplier keep the same file, so change all three together. Only its `APP_UPDATE_SOURCE` and body copy are this app's. Dev and Expo Go have no real `versionCode`, so the check is skipped there unless `EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE=<n>` is set when Metro starts.
+
 ## Final Reminder
 
 Before every feature:
