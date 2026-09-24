@@ -43,6 +43,7 @@ import {
 } from "@/lib/navigationHeaders";
 import { nativeHeaderInsetOptions } from "@/lib/nativeHeaderInsets";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
+import { rootStackOwner } from "@/lib/riderApproval";
 import { bounceToIsolatedDevWebHost, GRIDGO_DEV_WEB_HOST } from "@/lib/devWebHost";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
@@ -193,13 +194,13 @@ function AppUpdatePrompt({ ready }: { ready: boolean }) {
 
 /** Reads insets below the measured provider, not from the host window. */
 function RootStack() {
-  const ownerId = useSession((s) => `${s.user?.id ?? "signed-out"}:${s.user?.verificationStatus ?? "approved"}`);
+  const ownerId = useSession((s) => rootStackOwner(s.user));
   const token = useThemeColors();
   const { top } = useSafeAreaInsets();
 
   return (
     <Stack
-      key={ownerId ?? "signed-out"}
+      key={ownerId}
       screenOptions={{
         ...nativeHeaderInsetOptions(Platform.OS, top),
         headerStyle: { backgroundColor: token.surface },

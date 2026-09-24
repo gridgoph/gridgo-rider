@@ -2,8 +2,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
 import {
+  APP_UPDATE_CHECK_INTERVAL_MS,
   APP_UPDATE_STORAGE_KEY,
   EMPTY_UPDATE_MEMORY,
+  describeOffer,
   fetchLatestRelease,
   justUpdated,
   localDay,
@@ -30,8 +32,22 @@ export type UpdateSheet =
   | { kind: "completed"; installed: AppBuild }
   | { kind: "available"; installed: AppBuild; latest: AppBuild };
 
-/** How a sheet was left. Anything but "update" on an offer counts as "Later". */
-export type UpdateOutcome = "update" | "later" | "done";
+/**
+ * How a sheet was left. Anything but "update" on an offer counts as "Later",
+ * except "interrupted": the sheet was taken down without the rider answering
+ * (the root stack remounted under it when the signed-in owner changed), so
+ * the finding goes back in the queue instead of being put off for the day.
+ */
+export type UpdateOutcome = "update" | "later" | "done" | "interrupted";
+
+/**
+ * Every decision the check makes, in a development build's Metro log, so a
+ * prompt that does not appear says why instead of failing silently. A release
+ * build logs nothing: an update prompt that finds nothing is not news.
+ */
+export function logUpdateCheck(line: string): void {
+  if (__DEV__) console.info(`[update-check] ${line}`);
+}
 
 type AppUpdateState = {
   memory: UpdateMemory;
@@ -97,7 +113,8 @@ export async function startAppUpdate(
 
 /**
  * Read the latest release if the throttle allows, and queue an offer when it
- * is newer and not put off for today. Silent on every failure.
+ * is newer and not put off for today. Silent to the rider on every failure;
+ * a development build logs each decision (`logUpdateCheck`).
  */
 export async function checkForAppUpdate(
   installed: AppBuild,
@@ -108,25 +125,35 @@ export async function checkForAppUpdate(
   }: { now?: number; fetchImpl?: typeof fetch; force?: boolean } = {},
 ): Promise<void> {
   await hydrate();
-  if (checking) return;
+  if (checking) {
+    logUpdateCheck("skipped: a release read is already in flight");
+    return;
+  }
   if (!force && !shouldCheckForUpdate(useAppUpdate.getState().memory.lastCheckedAt, now)) {
+    logUpdateCheck(
+      `skipped: the latest release was read less than ${APP_UPDATE_CHECK_INTERVAL_MS / 3_600_000} hours ago`,
+    );
     return;
   }
 
   checking = true;
   try {
-    const latest = await fetchLatestRelease(fetchImpl);
-    // Only a read that answered starts the throttle: offline tries again on
-    // the next foreground rather than four hours later.
+    const read = await fetchLatestRelease(fetchImpl);
+    logUpdateCheck(read.detail);
+    // Only a read GitHub answered (any status) starts the throttle: offline or
+    // timed out tries again on the next foreground rather than hours later.
+    if (read.answered) remember({ lastCheckedAt: now });
+    const { latest } = read;
     if (!latest) return;
-    remember({ lastCheckedAt: now });
 
-    const offer = shouldOfferUpdate({
+    const input = {
       installed,
       latest,
       dismissed: useAppUpdate.getState().memory.dismissed,
       today: localDay(new Date(now)),
-    });
+    };
+    const offer = shouldOfferUpdate(input);
+    logUpdateCheck(describeOffer(input, offer));
     useAppUpdate.setState({ offer: offer ? { installed, latest } : null });
   } finally {
     checking = false;
@@ -162,6 +189,14 @@ export function settleUpdateSheet(
 ): void {
   const { open } = useAppUpdate.getState();
   if (!open || (sheet && sheet !== open)) return;
+
+  if (outcome === "interrupted") {
+    // Nobody answered: keep the finding, and let the hook present it again
+    // once the new stack has landed.
+    logUpdateCheck("the sheet was taken down without an answer; it will be shown again");
+    useAppUpdate.setState({ open: null });
+    return;
+  }
 
   if (open.kind === "completed") {
     remember({ lastSeenVersionCode: open.installed.versionCode });

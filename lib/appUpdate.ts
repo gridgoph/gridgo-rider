@@ -26,6 +26,12 @@ export const APP_UPDATE_SOURCE = {
   downloadUrl: "https://gridgo.talasora.com/downloads/gridgo-rider.apk",
   /** Named in copy if the phone cannot open the download link itself. */
   downloadPage: "gridgo.talasora.com/download",
+  /**
+   * GitHub refuses an API request with no `User-Agent` (403, the same status
+   * as its rate limit), so the read names itself rather than trusting the
+   * phone's HTTP stack to add one.
+   */
+  userAgent: "GRIDGO-rider",
 } as const;
 
 /**
@@ -77,6 +83,16 @@ export function parseForcedVersionCode(raw: string | null | undefined): number |
   return wholeNumber(Number(value));
 }
 
+/** What the runtime says about itself, read by `installedBuild`. */
+export type InstalledBuildInput = {
+  platform: string;
+  expoGo: boolean;
+  dev: boolean;
+  versionName: string | null | undefined;
+  versionCode: number | null | undefined;
+  forcedVersionCode: number | null;
+};
+
 /**
  * The build installed on this phone, or `null` when there is nothing honest
  * to compare.
@@ -93,14 +109,7 @@ export function parseForcedVersionCode(raw: string | null | undefined): number |
  * seen on a phone without a release APK. CI never sets it, and it is inlined
  * at bundle time, so it cannot reach a release by accident.
  */
-export function installedBuild(input: {
-  platform: string;
-  expoGo: boolean;
-  dev: boolean;
-  versionName: string | null | undefined;
-  versionCode: number | null | undefined;
-  forcedVersionCode: number | null;
-}): AppBuild | null {
+export function installedBuild(input: InstalledBuildInput): AppBuild | null {
   // The download is an APK; nothing else can install it.
   if (input.platform !== "android") return null;
 
@@ -122,12 +131,27 @@ export function installedBuild(input: {
   return { versionCode: code, versionName };
 }
 
+/** What one read of the latest release came back with. */
+export type ReleaseRead = {
+  /** The newest CI release, or `null` when there is nothing to offer. */
+  latest: AppBuild | null;
+  /**
+   * Whether GitHub answered at all. `false` offline or on a timeout, which is
+   * worth trying again at the next foreground rather than hours later.
+   */
+  answered: boolean;
+  /** One line for the development log: what came back, and why it counts. */
+  detail: string;
+};
+
 /**
  * Read the latest release. Never throws.
  *
  * Offline, a timeout, GitHub's rate limit (403/429), a repo with no release yet
- * (404) and a body that is not a CI tag all answer `null`: an update prompt is
- * a courtesy, and failing to find one is not something to tell a rider.
+ * (404) and a body that is not a CI tag all answer `latest: null`: an update
+ * prompt is a courtesy, and failing to find one is not something to tell a
+ * rider. `detail` says which, so a development build can show why nothing was
+ * offered.
  */
 export async function fetchLatestRelease(
   fetchImpl: typeof fetch,
@@ -135,27 +159,69 @@ export async function fetchLatestRelease(
     url = APP_UPDATE_SOURCE.latestReleaseUrl,
     timeoutMs = APP_UPDATE_FETCH_TIMEOUT_MS,
   }: { url?: string; timeoutMs?: number } = {},
-): Promise<AppBuild | null> {
+): Promise<ReleaseRead> {
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let answered = false;
   try {
     const response = await fetchImpl(url, {
-      headers: { Accept: "application/vnd.github+json" },
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": APP_UPDATE_SOURCE.userAgent,
+      },
       signal: controller?.signal,
     });
-    if (!response.ok) return null;
+    answered = true;
+    if (!response.ok) {
+      return { latest: null, answered, detail: `GitHub answered HTTP ${response.status}` };
+    }
     const body = (await response.json()) as {
       tag_name?: unknown;
       draft?: unknown;
       prerelease?: unknown;
     } | null;
-    if (!body || body.draft === true || body.prerelease === true) return null;
-    return releaseBuildFromTag(body.tag_name);
-  } catch {
-    return null;
+    if (!body) return { latest: null, answered, detail: "GitHub answered an empty body" };
+    if (body.draft === true || body.prerelease === true) {
+      return { latest: null, answered, detail: `release ${String(body.tag_name)} is not final` };
+    }
+    const latest = releaseBuildFromTag(body.tag_name);
+    return latest
+      ? { latest, answered, detail: `latest release is ${latest.versionName}` }
+      : {
+          latest: null,
+          answered,
+          detail: `tag ${JSON.stringify(body.tag_name)} is not a CI release`,
+        };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      latest: null,
+      answered,
+      detail: answered ? `unreadable release body (${reason})` : `no answer (${reason})`,
+    };
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * One line saying which build the check will compare, or why it will not run.
+ * For the development log: this is what tells someone testing the override in
+ * Expo Go whether `EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE` reached the app.
+ */
+export function describeInstalledBuild(
+  input: InstalledBuildInput,
+  build: AppBuild | null,
+): string {
+  if (build) {
+    const how = input.forcedVersionCode !== null ? "forced by override" : "release build";
+    return `installed ${build.versionName} (versionCode ${build.versionCode}, ${how})`;
+  }
+  if (input.platform !== "android") return `off: ${input.platform} cannot install an APK`;
+  if (input.expoGo || input.dev) {
+    return `off: ${input.expoGo ? "Expo Go" : "development build"} and EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE is not set`;
+  }
+  return `off: ${input.versionName ?? "no version"} / versionCode ${input.versionCode ?? "none"} is not a CI release`;
 }
 
 /** Whether enough time has passed since the last read to read again. */
@@ -201,6 +267,19 @@ export function shouldOfferUpdate(input: {
   return true;
 }
 
+/** One line for the development log: what `shouldOfferUpdate` decided, and why. */
+export function describeOffer(
+  input: Parameters<typeof shouldOfferUpdate>[0],
+  offered: boolean,
+): string {
+  const { installed, latest, dismissed } = input;
+  if (offered) return `offering ${latest.versionName} over ${installed.versionName}`;
+  if (latest.versionCode <= installed.versionCode) {
+    return `not offering: ${installed.versionName} is already the latest`;
+  }
+  return `not offering ${latest.versionName}: "Later" was tapped for ${dismissed?.versionCode ?? "it"} on ${dismissed?.day ?? "today"}`;
+}
+
 /**
  * Whether this launch is the first of a newer build than the phone last ran.
  *
@@ -216,7 +295,7 @@ export function justUpdated(
 
 /** What the phone remembers about updates between launches. */
 export type UpdateMemory = {
-  /** When a release was last read successfully, epoch ms. */
+  /** When GitHub last answered a release read (any status), epoch ms. */
   lastCheckedAt: number | null;
   dismissed: UpdateDismissal | null;
   /** The `versionCode` this phone last ran; `null` until the first launch. */

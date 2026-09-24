@@ -37,6 +37,16 @@ export function verificationStatusOf(user: User | null): VerificationStatus {
   return user?.verificationStatus ?? "approved";
 }
 
+/**
+ * Who the root stack belongs to. The root layout keys its `Stack` on this, so
+ * signing in or out, or Operations changing the account's standing, starts a
+ * fresh stack — and anything open on the old one (the update sheet, say) is
+ * unmounted without anyone having touched it.
+ */
+export function rootStackOwner(user: User | null): string {
+  return `${user?.id ?? "signed-out"}:${verificationStatusOf(user)}`;
+}
+
 export function approvalPresentation(user: User | null): ApprovalPresentation {
   const status = verificationStatusOf(user);
   const note = user?.verificationNote?.trim();

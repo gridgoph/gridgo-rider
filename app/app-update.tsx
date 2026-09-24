@@ -10,7 +10,9 @@ import { SheetSurface } from "@/components/SheetSurface";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
 import { APP_UPDATE_COPY as COPY, APP_UPDATE_SOURCE } from "@/lib/appUpdate";
+import { rootStackOwner } from "@/lib/riderApproval";
 import { settleUpdateSheet, useAppUpdate, type UpdateOutcome } from "@/store/appUpdate";
+import { useSession } from "@/store/session";
 
 /**
  * A newer GRIDGO is published, or one just landed.
@@ -27,6 +29,9 @@ export default function AppUpdateSheet() {
   // Pinned to the finding it opened with: the content holds still while the
   // sheet animates away, and closing it can never settle the one after it.
   const [sheet] = useState(() => useAppUpdate.getState().open);
+  // The stack this sheet was pushed onto. The root layout re-keys the stack
+  // when its owner changes, which unmounts this route with nobody answering.
+  const [owner] = useState(() => rootStackOwner(useSession.getState().user));
   const colors = useThemeColors();
   const [opening, setOpening] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
@@ -37,9 +42,13 @@ export default function AppUpdateSheet() {
       router.back();
       return;
     }
-    // Every way out that is not a button still has to be recorded.
-    return () => settleUpdateSheet("later", { sheet });
-  }, [sheet]);
+    // Every way out that is not a button still has to be recorded — except
+    // the stack being replaced under it, which is nobody's "Later".
+    return () => {
+      const replaced = rootStackOwner(useSession.getState().user) !== owner;
+      settleUpdateSheet(replaced ? "interrupted" : "later", { sheet });
+    };
+  }, [sheet, owner]);
 
   if (!sheet) return null;
 

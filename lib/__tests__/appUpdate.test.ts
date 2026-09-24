@@ -2,6 +2,8 @@ import {
   APP_UPDATE_CHECK_INTERVAL_MS,
   APP_UPDATE_COPY,
   APP_UPDATE_SOURCE,
+  describeInstalledBuild,
+  describeOffer,
   fetchLatestRelease,
   installedBuild,
   justUpdated,
@@ -91,39 +93,70 @@ describe("parseForcedVersionCode", () => {
 });
 
 describe("fetchLatestRelease", () => {
-  it("reads the rider app's latest release without credentials", async () => {
+  it("reads the rider app's latest release without credentials, naming itself", async () => {
     const fetchImpl = respond(200, { tag_name: "v1.0.97" });
-    await expect(fetchLatestRelease(fetchImpl)).resolves.toEqual(release(97));
+    await expect(fetchLatestRelease(fetchImpl)).resolves.toEqual({
+      latest: release(97),
+      answered: true,
+      detail: "latest release is 1.0.97",
+    });
     const [url, init] = (fetchImpl as jest.Mock).mock.calls[0];
     expect(url).toBe("https://api.github.com/repos/gridgoph/gridgo-rider/releases/latest");
     expect(init.headers).not.toHaveProperty("Authorization");
+    // GitHub answers a request with no User-Agent with 403, the same status as
+    // its rate limit, so the read cannot leave it to the phone's HTTP stack.
+    expect(init.headers["User-Agent"]).toBe("GRIDGO-rider");
+    expect(APP_UPDATE_SOURCE.userAgent).toBe("GRIDGO-rider");
   });
 
-  it("answers null, never throws, offline or rate limited", async () => {
+  it("answers nothing, never throws, when GitHub refuses, and says why", async () => {
+    for (const [status, body] of [
+      [403, { message: "rate limit" }],
+      [429, {}],
+      [404, {}],
+    ] as const) {
+      await expect(fetchLatestRelease(respond(status, body))).resolves.toEqual({
+        latest: null,
+        answered: true,
+        detail: `GitHub answered HTTP ${status}`,
+      });
+    }
+  });
+
+  it("tells an unanswered read from an answered one", async () => {
     const offline = jest.fn(async () => {
       throw new TypeError("Network request failed");
     }) as unknown as typeof fetch;
-    await expect(fetchLatestRelease(offline)).resolves.toBeNull();
-    await expect(fetchLatestRelease(respond(403, { message: "rate limit" }))).resolves.toBeNull();
-    await expect(fetchLatestRelease(respond(429, {}))).resolves.toBeNull();
-    await expect(fetchLatestRelease(respond(404, {}))).resolves.toBeNull();
+    await expect(fetchLatestRelease(offline)).resolves.toEqual({
+      latest: null,
+      answered: false,
+      detail: "no answer (Network request failed)",
+    });
   });
 
-  it("ignores drafts, prereleases and a body with no tag", async () => {
-    await expect(
-      fetchLatestRelease(respond(200, { tag_name: "v1.0.97", prerelease: true })),
-    ).resolves.toBeNull();
-    await expect(
-      fetchLatestRelease(respond(200, { tag_name: "v1.0.97", draft: true })),
-    ).resolves.toBeNull();
-    await expect(fetchLatestRelease(respond(200, null))).resolves.toBeNull();
-    const badJson = jest.fn(async () => ({
-      ok: true,
-      json: async () => {
-        throw new SyntaxError("Unexpected token");
-      },
-    })) as unknown as typeof fetch;
-    await expect(fetchLatestRelease(badJson)).resolves.toBeNull();
+  it("ignores drafts, prereleases, a body with no tag and a tag CI did not write", async () => {
+    const cases: [typeof fetch, string][] = [
+      [respond(200, { tag_name: "v1.0.97", prerelease: true }), "release v1.0.97 is not final"],
+      [respond(200, { tag_name: "v1.0.97", draft: true }), "release v1.0.97 is not final"],
+      [respond(200, null), "GitHub answered an empty body"],
+      [respond(200, { tag_name: "nightly" }), 'tag "nightly" is not a CI release'],
+      [
+        jest.fn(async () => ({
+          ok: true,
+          json: async () => {
+            throw new SyntaxError("Unexpected token");
+          },
+        })) as unknown as typeof fetch,
+        "unreadable release body (Unexpected token)",
+      ],
+    ];
+    for (const [fetchImpl, detail] of cases) {
+      await expect(fetchLatestRelease(fetchImpl)).resolves.toEqual({
+        latest: null,
+        answered: true,
+        detail,
+      });
+    }
   });
 
   it("gives up on a read that never answers", async () => {
@@ -137,10 +170,63 @@ describe("fetchLatestRelease", () => {
       ) as unknown as typeof fetch;
       const pending = fetchLatestRelease(hang, { timeoutMs: 1000 });
       jest.advanceTimersByTime(1000);
-      await expect(pending).resolves.toBeNull();
+      await expect(pending).resolves.toMatchObject({ latest: null, answered: false });
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe("the development log", () => {
+  const expoGo = {
+    platform: "android",
+    expoGo: true,
+    dev: true,
+    versionName: "1.0.0",
+    versionCode: 1,
+    forcedVersionCode: null,
+  };
+
+  it("says the override reached the app, or that it did not", () => {
+    const forced = { ...expoGo, forcedVersionCode: 90 };
+    expect(describeInstalledBuild(forced, installedBuild(forced))).toBe(
+      "installed 1.0.90 (versionCode 90, forced by override)",
+    );
+    expect(describeInstalledBuild(expoGo, installedBuild(expoGo))).toBe(
+      "off: Expo Go and EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE is not set",
+    );
+    const devClient = { ...expoGo, expoGo: false };
+    expect(describeInstalledBuild(devClient, installedBuild(devClient))).toBe(
+      "off: development build and EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE is not set",
+    );
+    const ios = { ...expoGo, platform: "ios", forcedVersionCode: 90 };
+    expect(describeInstalledBuild(ios, installedBuild(ios))).toBe("off: ios cannot install an APK");
+  });
+
+  it("names a release build, and a local build that is not one", () => {
+    const ci = { ...expoGo, expoGo: false, dev: false, versionName: "1.0.96", versionCode: 96 };
+    expect(describeInstalledBuild(ci, installedBuild(ci))).toBe(
+      "installed 1.0.96 (versionCode 96, release build)",
+    );
+    const local = { ...ci, versionName: "1.0.0", versionCode: 1 };
+    expect(describeInstalledBuild(local, installedBuild(local))).toBe(
+      "off: 1.0.0 / versionCode 1 is not a CI release",
+    );
+  });
+
+  it("says why a release was or was not offered", () => {
+    const installed = release(90);
+    const latest = release(95);
+    const today = "2026-09-24";
+    expect(describeOffer({ installed, latest, dismissed: null, today }, true)).toBe(
+      "offering 1.0.95 over 1.0.90",
+    );
+    expect(describeOffer({ installed: latest, latest, dismissed: null, today }, false)).toBe(
+      "not offering: 1.0.95 is already the latest",
+    );
+    expect(
+      describeOffer({ installed, latest, dismissed: { versionCode: 95, day: today }, today }, false),
+    ).toBe('not offering 1.0.95: "Later" was tapped for 95 on 2026-09-24');
   });
 });
 
