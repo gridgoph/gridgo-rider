@@ -1,5 +1,4 @@
 import { ArtworkPanel } from "@/components/ArtworkPanel";
-import { EarningAmount } from "@/components/EarningAmount";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,7 +19,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
-import { SpecRow } from "@/components/SpecRow";
+import { RiderPayRows } from "@/components/RiderPayRows";
 import { StatusChip } from "@/components/StatusChip";
 import { TripMap } from "@/components/TripMap";
 import { TripTimeline } from "@/components/TripTimeline";
@@ -400,11 +399,7 @@ export default function ActiveScreen() {
 
               <View className="gap-3">
                 <ProductionSpecifications order={trip} />
-                <SpecRow
-                  label="Your fee"
-                  value={<EarningAmount minor={trip.deliveryFeeMinor} size="body" />}
-                  last
-                />
+                <RiderPayRows order={trip} label="You earn" last />
               </View>
             </View>
 

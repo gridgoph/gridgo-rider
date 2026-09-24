@@ -101,6 +101,72 @@ describe("what a shift is worth", () => {
     expect(summary.entries[0].feeMinor).toBe(2_500);
   });
 
+  it("sums the rider's share, not the gross fee, once the API splits it", () => {
+    const summary = summariseEarnings(
+      [
+        order({
+          id: "today",
+          updatedAt: "2026-08-10T09:00:00+08:00",
+          deliveryFeeMinor: 2_500,
+          riderCommissionBps: 8_500,
+          riderPayoutMinor: 2_125,
+          platformDeliveryShareMinor: 375,
+        }),
+        order({
+          id: "yesterday",
+          updatedAt: "2026-08-09T09:00:00+08:00",
+          deliveryFeeMinor: 10,
+          riderCommissionBps: 8_500,
+          riderPayoutMinor: 9,
+          platformDeliveryShareMinor: 1,
+        }),
+      ],
+      "user_rider",
+      NOW,
+    );
+
+    expect(summary.todayMinor).toBe(2_125);
+    expect(summary.allTimeMinor).toBe(2_134);
+    expect(summary.split).toBe(true);
+    expect(summary.entries[0]).toMatchObject({
+      feeMinor: 2_125,
+      deliveryFeeMinor: 2_500,
+      detail: "85% of the ₱25.00 delivery fee",
+    });
+  });
+
+  it("mixes split and pre-split orders, counting each pre-split fee whole", () => {
+    // Orders committed before the split carry 10000 bps, or no split at all
+    // on an older API. Both are the rider's in full.
+    const summary = summariseEarnings(
+      [
+        order({ id: "split", deliveryFeeMinor: 2_500, riderCommissionBps: 8_500, riderPayoutMinor: 2_125 }),
+        order({ id: "legacy", deliveryFeeMinor: 2_500, riderCommissionBps: 10_000, riderPayoutMinor: 2_500 }),
+        order({ id: "old-api", deliveryFeeMinor: 5_000 }),
+      ],
+      "user_rider",
+      NOW,
+    );
+
+    expect(summary.todayMinor).toBe(9_625);
+    expect(summary.allTimeMinor).toBe(9_625);
+    const byId = Object.fromEntries(summary.entries.map((e) => [e.orderId, e]));
+    expect(byId.legacy.detail).toBeNull();
+    expect(byId["old-api"]).toMatchObject({ feeMinor: 5_000, deliveryFeeMinor: 5_000, detail: null });
+  });
+
+  it("falls back to the gross fee when the API sends no split", () => {
+    const summary = summariseEarnings(
+      [order({ id: "job", deliveryFeeMinor: 2_500 })],
+      "user_rider",
+      NOW,
+    );
+
+    expect(summary.allTimeMinor).toBe(2_500);
+    expect(summary.split).toBe(false);
+    expect(summary.entries[0]).toMatchObject({ feeMinor: 2_500, detail: null });
+  });
+
   it("is empty, not broken, when the rider has no id yet", () => {
     const summary = summariseEarnings([order({})], null, NOW);
     expect(summary.entries).toEqual([]);

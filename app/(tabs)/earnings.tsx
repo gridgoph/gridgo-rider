@@ -28,7 +28,8 @@ import { useSession } from "@/store/session";
  *
  * The demo backend has no payouts endpoint, so every figure here is derived
  * from the rider's own delivered orders. The footnote says exactly that rather
- * than implying a settled statement.
+ * than implying a settled statement. Each figure is the rider's share of the
+ * fee (`riderPayoutMinor`); the gross the client paid is secondary, under it.
  */
 export default function EarningsScreen() {
   const colors = useThemeColors();
@@ -102,7 +103,7 @@ export default function EarningsScreen() {
       >
         <ScreenHeader
           title="Earnings"
-          subtitle="Delivery fees from jobs you closed."
+          subtitle="What you earned from jobs you closed."
           status={<ApprovalChip />}
         />
 
@@ -149,7 +150,7 @@ export default function EarningsScreen() {
                           : "min-h-14 flex-row items-start justify-between gap-4 border-b border-outline-subtle p-4"
                       }
                       accessibilityRole="text"
-                      accessibilityLabel={`${entry.title}, ${earningsDayLabel(entry.at)}, you earned ${api.formatPhp(entry.feeMinor)}`}
+                      accessibilityLabel={`${entry.title}, ${earningsDayLabel(entry.at)}, you earned ${api.formatPhp(entry.feeMinor)}${entry.detail ? `, ${entry.detail}` : ""}`}
                     >
                       <View className="min-w-0 flex-1 gap-0.5">
                         <Text className="text-body-lg text-text-primary" numberOfLines={1}>
@@ -162,12 +163,19 @@ export default function EarningsScreen() {
                           {earningsDayLabel(entry.at)}
                         </Text>
                       </View>
-                      <EarningAmount minor={entry.feeMinor} size="h3" />
+                      <View className="items-end gap-0.5">
+                        <EarningAmount minor={entry.feeMinor} size="h3" />
+                        {entry.detail ? (
+                          <Text className="text-caption text-text-muted">
+                            {`of ${api.formatPhp(entry.deliveryFeeMinor)}`}
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
                   ))}
                 </View>
                 <Text className="text-caption text-text-muted">
-                  {`${api.formatPhp(summary.allTimeMinor)} across ${summary.entries.length} ${summary.entries.length === 1 ? "delivery" : "deliveries"} on this account. Operations settles the payout.`}
+                  {`${api.formatPhp(summary.allTimeMinor)} across ${summary.entries.length} ${summary.entries.length === 1 ? "delivery" : "deliveries"} on this account${summary.split ? ", after GRIDGO's share of each delivery fee" : ""}. Operations settles the payout.`}
                 </Text>
               </View>
             ) : null}
@@ -176,7 +184,7 @@ export default function EarningsScreen() {
               <EmptyState
                 icon="earnings"
                 title="Nothing earned yet"
-                body="Every delivery you close adds its fee here. The fee is banded by how far the drop-off is from the shop."
+                body="Every delivery you close adds your share of its fee here. The fee is banded by how far the drop-off is from the shop."
               />
             ) : null}
           </>

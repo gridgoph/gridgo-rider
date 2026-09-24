@@ -164,12 +164,23 @@ export type Order = {
   address: string;
   zone: string;
   /**
-   * The rider's fee for the job, banded by distance. This is the only money in
-   * this type the rider app puts on screen — the client's subtotal and total
-   * are visible to this role but say nothing a rider can act on, and showing
-   * them was only ever there to support cash collection.
+   * The gross delivery fee the client pays, banded by distance. With
+   * `riderPayoutMinor` below, these are the only money in this type the rider
+   * app puts on screen — the client's subtotal and total are visible to this
+   * role but say nothing a rider can act on, and showing them was only ever
+   * there to support cash collection. Read what the rider earns through
+   * `riderPay` in `lib/riderPay.ts`, never from this field directly.
    */
   deliveryFeeMinor: number;
+  /**
+   * Rider delivery split (gridgo-api `#rider-delivery-split`), snapshotted on
+   * the order. Optional: an API without the split omits all three, and the
+   * whole fee is then the rider's.
+   */
+  riderCommissionBps?: number | null;
+  riderPayoutMinor?: number | null;
+  /** GRIDGO's share. Typed for completeness; never rendered. */
+  platformDeliveryShareMinor?: number | null;
   /** Straight-line metres the fee band was derived from. */
   deliveryDistanceMeters?: number | null;
   subtotalMinor: number;

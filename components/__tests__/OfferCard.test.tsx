@@ -72,3 +72,26 @@ describe("OfferCard accept control", () => {
     expect(screen.queryByRole("button", { name: "Accepting…" })).toBeNull();
   });
 });
+
+describe("OfferCard earnings", () => {
+  it("leads with the rider's share and names the gross fee under it", async () => {
+    await render(
+      <OfferCard
+        offer={{ ...offer, deliveryFeeMinor: 2500, riderCommissionBps: 8500, riderPayoutMinor: 2125 }}
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("YOU EARN")).toBeTruthy();
+    expect(screen.getByText("₱21.25")).toBeTruthy();
+    expect(screen.getByText("85% of the ₱25.00 delivery fee")).toBeTruthy();
+    expect(screen.getAllByTestId("earning-mark", { includeHiddenElements: true })).toHaveLength(1);
+  });
+
+  it("shows the whole fee, with no split line, against an API without the split", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("₱50.00")).toBeTruthy();
+    expect(screen.queryByText(/delivery fee/)).toBeNull();
+  });
+});

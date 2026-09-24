@@ -10,7 +10,7 @@ const SIZE_CLASS = {
 } as const;
 
 type Props = {
-  /** PHP minor units — the rider's own delivery fee or a sum of them. */
+  /** PHP minor units — the rider's share of a delivery fee (`riderPay`), or a sum of them. */
   minor: number;
   size: keyof typeof SIZE_CLASS;
   /** Wrapper placement in the parent, e.g. `self-start` in a stretching column. */

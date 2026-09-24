@@ -11,6 +11,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
+import { riderPay, riderPayDetail } from "@/lib/riderPay";
 import { tripDestination } from "@/lib/tripNav";
 
 /** Small enough to keep the whole decision on one screen, big enough to orient. */
@@ -40,6 +41,10 @@ type Props = {
  * The fee is banded by distance now rather than flat per zone, so it is
  * captioned with the distance it was set from. Without that a rider sees two
  * different numbers on two jobs and no reason for either.
+ *
+ * The headline is what the rider takes home (`riderPay`). When GRIDGO keeps a
+ * share of the fee, the gross sits underneath in the caption voice, so the
+ * split is stated rather than discovered on the earnings tab.
  */
 export function OfferCard({ offer, accepting = false, disabled = false, onAccept }: Props) {
   const colors = useThemeColors();
@@ -47,6 +52,8 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
   const destination = tripDestination(offer);
   const dropoff = destination.point;
   const { route, loading: routeLoading } = useRoute({ from: pickup, to: dropoff });
+  const pay = riderPay(offer);
+  const payDetail = riderPayDetail(pay);
 
   return (
     <View className="gg-card gap-4">
@@ -59,22 +66,26 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
       </View>
 
       {/* The decision, on one line: what it pays and what it costs in time. */}
-      <View className="flex-row items-end justify-between gap-4">
-        <View className="gap-0.5">
-          <Text className="text-overline text-text-muted">YOU EARN</Text>
-          <EarningAmount minor={offer.deliveryFeeMinor} size="h1" className="self-start" />
-          {feeDistanceLabel(offer.deliveryDistanceMeters) ? (
-            <Text className="text-caption text-text-muted">
-              {feeDistanceLabel(offer.deliveryDistanceMeters)}
+      <View className="gap-1">
+        <View className="flex-row items-end justify-between gap-4">
+          <View className="gap-0.5">
+            <Text className="text-overline text-text-muted">YOU EARN</Text>
+            <EarningAmount minor={pay.earnedMinor} size="h1" className="self-start" />
+            {feeDistanceLabel(offer.deliveryDistanceMeters) ? (
+              <Text className="text-caption text-text-muted">
+                {feeDistanceLabel(offer.deliveryDistanceMeters)}
+              </Text>
+            ) : null}
+          </View>
+          <View className="shrink flex-row items-center gap-2 pb-1">
+            <Route size={16} color={colors.textMuted} strokeWidth={2} />
+            <Text className="shrink text-body-lg text-text-secondary">
+              {routeLoading && !route ? "Measuring…" : routeSummaryLabel(route)}
             </Text>
-          ) : null}
+          </View>
         </View>
-        <View className="shrink flex-row items-center gap-2 pb-1">
-          <Route size={16} color={colors.textMuted} strokeWidth={2} />
-          <Text className="shrink text-body-lg text-text-secondary">
-            {routeLoading && !route ? "Measuring…" : routeSummaryLabel(route)}
-          </Text>
-        </View>
+        {/* Full width, so a long fee never squeezes the route summary. */}
+        {payDetail ? <Text className="text-caption text-text-muted">{payDetail}</Text> : null}
       </View>
 
       <TripMap

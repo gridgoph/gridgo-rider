@@ -1,17 +1,16 @@
 import { useLocalSearchParams } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 
-import { EarningAmount } from "@/components/EarningAmount";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OrderStageBar } from "@/components/OrderStageBar";
 import { Screen } from "@/components/Screen";
 import { PastJobDetailSkeleton } from "@/components/SkeletonScreens";
+import { RiderPayRows } from "@/components/RiderPayRows";
 import { SpecRow } from "@/components/SpecRow";
 import { OrderReference } from "@/components/OrderReference";
 import { StatusChip } from "@/components/StatusChip";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useTripOrder } from "@/hooks/useTripOrder";
-import { formatPhp } from "@/lib/api";
 import { orderStage } from "@/lib/orderStage";
 import {
   dropoffLabel,
@@ -75,16 +74,11 @@ export default function PastJobScreen() {
             <View className="gg-card-flush px-4">
               <SpecRow label="Pickup" value={pickupLabel(order)} />
               <SpecRow label="Drop-off" value={dropoffLabel(order)} />
-              {/* A cancelled job paid nothing, so its fee is not marked as earned. */}
-              <SpecRow
-                label="Your fee"
-                value={
-                  order.state === "cancelled" ? (
-                    formatPhp(order.deliveryFeeMinor)
-                  ) : (
-                    <EarningAmount minor={order.deliveryFeeMinor} size="body" />
-                  )
-                }
+              {/* A cancelled job paid nothing, so its share is neither called earnings nor marked. */}
+              <RiderPayRows
+                order={order}
+                label={order.state === "cancelled" ? "Your share" : "You earned"}
+                marked={order.state !== "cancelled"}
                 last
               />
             </View>
