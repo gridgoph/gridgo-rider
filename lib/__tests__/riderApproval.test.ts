@@ -1,5 +1,5 @@
 import type { User, VerificationStatus } from "@/lib/api";
-import { approvalPresentation, verificationStatusOf } from "@/lib/riderApproval";
+import { approvalPresentation, rootStackOwner, verificationStatusOf } from "@/lib/riderApproval";
 
 function rider(patch: Partial<User> = {}): User {
   return {
@@ -98,5 +98,15 @@ describe("every state reads in greyscale and in plain language", () => {
     expect(approvalPresentation(rider({ verificationStatus: "rejected" })).chip).toBe(
       "Not accredited",
     );
+  });
+});
+
+describe("rootStackOwner", () => {
+  it("changes with the rider and with their standing, and only then", () => {
+    expect(rootStackOwner(null)).toBe("signed-out:approved");
+    expect(rootStackOwner(rider())).toBe("user_rider:approved");
+    // An older account with no status is approved, so it is the same owner.
+    expect(rootStackOwner(rider({ verificationStatus: "approved" }))).toBe(rootStackOwner(rider()));
+    expect(rootStackOwner(rider({ verificationStatus: "pending" }))).toBe("user_rider:pending");
   });
 });

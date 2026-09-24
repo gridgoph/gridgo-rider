@@ -62,6 +62,12 @@
   --color-action-yellow-on: #1a1a1a;
   --color-action-yellow-on-muted: #5b5b5b;
 
+  /* Earnings — the rider's own money. Light marks dark digits with a yellow
+     band (yellow text fails contrast on white); Dark sets the digits in
+     yellow and drops the band. Rendered only by components/EarningAmount. */
+  --color-earning-ink: #1a1a1a;
+  --color-earning-mark: #ffde58;
+
   /* Semantic state — always paired with an icon and a label */
   --color-success: #2e7d32;
   --color-error: #c62828;
@@ -168,6 +174,9 @@
     --color-accent-on: #000000;
 
     --color-brand: #ffde58;
+
+    --color-earning-ink: #ffde58;
+    --color-earning-mark: transparent;
 
     --color-success: #66bb6a;
     --color-error: #ef5350;
@@ -329,7 +338,7 @@
   @apply h-11 min-w-11 flex-row items-center justify-center gap-2 rounded-field px-4;
 }
 
-/** The one primary CTA on a screen or bounded panel. Nothing else is yellow. */
+/** The one primary CTA on a screen or bounded panel. No other button is yellow. */
 @utility gg-btn-primary {
   @apply gg-btn bg-action-yellow;
 }

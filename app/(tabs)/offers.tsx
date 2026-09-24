@@ -212,7 +212,7 @@ export default function OffersScreen() {
           <EmptyState
             icon="offers"
             title="No open offers"
-            body="A job appears here the moment a supplier marks it ready, with its route and its fee. Pull down to check again."
+            body="A job appears here the moment a supplier marks it ready, with its route and what you earn. Pull down to check again."
           />
         ) : null}
       </ScrollView>

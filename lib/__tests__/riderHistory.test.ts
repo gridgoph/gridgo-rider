@@ -50,6 +50,19 @@ describe("the past-jobs ledger", () => {
     expect(isPastJob(order({ id: "live", state: "rider_assigned" }), "user_rider")).toBe(false);
   });
 
+  it("shows the rider's share when the API splits the fee, and the fee when it does not", () => {
+    const entries = listPastJobs(
+      [
+        order({ id: "split", state: "completed", deliveryFeeMinor: 2_500, riderCommissionBps: 8_500, riderPayoutMinor: 2_125 }),
+        order({ id: "old-api", state: "completed", deliveryFeeMinor: 2_500 }),
+      ],
+      "user_rider",
+    );
+
+    const byId = Object.fromEntries(entries.map((entry) => [entry.orderId, entry.feeMinor]));
+    expect(byId).toEqual({ split: 2_125, "old-api": 2_500 });
+  });
+
   it("dates a past job from the newest trail event, not an older update", () => {
     const job = order({
       id: "done",

@@ -1,6 +1,7 @@
 import { Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
+import { EarningAmount } from "@/components/EarningAmount";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { OrderReference } from "@/components/OrderReference";
 import { StopList } from "@/components/StopList";
@@ -8,9 +9,9 @@ import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
-import { formatPhp } from "@/lib/api";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
+import { riderPay, riderPayDetail } from "@/lib/riderPay";
 import { tripDestination } from "@/lib/tripNav";
 
 /** Small enough to keep the whole decision on one screen, big enough to orient. */
@@ -33,11 +34,17 @@ type Props = {
  * the number a rider chooses on off the bottom of the screen. Distance comes
  * from OSRM; when routing fails the card says the line is direct and offers no
  * travel time rather than guessing one. One yellow Accept per card, and the
- * card is the bounded panel that owns it.
+ * card is the bounded panel that owns it. The fee carries the earnings mark
+ * (`EarningAmount`), a highlighter band rather than a filled box, so the two
+ * yellows never read as two buttons.
  *
  * The fee is banded by distance now rather than flat per zone, so it is
  * captioned with the distance it was set from. Without that a rider sees two
  * different numbers on two jobs and no reason for either.
+ *
+ * The headline is what the rider takes home (`riderPay`). When GRIDGO keeps a
+ * share of the fee, the gross sits underneath in the caption voice, so the
+ * split is stated rather than discovered on the earnings tab.
  */
 export function OfferCard({ offer, accepting = false, disabled = false, onAccept }: Props) {
   const colors = useThemeColors();
@@ -45,6 +52,8 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
   const destination = tripDestination(offer);
   const dropoff = destination.point;
   const { route, loading: routeLoading } = useRoute({ from: pickup, to: dropoff });
+  const pay = riderPay(offer);
+  const payDetail = riderPayDetail(pay);
 
   return (
     <View className="gg-card gap-4">
@@ -57,22 +66,26 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
       </View>
 
       {/* The decision, on one line: what it pays and what it costs in time. */}
-      <View className="flex-row items-end justify-between gap-4">
-        <View className="gap-0.5">
-          <Text className="text-overline text-text-muted">YOU EARN</Text>
-          <Text className="text-h1 text-text-primary">{formatPhp(offer.deliveryFeeMinor)}</Text>
-          {feeDistanceLabel(offer.deliveryDistanceMeters) ? (
-            <Text className="text-caption text-text-muted">
-              {feeDistanceLabel(offer.deliveryDistanceMeters)}
+      <View className="gap-1">
+        <View className="flex-row items-end justify-between gap-4">
+          <View className="gap-0.5">
+            <Text className="text-overline text-text-muted">YOU EARN</Text>
+            <EarningAmount minor={pay.earnedMinor} size="h1" className="self-start" />
+            {feeDistanceLabel(offer.deliveryDistanceMeters) ? (
+              <Text className="text-caption text-text-muted">
+                {feeDistanceLabel(offer.deliveryDistanceMeters)}
+              </Text>
+            ) : null}
+          </View>
+          <View className="shrink flex-row items-center gap-2 pb-1">
+            <Route size={16} color={colors.textMuted} strokeWidth={2} />
+            <Text className="shrink text-body-lg text-text-secondary">
+              {routeLoading && !route ? "Measuring…" : routeSummaryLabel(route)}
             </Text>
-          ) : null}
+          </View>
         </View>
-        <View className="shrink flex-row items-center gap-2 pb-1">
-          <Route size={16} color={colors.textMuted} strokeWidth={2} />
-          <Text className="shrink text-body-lg text-text-secondary">
-            {routeLoading && !route ? "Measuring…" : routeSummaryLabel(route)}
-          </Text>
-        </View>
+        {/* Full width, so a long fee never squeezes the route summary. */}
+        {payDetail ? <Text className="text-caption text-text-muted">{payDetail}</Text> : null}
       </View>
 
       <TripMap

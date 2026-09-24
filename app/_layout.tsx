@@ -29,6 +29,7 @@ import {
 import { BrandIntro } from "@/components/BrandIntro";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
+import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
 import { useArrivalAlert } from "@/hooks/useArrivalAlert";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
@@ -42,6 +43,7 @@ import {
 } from "@/lib/navigationHeaders";
 import { nativeHeaderInsetOptions } from "@/lib/nativeHeaderInsets";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
+import { rootStackOwner } from "@/lib/riderApproval";
 import { bounceToIsolatedDevWebHost, GRIDGO_DEV_WEB_HOST } from "@/lib/devWebHost";
 import { bindApiUnauthorizedHandler, useSession } from "@/store/session";
 
@@ -166,6 +168,7 @@ function AppShell() {
         {launchReady ? (
         <AuthGate>
           <RootStack />
+          <AppUpdatePrompt ready={!introPlaying} />
         </AuthGate>
         ) : (
           <View style={{ flex: 1, backgroundColor: token.canvas }} />
@@ -179,15 +182,25 @@ function AppShell() {
   );
 }
 
+/**
+ * Offers a newer GRIDGO, and says once when one has landed. Mounted with the
+ * navigator it pushes onto, signed in or out, and held back until the opening
+ * has played so the sheet is never drawn under it.
+ */
+function AppUpdatePrompt({ ready }: { ready: boolean }) {
+  useAppUpdateCheck({ ready });
+  return null;
+}
+
 /** Reads insets below the measured provider, not from the host window. */
 function RootStack() {
-  const ownerId = useSession((s) => `${s.user?.id ?? "signed-out"}:${s.user?.verificationStatus ?? "approved"}`);
+  const ownerId = useSession((s) => rootStackOwner(s.user));
   const token = useThemeColors();
   const { top } = useSafeAreaInsets();
 
   return (
     <Stack
-      key={ownerId ?? "signed-out"}
+      key={ownerId}
       screenOptions={{
         ...nativeHeaderInsetOptions(Platform.OS, top),
         headerStyle: { backgroundColor: token.surface },
@@ -323,6 +336,7 @@ function RootStack() {
       <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
       <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
       <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
+      <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
     </Stack>
   );
 }
