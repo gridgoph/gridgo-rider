@@ -46,7 +46,7 @@ function readInstalledBuild(): AppBuild | null {
  * which are about to be replaced, and the other sheets, because two sheets
  * stacked is a question nobody asked.
  */
-const NOT_OVER = new Set(["", "sso-callback", "confirm", "app-update", "trip/start"]);
+const NOT_OVER = new Set(["", "sso-callback", "confirm", "app-update", "push-permission", "trip/start"]);
 
 export function canPresentUpdateSheet(segments: readonly string[]): boolean {
   return !NOT_OVER.has(segments.join("/"));

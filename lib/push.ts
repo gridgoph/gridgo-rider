@@ -188,7 +188,8 @@ export type PushOffer = "hidden" | "ask" | "settings" | "retry";
  * Whether to offer phone notifications, and how.
  *
  * The ask is never fired cold: this returns `ask` only so a **card** can be
- * drawn, and the OS dialog is raised from that card's button. A refusal on
+ * drawn, and the OS dialog is raised from that card's button (or from the
+ * explainer sheet's — see `shouldOfferPushPrompt`). A refusal on
  * Android 13+ cannot be taken back by the app, so once blocked the only honest
  * offer is a link to the phone's own settings — and it is still only an offer.
  * Granted or unsupported: nothing is shown, because there is nothing to gain by
@@ -285,3 +286,125 @@ export const PUSH_FOREGROUND_BEHAVIOR = {
   shouldPlaySound: false,
   shouldSetBadge: false,
 } as const;
+
+/**
+ * The explainer: a sheet that says what will arrive, *then* lets the phone ask.
+ *
+ * Production had almost no rider phones registered because the only way to
+ * the Android 13+ dialog was a card on a few screens. So a signed-in rider is
+ * now shown this once, on the tab they land on, and a rider who updates the
+ * app sees it on their next launch. It never raises the OS dialog itself — its
+ * button does, the same way the card's does.
+ *
+ * "Not now" (or any other way out) is remembered per phone, and the sheet
+ * comes back no sooner than a week later. The card on Active and Offers
+ * carries the offer in between.
+ */
+export const PUSH_PROMPT_STORAGE_KEY = "gridgo.rider.pushPrompt.v1";
+export const PUSH_PROMPT_REOFFER_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** When the explainer was last put in front of this phone, if ever. */
+export type PushPromptMemory = { offeredAtMs: number | null };
+
+export const EMPTY_PUSH_PROMPT_MEMORY: PushPromptMemory = { offeredAtMs: null };
+
+/** Anything unreadable is "never offered": the worst case is one more sheet. */
+export function parsePushPromptMemory(raw: string | null): PushPromptMemory {
+  if (!raw) return EMPTY_PUSH_PROMPT_MEMORY;
+  try {
+    const value = (JSON.parse(raw) as { offeredAtMs?: unknown }).offeredAtMs;
+    return typeof value === "number" && Number.isFinite(value)
+      ? { offeredAtMs: value }
+      : EMPTY_PUSH_PROMPT_MEMORY;
+  } catch {
+    return EMPTY_PUSH_PROMPT_MEMORY;
+  }
+}
+
+/**
+ * Whether the explainer is due on this phone.
+ *
+ * Only for a signed-in rider — a phone at the door gets the card, which
+ * promises only what an unclaimed phone receives. Only while there is
+ * something to turn on: `unknown` has not been read yet (or cannot be, as in
+ * Expo Go), and `granted` has nothing to gain. A clock set backwards past the
+ * last offer counts as due rather than silencing the sheet until it catches up.
+ */
+export function shouldOfferPushPrompt(input: {
+  supported: boolean;
+  signedIn: boolean;
+  permission: PushPermission;
+  memory: PushPromptMemory;
+  nowMs: number;
+}): boolean {
+  if (!input.supported || !input.signedIn) return false;
+  if (input.permission !== "undetermined" && input.permission !== "blocked") return false;
+  const { offeredAtMs } = input.memory;
+  if (offeredAtMs == null) return true;
+  const elapsed = input.nowMs - offeredAtMs;
+  return elapsed < 0 || elapsed >= PUSH_PROMPT_REOFFER_MS;
+}
+
+/** One thing that will reach the phone. `icon` is named, the sheet draws it. */
+export type PushPromptReason = {
+  icon: "offer" | "pickup" | "approval";
+  title: string;
+  detail: string;
+};
+
+/**
+ * What a rider is interrupted for — the list at the top of this file, in the
+ * words a rider uses. The approval line is only true while there is an
+ * approval to wait for, so an approved rider is not promised it.
+ */
+export function pushPromptReasons(awaitingApproval: boolean): PushPromptReason[] {
+  const reasons: PushPromptReason[] = [
+    {
+      icon: "offer",
+      title: "A job is offered to you",
+      detail: "Offers go to the first rider who accepts.",
+    },
+    {
+      icon: "pickup",
+      title: "Operations answers a failed pickup check",
+      detail: "So you know when you can run the checks again.",
+    },
+  ];
+  if (awaitingApproval) {
+    reasons.push({
+      icon: "approval",
+      title: "Your account is approved",
+      detail: "The moment Operations finishes the review.",
+    });
+  }
+  return reasons;
+}
+
+/**
+ * The explainer's words. `blocked` is its own sheet: the app can no longer
+ * raise the dialog, so the button says where it actually goes.
+ */
+export function pushPromptCopy(permission: "undetermined" | "blocked"): {
+  title: string;
+  body: string;
+  footnote: string;
+  action: string;
+  dismiss: string;
+} {
+  if (permission === "blocked") {
+    return {
+      title: "Notifications are off for GRIDGO",
+      body: "Your phone is blocking them, so new jobs only show while the app is open. GRIDGO cannot ask again from here.",
+      footnote: "In your phone's settings, open Notifications and allow them, then come back to GRIDGO.",
+      action: "Open phone settings",
+      dismiss: "Not now",
+    };
+  }
+  return {
+    title: "Get job offers with GRIDGO closed",
+    body: "Turn on notifications and this phone hears from GRIDGO even when the app is not open.",
+    footnote: "Your phone asks next. You can change this any time in its settings.",
+    action: "Turn on notifications",
+    dismiss: "Not now",
+  };
+}

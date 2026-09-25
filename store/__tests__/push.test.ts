@@ -246,6 +246,47 @@ describe("enable", () => {
   });
 });
 
+describe("resume", () => {
+  it("re-reads permission on return from the phone's settings and registers at once", async () => {
+    // The explainer or card sent a blocked rider to settings; they allowed
+    // notifications there. The store still believes "blocked" until it looks.
+    usePush.setState({ permission: "blocked" });
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+
+    await usePush.getState().resume();
+
+    expect(usePush.getState().permission).toBe("granted");
+    expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    register.mockRestore();
+  });
+
+  it("registers again on every foreground while permission stays granted", async () => {
+    usePush.setState({ permission: "granted", token: "fcm-token-a7c8d3f1", claimed: true });
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+
+    await usePush.getState().resume();
+    await usePush.getState().resume();
+
+    expect(register).toHaveBeenCalledTimes(2);
+    register.mockRestore();
+  });
+
+  it("notices notifications turned off in settings and registers nothing", async () => {
+    usePush.setState({ permission: "granted" });
+    mocked.getPermissionsAsync.mockResolvedValue(blocked as never);
+    const register = jest.spyOn(api, "registerDevice");
+
+    await usePush.getState().resume();
+
+    expect(usePush.getState().permission).toBe("blocked");
+    expect(register).not.toHaveBeenCalled();
+    register.mockRestore();
+  });
+});
+
 describe("adoptToken", () => {
   it("re-registers when Firebase reissues the token", async () => {
     // The silent failure: a rotated token stops delivering and nothing looks

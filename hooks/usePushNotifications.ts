@@ -2,6 +2,7 @@ import * as api from "@/lib/api";
 import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
 import { useRouter, useRootNavigationState, type Href } from "expo-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { AppState } from "react-native";
 
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
@@ -147,6 +148,17 @@ export function usePushNotifications(): void {
     // the app is closed.
     void usePush.getState().registerIfGranted();
   }, [signedIn, user?.id]);
+
+  useEffect(() => {
+    // And on every return to the front. The permission is re-read first:
+    // a rider sent to the phone's settings by the card or the explainer comes
+    // back here, and a phone that just allowed notifications has to register
+    // now rather than on the next cold launch.
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") void usePush.getState().resume();
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const route = (identifier: string, data: unknown) => {
