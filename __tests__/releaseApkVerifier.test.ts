@@ -10,6 +10,13 @@ import { join } from "node:path";
 
 const root = join(__dirname, "..");
 
+// The verifier pipes the store password into keytool under `set -o pipefail`,
+// and the real keytool reads it. A fake that exits without reading lets a slow
+// `printf` hit a closed pipe: it dies of SIGPIPE, pipefail reports that as a
+// keytool failure, and on a loaded CI runner the test fails before the check it
+// is about. Drain stdin like the real tool does.
+const FAKE_KEYTOOL = '#!/bin/sh\ncat >/dev/null\necho "SHA256: AA:BB"\n';
+
 describe("release APK verifier", () => {
   it("rejects a fake bundle that is missing the configured Clerk value", () => {
     const work = mkdtempSync(join(root, ".release-verifier-test-"));
@@ -29,7 +36,7 @@ describe("release APK verifier", () => {
       chmodSync(apksigner, 0o755);
 
       const keytool = join(bin, "keytool");
-      writeFileSync(keytool, '#!/bin/sh\necho "SHA256: AA:BB"\n');
+      writeFileSync(keytool, FAKE_KEYTOOL);
       chmodSync(keytool, 0o755);
 
       const cartoKey = "fakeCartoVerifierKey123";
@@ -87,7 +94,7 @@ describe("release APK verifier", () => {
       chmodSync(apksigner, 0o755);
 
       const keytool = join(bin, "keytool");
-      writeFileSync(keytool, '#!/bin/sh\necho "SHA256: AA:BB"\n');
+      writeFileSync(keytool, FAKE_KEYTOOL);
       chmodSync(keytool, 0o755);
 
       const clerkValue = "pk_live_fakeVerifierValue123";
