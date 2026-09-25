@@ -38,6 +38,7 @@ describe("the update prompt", () => {
     expect(canPresentUpdateSheet(["confirm"])).toBe(false);
     expect(canPresentUpdateSheet(["trip", "start"])).toBe(false);
     expect(canPresentUpdateSheet(["app-update"])).toBe(false);
+    expect(canPresentUpdateSheet(["push-permission"])).toBe(false);
 
     expect(canPresentUpdateSheet(["(auth)", "welcome"])).toBe(true);
     expect(canPresentUpdateSheet(["(tabs)", "active"])).toBe(true);

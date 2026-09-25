@@ -75,10 +75,20 @@ type PushState = {
   error: string | null;
   /** Read the OS's answer without asking for anything. */
   syncPermission: () => Promise<PushPermission>;
-  /** Raise the system dialog, then register. Only ever called from a tap. */
+  /**
+   * Raise the system dialog, then register. Only ever called from a tap — on
+   * `PushEnableCard` or on the explainer sheet that has already said what
+   * will arrive.
+   */
   enable: () => Promise<boolean>;
   /** Launch, sign-in and token rotation all land here. No dialog is raised. */
   registerIfGranted: () => Promise<void>;
+  /**
+   * GRIDGO came back to the front. The rider may have just allowed
+   * notifications in the phone's settings (or turned them off), so the
+   * permission is read fresh before registering. No dialog is raised.
+   */
+  resume: () => Promise<void>;
   /** Firebase reissued the token while the app was running. */
   adoptToken: (token: string) => Promise<void>;
   /**
@@ -173,9 +183,9 @@ export const usePush = create<PushState>((set, get) => ({
     set({ busy: true, error: null });
     try {
       await ensureChannel();
-      // The dialog. Android 13+ shows it once and a refusal is effectively
+      // The dialog. Android 13+ shows it twice at most and then a refusal is
       // permanent, which is why nothing calls this except an explicit tap on a
-      // card that has already said what will arrive.
+      // card or sheet that has already said what will arrive.
       const permission = readPushPermission(await Notifications.requestPermissionsAsync());
       set({ permission });
       if (permission !== "granted") {
@@ -244,6 +254,12 @@ export const usePush = create<PushState>((set, get) => ({
         set({ busy: false });
       }
     });
+  },
+
+  resume: async () => {
+    if (!Notifications || !get().supported) return;
+    await get().syncPermission();
+    await get().registerIfGranted();
   },
 
   adoptToken: async (token) => {

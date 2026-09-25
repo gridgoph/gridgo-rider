@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { Linking } from "react-native";
 import * as Notifications from "expo-notifications";
 
 import { PushEnableCard } from "@/components/PushEnableCard";
@@ -75,6 +76,24 @@ it("points a refused phone at its own settings instead of a dialog it cannot rai
   // And it still says Alerts keeps working, so a refusal never reads as the
   // app being broken.
   expect(screen.getByText(/while the app is open/i)).toBeTruthy();
+});
+
+it("sends a phone that can no longer be asked to its own settings, and says so", async () => {
+  // Android reports `canAskAgain: false` after a second refusal; the app
+  // cannot raise the dialog again, so the button goes where the switch is.
+  const openSettings = jest.spyOn(Linking, "openSettings").mockResolvedValue(undefined);
+  signIn();
+  usePush.setState({ permission: "blocked" });
+  await render(<PushEnableCard />);
+
+  expect(screen.getByText(/in your phone's settings/i)).toBeTruthy();
+  await act(async () => {
+    fireEvent.press(screen.getByText("Open phone settings"));
+  });
+
+  expect(openSettings).toHaveBeenCalled();
+  expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
+  openSettings.mockRestore();
 });
 
 // Last in the file on purpose: this press drives an async update into a store

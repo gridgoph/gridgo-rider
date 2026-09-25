@@ -10,15 +10,15 @@ import { isSignedIn, useSession } from "@/store/session";
 /**
  * The invitation to turn on phone alerts.
  *
- * This card is the *only* thing in the app that can raise the system
- * permission dialog. Android 13+ shows that dialog once and treats a refusal as
- * effectively permanent, so firing it cold on first launch — before a rider has
- * seen a single job — spends the one ask on a stranger. Instead the card is
- * drawn where the value is already obvious and states in one line what will
- * arrive; the dialog follows a deliberate tap and nothing else.
+ * This card and the explainer sheet (`app/push-permission.tsx`) are the only
+ * things in the app that can raise the system permission dialog. Android 13+
+ * treats a second refusal as permanent, so firing it cold on first launch —
+ * before a rider has read what it is for — spends the ask on a stranger.
+ * Instead each states what will arrive; the dialog follows a deliberate tap
+ * and nothing else.
  *
- * Placement follows AGENTS.md's Push notifications guidance. Keep the request
- * beside the job or alert that makes its value clear.
+ * The card is the recovery after the sheet's "Not now": it is drawn on Active
+ * (where launch lands), Offers and Alerts for as long as notifications are off.
  *
  * Refusal is a first-class outcome. Nothing is blocked, no screen changes, and
  * Alerts keeps every update: the card simply becomes a pointer to the phone's
