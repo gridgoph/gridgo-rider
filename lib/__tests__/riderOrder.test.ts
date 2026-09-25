@@ -12,6 +12,7 @@ import {
   issueWindowLabel,
   orderStateChip,
   orderStateLabel,
+  owesAcknowledgementReceipt,
   owesSignOff,
   pickupLabel,
   primaryActionLabel,
@@ -211,6 +212,15 @@ describe("the spoken sign-off", () => {
     expect(
       signOffPrompt({ pickupChecklist: { ...checklist("passed"), signOffPrompt: "  " } }),
     ).toBeNull();
+  });
+});
+
+describe("the acknowledgement receipt", () => {
+  it("is owed at every client drop, and not at GRIDGO's own counter", () => {
+    expect(owesAcknowledgementReceipt({ fulfillmentMode: "delivery" })).toBe(true);
+    // Older responses omit the mode; they are deliveries, so the reminder stays.
+    expect(owesAcknowledgementReceipt({})).toBe(true);
+    expect(owesAcknowledgementReceipt({ fulfillmentMode: "pickup" })).toBe(false);
   });
 });
 
