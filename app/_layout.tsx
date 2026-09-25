@@ -35,6 +35,7 @@ import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { usePushPrompt } from "@/hooks/usePushPrompt";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   confirmSheetScreenOptions,
@@ -96,7 +97,7 @@ function AppShell() {
   useHydrateTheme();
   // Must sit above the launch-ready gate: hooks cannot be skipped on the
   // frames that still return null. It never raises the permission dialog —
-  // only `PushEnableCard` does that. Expo Go throws from the native module;
+  // only a tap on `PushEnableCard` or the `push-permission` sheet does that. Expo Go throws from the native module;
   // the hook wraps every call so that costs push, never the first frame.
   usePushNotifications();
   useAlertStream();
@@ -169,6 +170,7 @@ function AppShell() {
         <AuthGate>
           <RootStack />
           <AppUpdatePrompt ready={!introPlaying} />
+          <PushPrompt ready={!introPlaying} />
         </AuthGate>
         ) : (
           <View style={{ flex: 1, backgroundColor: token.canvas }} />
@@ -189,6 +191,15 @@ function AppShell() {
  */
 function AppUpdatePrompt({ ready }: { ready: boolean }) {
   useAppUpdateCheck({ ready });
+  return null;
+}
+
+/**
+ * Explains notifications to a signed-in rider, then lets the phone ask. Held
+ * back like the update sheet, and behind it: see `hooks/usePushPrompt.ts`.
+ */
+function PushPrompt({ ready }: { ready: boolean }) {
+  usePushPrompt({ ready });
   return null;
 }
 
@@ -337,6 +348,7 @@ function RootStack() {
       <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
       <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
       <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
+      <Stack.Screen name="push-permission" options={confirmSheetScreenOptions} />
     </Stack>
   );
 }

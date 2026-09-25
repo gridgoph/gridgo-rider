@@ -254,29 +254,6 @@ jobs:
             echo "| Public config | deployed API and Clerk values verified inside the bundle |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Only the default branch names a release. A build from anywhere else is
-      # downloadable as a run artifact and nothing more. This step uses the
-      # on-disk APK, so it must run before upload-artifact: a full Actions
-      # storage quota fails that step and would otherwise skip the Release.
-      - name: Publish the GitHub Release
-        if: github.ref == 'refs/heads/main' || github.event.inputs.publish_release == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.config.outputs.version }}
-          APK: ${{ steps.config.outputs.apk }}
-          SIZE: ${{ steps.apk.outputs.size }}
-        run: |
-          set -euo pipefail
-          notes="$(printf '%s\n' \
-            "Signed release APK for sideloading ($SIZE). Install it on the phone directly." \
-            "" \
-            "Commit \`${GITHUB_SHA::7}\`, build $GITHUB_RUN_NUMBER." \
-            "Verified in CI: signed with the release key, and deployed API and Clerk values are inlined in the JS bundle.")"
-          gh release create "v$VERSION" "$RUNNER_TEMP/out/$APK" \
-            --target "$GITHUB_SHA" \
-            --title "GRIDGO Rider $VERSION" \
-            --notes "$notes"
-
       # The landing site serves this file to riders and suppliers, so only a
       # merge to the default branch may replace it. Not a pull request, and not
       # a manual dispatch from a branch — either would put unreviewed code on
@@ -339,6 +316,39 @@ jobs:
           fi
 
           echo "| Published | \`gridgo-rider.apk\` on the captain's server |" >> "$GITHUB_STEP_SUMMARY"
+
+      # Only the default branch names a release. A build from anywhere else is
+      # downloadable as a run artifact and nothing more. This step uses the
+      # on-disk APK, so it must run before upload-artifact: a full Actions
+      # storage quota fails that step and would otherwise skip the Release.
+      #
+      # After the landing upload, never before it: the in-app update prompt
+      # reads GitHub's latest release but "Update now" downloads from the
+      # landing site, so a release published first (or one whose upload then
+      # failed) offers build N to phones while serving N-1 — they reinstall
+      # the same build and are offered it again. Only a push to main uploads,
+      # so only that run may mark its release latest; a manual dispatch with
+      # publish_release still gets a release, but no phone is offered it.
+      - name: Publish the GitHub Release
+        if: github.ref == 'refs/heads/main' || github.event.inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.config.outputs.version }}
+          APK: ${{ steps.config.outputs.apk }}
+          SIZE: ${{ steps.apk.outputs.size }}
+          LATEST: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          notes="$(printf '%s\n' \
+            "Signed release APK for sideloading ($SIZE). Install it on the phone directly." \
+            "" \
+            "Commit \`${GITHUB_SHA::7}\`, build $GITHUB_RUN_NUMBER." \
+            "Verified in CI: signed with the release key, and deployed API and Clerk values are inlined in the JS bundle.")"
+          gh release create "v$VERSION" "$RUNNER_TEMP/out/$APK" \
+            --target "$GITHUB_SHA" \
+            --title "GRIDGO Rider $VERSION" \
+            --notes "$notes" \
+            --latest="$LATEST"
 
       # Best-effort CI convenience. Quota-full here used to skip the two
       # publish steps above and leave the landing site stale. continue-on-error

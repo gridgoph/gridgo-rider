@@ -1,12 +1,18 @@
 import {
+  EMPTY_PUSH_PROMPT_MEMORY,
+  PUSH_PROMPT_REOFFER_MS,
   devicePlatform,
+  parsePushPromptMemory,
   parsePushData,
   PUSH_CHANNEL_ID,
   PUSH_FOREGROUND_BEHAVIOR,
   pushOffer,
   pushOfferCopy,
+  pushPromptCopy,
+  pushPromptReasons,
   pushTargetRoute,
   readPushPermission,
+  shouldOfferPushPrompt,
 } from "@/lib/push";
 
 describe("the channel the server names", () => {
@@ -246,5 +252,69 @@ describe("the foreground behaviour", () => {
       shouldPlaySound: false,
       shouldSetBadge: false,
     });
+  });
+});
+
+describe("the notifications explainer", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.UTC(2026, 8, 25, 2);
+  const base = {
+    supported: true,
+    signedIn: true,
+    permission: "undetermined" as const,
+    memory: EMPTY_PUSH_PROMPT_MEMORY,
+    nowMs: now,
+  };
+
+  it("is due for a signed-in rider who has never seen it", () => {
+    expect(shouldOfferPushPrompt(base)).toBe(true);
+  });
+
+  it("is due for an existing rider whose phone already refused, so it can point at settings", () => {
+    expect(shouldOfferPushPrompt({ ...base, permission: "blocked" })).toBe(true);
+  });
+
+  it("stays away once notifications are on, before permission is read, and where push cannot work", () => {
+    expect(shouldOfferPushPrompt({ ...base, permission: "granted" })).toBe(false);
+    expect(shouldOfferPushPrompt({ ...base, permission: "unknown" })).toBe(false);
+    expect(shouldOfferPushPrompt({ ...base, supported: false })).toBe(false);
+  });
+
+  it("leaves the sign-in door to the card", () => {
+    expect(shouldOfferPushPrompt({ ...base, signedIn: false })).toBe(false);
+  });
+
+  it("comes back no sooner than seven days after it was last shown", () => {
+    const shown = (ago: number) => ({ ...base, memory: { offeredAtMs: now - ago } });
+    expect(shouldOfferPushPrompt(shown(0))).toBe(false);
+    expect(shouldOfferPushPrompt(shown(6 * DAY + 23 * 60 * 60 * 1000))).toBe(false);
+    expect(shouldOfferPushPrompt(shown(7 * DAY))).toBe(true);
+    expect(PUSH_PROMPT_REOFFER_MS).toBe(7 * DAY);
+  });
+
+  it("treats a clock set back past the last offer as due rather than silenced", () => {
+    expect(shouldOfferPushPrompt({ ...base, memory: { offeredAtMs: now + 30 * DAY } })).toBe(true);
+  });
+
+  it("reads anything unreadable as never offered", () => {
+    expect(parsePushPromptMemory(null)).toEqual({ offeredAtMs: null });
+    expect(parsePushPromptMemory("not json")).toEqual({ offeredAtMs: null });
+    expect(parsePushPromptMemory('{"offeredAtMs":"soon"}')).toEqual({ offeredAtMs: null });
+    expect(parsePushPromptMemory('{"offeredAtMs":1790000000000}')).toEqual({
+      offeredAtMs: 1790000000000,
+    });
+  });
+
+  it("names the button after what it does in each state", () => {
+    expect(pushPromptCopy("undetermined").action).toBe("Turn on notifications");
+    expect(pushPromptCopy("undetermined").dismiss).toBe("Not now");
+    const blocked = pushPromptCopy("blocked");
+    expect(blocked.action).toBe("Open phone settings");
+    expect(blocked.body).toMatch(/cannot ask again/);
+  });
+
+  it("promises the approval alert only while there is an approval to wait for", () => {
+    expect(pushPromptReasons(true).map((r) => r.icon)).toEqual(["offer", "pickup", "approval"]);
+    expect(pushPromptReasons(false).map((r) => r.icon)).toEqual(["offer", "pickup"]);
   });
 });

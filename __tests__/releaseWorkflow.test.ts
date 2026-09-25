@@ -165,6 +165,24 @@ describe("the APK reaches the captain's server only from the default branch", ()
     expect(upload).toBeGreaterThan(release);
   });
 
+  it("names the GitHub Release only after the landing site has the same APK", () => {
+    // The update prompt reads GitHub's latest release and downloads from the
+    // landing site. Publishing first offered build N while serving N-1.
+    const published = apkSteps.findIndex((step) => step.includes("upload-apk rider"));
+    const release = apkSteps.findIndex((step) => step.includes("gh release create"));
+
+    expect(release).toBeGreaterThan(published);
+  });
+
+  it("marks a release latest only when this run uploaded to the landing site", () => {
+    const release = apkSteps.find((step) => step.includes("gh release create"));
+
+    expect(release).toMatch(
+      /LATEST:\s*\$\{\{\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\s*\}\}/,
+    );
+    expect(release).toContain('--latest="$LATEST"');
+  });
+
   it("does not fail the job when artifact storage is full", () => {
     const upload = apkSteps.find((step) => step.includes("upload-artifact"));
     expect(upload).toMatch(/continue-on-error:\s*true/);
