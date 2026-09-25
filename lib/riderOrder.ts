@@ -259,6 +259,19 @@ export function signOffPrompt(order: Pick<Order, "pickupChecklist">): string | n
 }
 
 /**
+ * Whether the rider hands the client an acknowledgement receipt at the drop.
+ *
+ * The captain's pilot rule (25 Sep 2026, gridgo-client#83): every delivery to
+ * a client ends with an acknowledgement receipt in their hand. A collected job
+ * ends at GRIDGO's own counter, where there is no client to give one to.
+ * Confirming it is a local reminder only — `POST /dispatch/:id/delivery` takes
+ * evidence and nothing else, so it never gates or rides on the request.
+ */
+export function owesAcknowledgementReceipt(order: Pick<Order, "fulfillmentMode">): boolean {
+  return !endsAtOffice(order);
+}
+
+/**
  * The distance the delivery fee was banded from, in words.
  *
  * The fee is no longer a flat zone rate, so "₱25" on its own now looks
