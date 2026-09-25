@@ -28,6 +28,7 @@ jest.mock("@/components/BlockingOverlay", () => ({ BlockingOverlay: "BlockingOve
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: "EvidenceCapture" }));
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
 jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));
+jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptReminder" }));
 jest.mock("@/components/Screen", () => ({ Screen: "Screen" }));
 jest.mock("@/components/SkeletonScreens", () => ({ ProofStepSkeleton: "ProofStepSkeleton" }));
 jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar" }));
@@ -53,12 +54,15 @@ afterEach(async () => { await act(async () => view.unmount()); });
 it("Check again adopts confirmed final_online and unlocks capture while still requiring evidence", async () => {
   expect(warning()).toBeDefined();
   expect(view.root.findByType("EvidenceCapture").props.disabled).toBe(true);
+  // The rider has just been told not to hand the package over, so no receipt either.
+  expect(view.root.findAllByType("ReceiptReminder")).toHaveLength(0);
   api.getOrder.mockResolvedValueOnce(order("confirmed"));
   await act(async () => { warning().props.onAction(); });
   expect(api.getOrder).toHaveBeenLastCalledWith("order-test");
   expect(api.getOrder).toHaveBeenCalledTimes(2);
   expect(warning()).toBeUndefined();
   expect(view.root.findByType("EvidenceCapture").props.disabled).toBe(false);
+  expect(view.root.findAllByType("ReceiptReminder")).toHaveLength(1);
   expect(view.root.findByType("PrimaryButton").props.disabled).toBe(true);
   expect(api.recordDelivery).not.toHaveBeenCalled();
 });

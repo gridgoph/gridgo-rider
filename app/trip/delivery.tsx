@@ -6,6 +6,7 @@ import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { ReceiptReminder } from "@/components/ReceiptReminder";
 import { Screen } from "@/components/Screen";
 import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar } from "@/components/StickyActionBar";
@@ -15,7 +16,12 @@ import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { DELIVERY_TARGETS } from "@/lib/attachments";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
-import { dropoffLabel, endsAtOffice, isBalanceConfirmed } from "@/lib/riderOrder";
+import {
+  dropoffLabel,
+  endsAtOffice,
+  isBalanceConfirmed,
+  owesAcknowledgementReceipt,
+} from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 
 /**
@@ -41,6 +47,11 @@ import { useActiveTrip } from "@/store/activeTrip";
  * rider there against the client's balance stranded them at our office waiting
  * on something no one present could do. The screen drops the money out of it
  * and asks only for proof the package reached the shelf.
+ *
+ * At a client's door the rider also hands over an acknowledgement receipt —
+ * the pilot's only receipt. Its tick is the rider's own reminder: it stays on
+ * this phone and never holds the confirm button, because the delivery route
+ * accepts evidence and nothing else.
  */
 export default function DeliveryProofScreen() {
   const router = useRouter();
@@ -52,6 +63,7 @@ export default function DeliveryProofScreen() {
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [storage, setStorage] = useState<"available" | "unavailable" | "unknown">("unknown");
+  const [receiptHandedOver, setReceiptHandedOver] = useState(false);
 
   // Tell the rider up front when this server cannot hold files, rather than
   // letting them photograph a doorway and discover it on the upload.
@@ -178,6 +190,16 @@ export default function DeliveryProofScreen() {
               onSignature={evidence.attachSignature}
               disabled={busy || balanceHeld}
             />
+
+            {/* Hidden while the balance holds the package: the rider has just
+                been told not to hand anything over. */}
+            {owesAcknowledgementReceipt(order) && !balanceHeld ? (
+              <ReceiptReminder
+                handedOver={receiptHandedOver}
+                onToggle={() => setReceiptHandedOver((v) => !v)}
+                disabled={busy}
+              />
+            ) : null}
 
             {submitError ? (
               <InlineNotice
