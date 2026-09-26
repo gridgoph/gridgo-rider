@@ -1,3 +1,4 @@
+import { accountHold } from "@/lib/accountHold";
 import * as api from "@/lib/api";
 import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
 import { useRouter, useRootNavigationState, type Href } from "expo-router";
@@ -80,6 +81,7 @@ export function usePushNotifications(): void {
   useLayoutEffect(() => { ready.current = navigationReady; }, [navigationReady]);
   const user = useSession((s) => s.user);
   const signedIn = isSignedIn(user);
+  const held = accountHold(user) != null;
   const loading = useSession((s) => s.loading);
   const sessionWait = useSession((s) => s.sessionWait);
 
@@ -146,8 +148,9 @@ export function usePushNotifications(): void {
     // Not gated on approval either: a rider waiting on accreditation is
     // exactly the rider whose approval they most want to hear about while
     // the app is closed.
+    if (held) return;
     void usePush.getState().registerIfGranted();
-  }, [signedIn, user?.id]);
+  }, [signedIn, user?.id, held]);
 
   useEffect(() => {
     // And on every return to the front. The permission is re-read first:
