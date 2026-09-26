@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AppState } from "react-native";
+import { accountHold } from "@/lib/accountHold";
 import { openAlertStream, type AlertStreamHandle } from "@/lib/alertStream";
 import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
 import { useSession } from "@/store/session";
@@ -15,8 +16,9 @@ import { useActiveTrip } from "@/store/activeTrip";
 export function useAlertStream(enabled = true): void {
   const userId = useSession((s) => s.user?.id ?? null);
   const verification = useSession((s) => s.user?.verificationStatus);
+  const held = useSession((s) => accountHold(s.user) != null);
   useEffect(() => {
-    if (!enabled || !userId) return;
+    if (!enabled || !userId || held) return;
     const generation = liveGeneration();
     let stopped = false;
     let foreground = AppState.currentState !== "background" && AppState.currentState !== "inactive";
@@ -81,5 +83,5 @@ export function useAlertStream(enabled = true): void {
       stopped = true; handle?.close(); appState.remove(); unsubscribe(); clearInterval(fallback);
       if (timer) clearTimeout(timer);
     };
-  }, [enabled, userId, verification]);
+  }, [enabled, userId, verification, held]);
 }
