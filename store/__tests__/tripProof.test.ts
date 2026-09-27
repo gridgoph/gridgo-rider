@@ -127,6 +127,30 @@ describe("the supplier's signature draft", () => {
     expect(useTripProof.getState().getChecklist(ORDER)?.completedAt).toEqual(expect.any(String));
   });
 
+  it("keeps counts per line, starting empty, and a new count unstamps the checks", async () => {
+    const store = useTripProof.getState();
+    expect(store.getChecklist(ORDER)?.counts).toBeUndefined();
+
+    store.saveCount(ORDER, "cline_cards", 180);
+    store.saveCount(ORDER, "__order__", 12);
+    store.markChecked(ORDER);
+    expect(useTripProof.getState().getChecklist(ORDER)?.completedAt).toEqual(expect.any(String));
+
+    store.saveCount(ORDER, "cline_cards", 200);
+    const draft = useTripProof.getState().getChecklist(ORDER);
+    expect(draft?.counts).toEqual({ cline_cards: 200, __order__: 12 });
+    expect(draft?.completedAt).toBeNull();
+
+    // Numbers survive a restart like the answers do.
+    await flush();
+    useTripProof.setState({ checklists: {}, hydrated: false });
+    await useTripProof.getState().hydrate();
+    expect(useTripProof.getState().getChecklist(ORDER)?.counts).toEqual({
+      cline_cards: 200,
+      __order__: 12,
+    });
+  });
+
   it("goes with the checklist once the handoff is recorded", () => {
     useTripProof.getState().saveSignature(ORDER, { signerName: "Ana" });
     useTripProof.getState().clearChecklist(ORDER);

@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { PickupCheckCode } from "@/lib/api";
 import type { SignatureDraft } from "@/lib/handoffSignature";
 import { allAnswered, EMPTY_ANSWERS, type ChecklistAnswers } from "@/lib/pickupChecklist";
+import type { CountDraft } from "@/lib/pickupCount";
 
 /**
  * Proof work in progress, kept across an app restart.
@@ -28,10 +29,13 @@ const STORAGE_KEY = "gridgo.tripProof.v2";
 export type ChecklistDraft = {
   answers: ChecklistAnswers;
   failureNote: string;
+  /** Pieces counted per line, keyed by `countKey`. Absent until one is typed. */
+  counts?: CountDraft;
   updatedAt: string;
   /**
-   * When the sixth answer was given — the moment the attestation names. Unset
-   * while any check is still open, and reset if one is answered again.
+   * When the checks were finished — the moment the attestation names. Set by
+   * `markChecked` as the rider hands the phone over (or by the sixth tap on an
+   * API without counts), and reset by any later answer or count.
    */
   completedAt?: string | null;
   /** The supplier's signature in progress. Absent until the pad is touched. */
@@ -48,6 +52,10 @@ type TripProofState = Persisted & {
   getChecklist: (orderId: string) => ChecklistDraft | null;
   answerCheck: (orderId: string, code: PickupCheckCode, passed: boolean) => void;
   saveFailureNote: (orderId: string, note: string) => void;
+  /** One line's count; null clears it. Never prefilled from the expected number. */
+  saveCount: (orderId: string, key: string, counted: number | null) => void;
+  /** Stamp the moment the checks and count were finished. */
+  markChecked: (orderId: string) => void;
   saveSignature: (orderId: string, patch: Partial<SignatureDraft>) => void;
   clearChecklist: (orderId: string) => void;
 };
@@ -118,6 +126,13 @@ export const useTripProof = create<TripProofState>((set, get) => {
     },
 
     saveFailureNote: (orderId, note) => update(orderId, { failureNote: note }),
+
+    saveCount: (orderId, key, counted) => {
+      const current = get().checklists[orderId] ?? emptyDraft();
+      update(orderId, { counts: { ...current.counts, [key]: counted }, completedAt: null });
+    },
+
+    markChecked: (orderId) => update(orderId, { completedAt: new Date().toISOString() }),
 
     saveSignature: (orderId, patch) => {
       const current = get().checklists[orderId] ?? emptyDraft();

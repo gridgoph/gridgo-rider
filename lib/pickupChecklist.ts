@@ -1,4 +1,5 @@
 import type { Order, PickupCheckCode, PickupCheckResult } from "@/lib/api";
+import { countProblemPhrase, recordedCountLines } from "@/lib/pickupCount";
 
 /**
  * The six-point pickup check.
@@ -164,9 +165,16 @@ export function checklistActionLabel(answers: ChecklistAnswers): string {
  *
  * The rider is told what their answers do before they commit, because the two
  * outcomes are not variations of each other: one starts a delivery, the other
- * stops one and puts the founder in the loop.
+ * stops one and puts Operations and the founder in the loop.
+ *
+ * `countProblem` is the count's own phrase ("the count is 20 short on
+ * Business cards") and replaces the generic quantity failure when it is the
+ * only thing wrong, so the rider reads the number they typed back.
  */
-export function checklistConsequence(answers: ChecklistAnswers): string | null {
+export function checklistConsequence(
+  answers: ChecklistAnswers,
+  countProblem: string | null = null,
+): string | null {
   if (!allAnswered(answers)) return null;
   if (allPassed(answers)) {
     return "Nothing is recorded yet. Next, the supplier signs on your phone — that is what makes the package yours to carry.";
@@ -174,13 +182,17 @@ export function checklistConsequence(answers: ChecklistAnswers): string | null {
   const failed = failedCodes(answers);
   const which =
     failed.length === 1
-      ? checkDefinition(failed[0]).failure
+      ? failed[0] === "quantity_match" && countProblem
+        ? countProblem
+        : checkDefinition(failed[0]).failure
       : `${failed.length} problems you found`;
-  return `The package stays at the shop. GRIDGO logs that ${which}, raises it with the founder, and tells you when to move.`;
+  return `The package stays at the shop. GRIDGO logs that ${which}, alerts Operations and the founder, and tells you when to move.`;
 }
 
 /** Plain-language summary of a recorded checklist, for the trip screen. */
-export function checklistSummary(order: Pick<Order, "pickupChecklist">): string | null {
+export function checklistSummary(
+  order: Pick<Order, "pickupChecklist"> & Partial<Pick<Order, "pickupCountItems">>,
+): string | null {
   const record = order.pickupChecklist;
   if (!record) return null;
   switch (record.status) {
@@ -190,7 +202,15 @@ export function checklistSummary(order: Pick<Order, "pickupChecklist">): string 
     case "failed_escalated": {
       const failed = record.checks.filter((check) => !check.passed);
       if (!failed.length) return "A pickup check failed and transport is on hold.";
-      const names = failed.map((check) => checkDefinition(check.code).failure);
+      // The recorded count says more than "does not match": which line, by how much.
+      const countPhrase = countProblemPhrase(
+        recordedCountLines({ pickupCountItems: null, ...order }) ?? [],
+      );
+      const names = failed.map((check) =>
+        check.code === "quantity_match" && countPhrase
+          ? countPhrase
+          : checkDefinition(check.code).failure,
+      );
       const list =
         names.length === 1
           ? names[0]

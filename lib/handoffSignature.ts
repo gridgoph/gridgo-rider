@@ -1,6 +1,7 @@
 import type { Order } from "@/lib/api";
 import type { EvidenceUpload } from "@/lib/proofEvidence";
 import { PICKUP_CHECKS, allPassed, type ChecklistAnswers } from "@/lib/pickupChecklist";
+import { countedPiecesPhrase, type RecordedCountLine } from "@/lib/pickupCount";
 import type { SignatureStroke } from "@/lib/signature";
 
 /**
@@ -103,18 +104,21 @@ export function handoffActionLabel(input: { busy: boolean; signed: boolean }): s
 export function attestationLine(input: {
   signerName: string;
   order: Pick<Order, "quantity" | "title">;
+  /** The pieces counted, line by line; null on an API without counts. */
+  counts?: RecordedCountLine[] | null;
   riderName: string | null;
   checkedAt: string | null;
   nowMs?: number;
 }): string {
   const who = signerNameValid(input.signerName) ? input.signerName.trim() : "The signer";
-  const count =
-    Number.isFinite(input.order.quantity) && input.order.quantity > 0
+  const count = input.counts?.length
+    ? countedPiecesPhrase(input.counts)
+    : Number.isFinite(input.order.quantity) && input.order.quantity > 0
       ? `${input.order.quantity} ${input.order.quantity === 1 ? "piece" : "pieces"} of ${input.order.title}`
       : input.order.title;
   const when = formatCheckedAt(input.checkedAt, input.nowMs);
   const rider = input.riderName?.trim() ? `GRIDGO rider ${input.riderName.trim()}` : "the GRIDGO rider";
-  return `By signing, ${who} confirms that ${count} were checked together at the counter, passed all six checks${when ? ` at ${when}` : ""}, and are handed to ${rider}.`;
+  return `By signing, ${who} confirms that ${count} were counted and checked together at the counter, passed all six checks${when ? ` at ${when}` : ""}, and are handed to ${rider}.`;
 }
 
 /** "3:24 PM" for today; "19 Sep, 3:24 PM" for any other day. */
