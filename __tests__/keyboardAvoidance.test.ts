@@ -51,6 +51,7 @@ describe("a field a rider is typing into stays visible", () => {
       "PasswordField.tsx",
       "CodeField.tsx",
       "TextField.tsx",
+      "PickupCountField.tsx",
     ].map((name) => join("components", name));
     // Full-bleed map: the search sits at the top of the canvas. FormScroll
     // would own the map itself, which is the wrong viewport.
