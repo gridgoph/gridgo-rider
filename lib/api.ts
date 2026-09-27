@@ -88,9 +88,29 @@ export type HandoffSignatureRecord = {
   checklistHash: string;
 };
 
+/**
+ * One line to count at the counter, as the server projects it from the
+ * order's snapshot. `expectedQuantity` is already in pieces — a line sold in
+ * packs is multiplied out — so the app never derives it from pricing fields.
+ * `lineItemId` is null only on an order older than line items.
+ */
+export type PickupCountItem = {
+  lineItemId: string | null;
+  itemName: string;
+  expectedQuantity: number;
+};
+
+/** One line as counted, as the checklist request names it. */
+export type PickupCountInput = { lineItemId: string | null; countedQuantity: number };
+
+/** One line as the server recorded it, expected beside counted. */
+export type PickupCountRecord = PickupCountInput & { expectedQuantity: number };
+
 export type PickupChecklistRecord = {
   status: PickupChecklistStatus;
   checks: PickupCheckResult[];
+  /** Absent on checklists recorded before counting existed — "not recorded", never zero. */
+  counts?: PickupCountRecord[];
   evidenceFileIds: string[];
   failureNote: string | null;
   completedAt: string | null;
@@ -201,6 +221,12 @@ export type Order = {
   payoutMilestones?: PayoutMilestone[];
   payoutHold?: boolean;
   pickupChecklist?: PickupChecklistRecord | null;
+  /**
+   * What to count at the counter. Absent from an API older than counting;
+   * `null` when the order's snapshot has no usable quantity, which the server
+   * refuses to check against (`409 pickup_count_unavailable`).
+   */
+  pickupCountItems?: PickupCountItem[] | null;
   supplierContact?: SupplierContact | null;
   deliveryEvidence?: {
     fileId: string;
@@ -916,18 +942,26 @@ export type HandoffSignatureInput = {
 };
 
 /**
- * Submit all six pickup checks.
+ * Submit all six pickup checks and the pieces counted.
+ *
+ * `counts` carries one row per `order.pickupCountItems` line; the server
+ * holds the expected numbers, and any line that does not match fails
+ * `quantity_match` whatever was ticked. Omit it only for an API that projects
+ * no count items at all.
  *
  * All passing needs the supplier's signature — a `handoff_signature` file
  * already attached to the order, see `lib/attachments.ts` — and moves the job
  * to "package with you" with the sign-off line. Without it the server answers
  * `409 handoff_signature_required` and nothing moves. Any failure needs the
  * note and at least one already-attached photo, and leaves the job where it
- * is with an escalation open — the rider does not transport.
+ * is with an escalation open — the rider does not transport. That answer is
+ * a `200`, so read `order.state`, never the status code, for whether custody
+ * moved.
  */
 export async function submitPickupChecklist(
   orderId: string,
   checks: PickupCheckResult[],
+  counts: PickupCountInput[] | null,
   outcome?:
     | { failure: { failureNote: string; evidenceFileIds: string[] } }
     | { signature: HandoffSignatureInput },
@@ -940,7 +974,7 @@ export async function submitPickupChecklist(
         : {};
   return request(`/dispatch/${orderId}/pickup-checklist`, {
     method: "POST",
-    body: JSON.stringify({ checks, ...extra }),
+    body: JSON.stringify({ checks, ...(counts ? { counts } : {}), ...extra }),
   });
 }
 
@@ -1149,6 +1183,10 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
         return "The checks only run before you leave the shop. Pull down to refresh the trip and see where it is now.";
       case "invalid_pickup_checklist":
         return "Answer all six checks before submitting them.";
+      case "invalid_pickup_counts":
+        return "The counts did not line up with this order. Pull down to refresh the job, then count every line again.";
+      case "pickup_count_unavailable":
+        return "This order has no count to check against. Do not take the package — call Operations to review the order.";
       case "checklist_evidence_required":
         return "Photograph the problem and describe it before the escalation can be filed.";
       case "invalid_checklist_evidence":

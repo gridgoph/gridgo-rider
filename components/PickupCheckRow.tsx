@@ -10,6 +10,11 @@ type Props = {
   answer: CheckAnswer;
   onAnswer: (passed: boolean) => void;
   disabled?: boolean;
+  /**
+   * An answer given another way, in place of Pass / Problem. The quantity
+   * check takes the count here: its answer is read off the numbers.
+   */
+  children?: React.ReactNode;
 };
 
 /**
@@ -24,7 +29,14 @@ type Props = {
  * greyscale and a phone held in sunlight. Neither answer is yellow — the
  * screen's one yellow is the button that commits all six.
  */
-export function PickupCheckRow({ index, check, answer, onAnswer, disabled = false }: Props) {
+export function PickupCheckRow({
+  index,
+  check,
+  answer,
+  onAnswer,
+  disabled = false,
+  children,
+}: Props) {
   const colors = useThemeColors();
 
   return (
@@ -37,26 +49,28 @@ export function PickupCheckRow({ index, check, answer, onAnswer, disabled = fals
         </View>
       </View>
 
-      <View
-        className="flex-row gap-2"
-        accessibilityRole="radiogroup"
-        accessibilityLabel={check.label}
-      >
-        <Answer
-          label="Pass"
-          selected={answer === true}
-          disabled={disabled}
-          onPress={() => onAnswer(true)}
-          icon={<Check size={16} color={answer === true ? colors.accentOn : colors.textSecondary} strokeWidth={3} />}
-        />
-        <Answer
-          label="Problem"
-          selected={answer === false}
-          disabled={disabled}
-          onPress={() => onAnswer(false)}
-          icon={<X size={16} color={answer === false ? colors.accentOn : colors.textSecondary} strokeWidth={3} />}
-        />
-      </View>
+      {children ?? (
+        <View
+          className="flex-row gap-2"
+          accessibilityRole="radiogroup"
+          accessibilityLabel={check.label}
+        >
+          <Answer
+            label="Pass"
+            selected={answer === true}
+            disabled={disabled}
+            onPress={() => onAnswer(true)}
+            icon={<Check size={16} color={answer === true ? colors.accentOn : colors.textSecondary} strokeWidth={3} />}
+          />
+          <Answer
+            label="Problem"
+            selected={answer === false}
+            disabled={disabled}
+            onPress={() => onAnswer(false)}
+            icon={<X size={16} color={answer === false ? colors.accentOn : colors.textSecondary} strokeWidth={3} />}
+          />
+        </View>
+      )}
     </View>
   );
 }

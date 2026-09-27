@@ -28,6 +28,12 @@ import {
   shopDisplayName,
 } from "@/lib/handoffSignature";
 import { allPassed, canRunPickupChecks, toChecklistPayload } from "@/lib/pickupChecklist";
+import {
+  countMode,
+  draftCountLines,
+  effectiveAnswers,
+  toCountPayload,
+} from "@/lib/pickupCount";
 import { type EvidenceUpload, UPLOAD_IDLE, uploadStatusLine } from "@/lib/proofEvidence";
 import { handoffSignatureEvidence } from "@/lib/proofPhoto";
 import { pickupLabel } from "@/lib/riderOrder";
@@ -46,7 +52,7 @@ import { useTripProof } from "@/store/tripProof";
  * recorded until "Done".
  *
  * The screen is written for two readers. The top is the rider's: which job,
- * which shop, the six they just ran. From "Supplier signs here" down it is the
+ * which shop, the six they just ran and the pieces they counted. From "Supplier signs here" down it is the
  * signer's: their name, the paper, and the sentence they are agreeing to with
  * the numbers in it, so the signature is over a claim rather than a blank.
  *
@@ -105,7 +111,10 @@ export default function HandoffSignatureScreen() {
     setRestoredFor(id);
   }
 
-  const answers = draft?.answers ?? null;
+  const mode = order ? countMode(order) : ({ kind: "legacy" } as const);
+  // The count answers the quantity check, read against the order as it is now.
+  const answers = draft ? effectiveAnswers(draft.answers, mode, draft.counts) : null;
+  const countLines = mode.kind === "count" ? draftCountLines(mode.items, draft?.counts) : null;
   const storedFileId = draft?.signature?.storedFileId ?? null;
   const checkedAt = formatCheckedAt(draft?.completedAt ?? null, openedAtMs);
   const status = uploadStatusLine(upload, "signature");
@@ -171,10 +180,26 @@ export default function HandoffSignatureScreen() {
     setSubmitError(null);
     try {
       const fileId = await storeSignature(order.id);
-      const result = await api.submitPickupChecklist(order.id, toChecklistPayload(answers), {
-        signature: { fileId, signerName: signerName.trim() },
-      });
+      const result = await api.submitPickupChecklist(
+        order.id,
+        toChecklistPayload(answers),
+        toCountPayload(mode, draft?.counts),
+        { signature: { fileId, signerName: signerName.trim() } },
+      );
       setActiveOrder(result.order);
+      if (result.order.state !== "picked_up") {
+        // A 200 is not custody. If the server recorded a failure instead, the
+        // pickup screen is where the blocked receipt lives.
+        if (result.order.pickupChecklist?.status === "failed_escalated") {
+          clearChecklist(order.id);
+          router.replace({ pathname: "/trip/pickup", params: { orderId: order.id } });
+          return;
+        }
+        setSubmitError(
+          "The handoff was not recorded. Do not take the package — pull down on the trip to refresh it, then try again.",
+        );
+        return;
+      }
       clearChecklist(order.id);
       // Custody has moved. The trip screen carries the spoken line for as long
       // as it is owed, so this screen has nothing left to say.
@@ -234,7 +259,7 @@ export default function HandoffSignatureScreen() {
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
-            <PassedChecksSummary checkedAt={checkedAt} />
+            <PassedChecksSummary checkedAt={checkedAt} counts={countLines} />
 
             <View className="gap-1">
               <Text className="text-h2 text-text-primary">Supplier signs here</Text>
@@ -301,6 +326,7 @@ export default function HandoffSignatureScreen() {
               {attestationLine({
                 signerName,
                 order,
+                counts: countLines,
                 riderName: rider?.name ?? null,
                 checkedAt: draft?.completedAt ?? null,
                 nowMs: openedAtMs,
@@ -331,7 +357,7 @@ export default function HandoffSignatureScreen() {
             <Text className="text-center text-body text-text-secondary">{blocked}</Text>
           ) : (
             <Text className="text-center text-body text-text-secondary">
-              GRIDGO records the six checks and the signature together. The package becomes yours to carry.
+              GRIDGO records the count, the six checks and the signature together. The package becomes yours to carry.
             </Text>
           )}
         </StickyActionBar>

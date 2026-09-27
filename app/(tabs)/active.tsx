@@ -297,8 +297,8 @@ export default function ActiveScreen() {
               <InlineNotice
                 tone="error"
                 icon="circle-x"
-                title="Do not transport this package"
-                body={`${checklistSummary(trip) ?? "A pickup check failed."} GRIDGO has logged it against the supplier and raised it with the founder. Leave the package at the shop and wait — you will get an alert here with what to do next.`}
+                title="Pickup blocked. Operations has been alerted."
+                body={`${checklistSummary(trip) ?? "A pickup check failed."} GRIDGO has logged it against the supplier and raised it with Operations and the founder. Leave the package at the shop and wait — you will get an alert here with what to do next.`}
               />
             ) : null}
 

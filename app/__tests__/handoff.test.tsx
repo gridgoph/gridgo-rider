@@ -260,6 +260,8 @@ describe("the supplier signs on the rider's phone", () => {
         { code: "documentation", passed: true },
         { code: "supplier_sign_off", passed: true },
       ],
+      // This order comes from an API older than counting: no counts to send.
+      null,
       { signature: { fileId: "fil_sig", signerName: "Ana R. Reyes" } },
     );
     // Custody moved: the trip adopts the order, the draft is gone, and the
@@ -316,6 +318,108 @@ describe("the supplier signs on the rider's phone", () => {
     expect(screen.getByLabelText("Name of the person signing for the shop").props.value).toBe(
       "Ben Cruz",
     );
+  });
+
+  it("shows the counts to the signer and sends them with the signature", async () => {
+    const counted: Order = {
+      ...atShop,
+      pickupCountItems: [
+        { lineItemId: "cline_cards", itemName: "Business cards", expectedQuantity: 200 },
+        { lineItemId: "cline_flyers", itemName: "A5 flyers", expectedQuantity: 50 },
+      ],
+    };
+    api.getOrder.mockResolvedValue(counted);
+    useTripProof.setState({
+      hydrated: true,
+      checklists: {
+        ord_1: {
+          // The quantity answer is read off the count, not from a tap.
+          answers: { ...allSix, quantity_match: null },
+          counts: { cline_cards: 200, cline_flyers: 50 },
+          failureNote: "",
+          updatedAt: "2026-09-19T07:24:00.000Z",
+          completedAt: "2026-09-19T07:24:00.000Z",
+        },
+      },
+    });
+    api.submitPickupChecklist.mockResolvedValue({ order: { ...counted, state: "picked_up" } });
+
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+
+    expect(screen.getByText("Counted together")).toBeTruthy();
+    expect(screen.getByLabelText("Business cards: counted 200 of 200")).toBeTruthy();
+    expect(screen.getByLabelText("A5 flyers: counted 50 of 50")).toBeTruthy();
+    expect(
+      screen.getByText(/confirms that 200 pieces of Business cards and 50 pieces of A5 flyers were counted/),
+    ).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    await fireEvent.press(doneButton());
+
+    await waitFor(() => expect(api.submitPickupChecklist).toHaveBeenCalledTimes(1));
+    const [, checks, counts, outcome] = api.submitPickupChecklist.mock.calls[0];
+    expect(checks).toContainEqual({ code: "quantity_match", passed: true });
+    expect(counts).toEqual([
+      { lineItemId: "cline_cards", countedQuantity: 200 },
+      { lineItemId: "cline_flyers", countedQuantity: 50 },
+    ]);
+    expect(outcome).toEqual({ signature: { fileId: "fil_sig", signerName: "Ana Reyes" } });
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it("treats a 200 that did not move the package as blocked, not a pickup", async () => {
+    api.submitPickupChecklist.mockResolvedValue({
+      order: {
+        ...atShop,
+        pickupChecklist: {
+          status: "failed_escalated",
+          checks: [],
+          evidenceFileIds: [],
+          failureNote: null,
+          completedAt: null,
+          completedBy: null,
+          escalationId: "esc_1",
+          signOffPrompt: null,
+        },
+      },
+    });
+
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    await fireEvent.press(doneButton());
+
+    await waitFor(() =>
+      expect(mockRouter.replace).toHaveBeenCalledWith({
+        pathname: "/trip/pickup",
+        params: { orderId: "ord_1" },
+      }),
+    );
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(useActiveTrip.getState().order?.state).toBe("rider_assigned");
+  });
+
+  it("refuses the signature when a line was counted short", async () => {
+    api.getOrder.mockResolvedValue({
+      ...atShop,
+      pickupCountItems: [{ lineItemId: "cline_cards", itemName: "Business cards", expectedQuantity: 200 }],
+    });
+    useTripProof.setState({
+      hydrated: true,
+      checklists: {
+        ord_1: {
+          answers: { ...allSix },
+          counts: { cline_cards: 180 },
+          failureNote: "",
+          updatedAt: "2026-09-19T07:24:00.000Z",
+        },
+      },
+    });
+
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("The six checks come first");
+    expect(screen.queryByText("Supplier signs here")).toBeNull();
   });
 
   it("sends the rider back to the checks when they have not all passed", async () => {
