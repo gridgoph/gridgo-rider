@@ -27,6 +27,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { BrandIntro } from "@/components/BrandIntro";
+import { SessionShell } from "@/components/SessionShell";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -210,6 +211,7 @@ function RootStack() {
   const { top } = useSafeAreaInsets();
 
   return (
+    <SessionShell>
     <Stack
       key={ownerId}
       screenOptions={{
@@ -350,6 +352,7 @@ function RootStack() {
       <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
       <Stack.Screen name="push-permission" options={confirmSheetScreenOptions} />
     </Stack>
+    </SessionShell>
   );
 }
 
