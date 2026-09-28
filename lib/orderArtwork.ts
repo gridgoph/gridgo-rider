@@ -38,13 +38,16 @@ export function describeArtwork(file: StoredFile): string {
   return `${type} · ${size}`;
 }
 
+/** A signed preview link and when storage stops honouring it (`lib/photoLinks.ts`). */
+export type PreviewLink = { url: string; expiresAt: string | null };
+
 /** Check metadata before requesting any bytes; document previews stay documents. */
 export async function readOrderArtwork(reference: ArtworkReference, orderId: string, reader: {
   getFile: (id: string) => Promise<StoredFile>;
-  getDownloadUrl: (id: string) => Promise<{ url: string }>;
-}): Promise<{ file: StoredFile; previewUrl: string | null }> {
+  getDownloadUrl: (id: string) => Promise<{ url: string; expiresAt?: string | null }>;
+}): Promise<{ file: StoredFile; preview: PreviewLink | null }> {
   const file = await reader.getFile(reference.fileId);
   if (!isOrderArtwork(file, orderId, reference.kind)) throw new Error("not_production_artwork");
   const link = isArtworkImage(file) ? await reader.getDownloadUrl(reference.fileId) : null;
-  return { file, previewUrl: link?.url ?? null };
+  return { file, preview: link ? { url: link.url, expiresAt: link.expiresAt ?? null } : null };
 }

@@ -1,13 +1,13 @@
-import { Image } from "expo-image";
 import * as WebBrowser from "expo-web-browser";
 import { ExternalLink, FileImage, FileText } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { ArtworkPreview } from "@/components/ArtworkPreview";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getFile, getDownloadUrl, type Order, type StoredFile } from "@/lib/api";
-import { describeArtwork, isArtworkImage, readOrderArtwork, orderArtwork, type ArtworkReference } from "@/lib/orderArtwork";
+import { describeArtwork, isArtworkImage, readOrderArtwork, orderArtwork, type ArtworkReference, type PreviewLink } from "@/lib/orderArtwork";
 
 /** All production files, each with independent loading and recovery. */
 export function ArtworkPanel({ order }: { order: Order }) {
@@ -25,7 +25,7 @@ export function ArtworkPanel({ order }: { order: Order }) {
 type FileState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; file: StoredFile; previewUrl: string | null };
+  | { kind: "ready"; file: StoredFile; preview: PreviewLink | null };
 
 function ArtworkFile({ orderId, reference }: { orderId: string; reference: ArtworkReference }) {
   const colors = useThemeColors();
@@ -37,6 +37,7 @@ function ArtworkFile({ orderId, reference }: { orderId: string; reference: Artwo
   const openingRef = useRef(false);
   const mounted = useRef(false);
   const { fileId, kind } = reference;
+  const onPreviewFailed = useCallback(() => setPreviewFailed(true), []);
 
   useEffect(() => {
     mounted.current = true;
@@ -86,16 +87,13 @@ function ArtworkFile({ orderId, reference }: { orderId: string; reference: Artwo
   return (
     <View className="overflow-hidden rounded-card border border-outline bg-surface">
       <View className="h-44 items-center justify-center bg-surface-variant">
-        {state.kind === "loading" ? <SkeletonBlock /> : state.kind === "ready" && state.previewUrl && !previewFailed ? (
-          <Image
-            source={{ uri: state.previewUrl }}
-            // Third-party Image does not receive NativeWind's RN import transform.
-            style={{ width: "100%", height: "100%" }}
-            contentFit="contain"
-            cachePolicy="none"
-            transition={0}
+        {state.kind === "loading" ? <SkeletonBlock /> : state.kind === "ready" && state.preview && !previewFailed ? (
+          // Renews its own signed link when it expires (gridgo-supplier#84).
+          <ArtworkPreview
+            fileId={fileId}
+            initial={state.preview}
             accessibilityLabel={`${kind === "mockup" ? "Reference mockup" : "Artwork"}: ${state.file.originalFilename}`}
-            onError={() => setPreviewFailed(true)}
+            onFailed={onPreviewFailed}
           />
         ) : (
           <View className="items-center gap-2 px-4">
