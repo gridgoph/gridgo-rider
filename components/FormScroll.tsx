@@ -1,4 +1,4 @@
-import type { ComponentRef, ReactNode, Ref } from "react";
+import type { ReactNode } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
@@ -54,15 +54,12 @@ type Props = {
    * keyboard and lands behind the bar instead.
    */
   stickyActionHeight?: number;
-  /** Conversation screens scroll to the latest message through this. */
-  scrollRef?: Ref<ComponentRef<typeof KeyboardAwareScrollView>>;
   children: ReactNode;
 };
 
-export function FormScroll({ contentClassName, stickyActionHeight = 0, scrollRef, children }: Props) {
+export function FormScroll({ contentClassName, stickyActionHeight = 0, children }: Props) {
   return (
     <KeyboardAwareScrollView
-      ref={scrollRef}
       style={FILL}
       contentContainerStyle={GROW}
       bottomOffset={CARET_GAP}
