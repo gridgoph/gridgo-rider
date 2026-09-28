@@ -56,9 +56,13 @@ describe("a field a rider is typing into stays visible", () => {
     // Full-bleed map: the search sits at the top of the canvas. FormScroll
     // would own the map itself, which is the wrong viewport.
     // Chat: the message list is the viewport and the composer is pinned under
-    // it. FormScroll would nest one scroll inside another and unpin the
-    // composer; the column shrinks with the keyboard instead (see below).
-    const overlays = [join("app", "(tabs)", "map.tsx"), join("app", "chat.tsx")];
+    // it. FormScroll only scrolls to a field inside it, so with the composer
+    // outside, the keyboard came up over the newest messages (gridgo-client#128);
+    // the column shrinks with the keyboard instead (see below).
+    const overlays = [
+      join("app", "(tabs)", "map.tsx"),
+      join("components", "SupportChatConversation.tsx"),
+    ];
 
     const offenders = withFields
       .filter((file) => !primitives.some((primitive) => file.endsWith(primitive)))
