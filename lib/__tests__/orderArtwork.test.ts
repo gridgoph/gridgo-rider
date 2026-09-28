@@ -27,12 +27,12 @@ describe("production artwork", () => {
   });
   it("keeps PDF metadata usable without requesting an image URL", async () => {
     const reader = { getFile: jest.fn(async () => file()), getDownloadUrl: jest.fn(async () => ({ url: "signed" })) };
-    await expect(readOrderArtwork({ fileId: "art1", kind: "artwork" }, "order1", reader)).resolves.toMatchObject({ previewUrl: null });
+    await expect(readOrderArtwork({ fileId: "art1", kind: "artwork" }, "order1", reader)).resolves.toMatchObject({ preview: null });
     expect(reader.getDownloadUrl).not.toHaveBeenCalled();
   });
   it("gets a fresh image URL and fails closed before downloading unrelated evidence", async () => {
-    const reader = { getFile: jest.fn(async () => file({ detectedContentType: "image/png" })), getDownloadUrl: jest.fn(async () => ({ url: "fresh-signed" })) };
-    await expect(readOrderArtwork({ fileId: "art1", kind: "artwork" }, "order1", reader)).resolves.toMatchObject({ previewUrl: "fresh-signed" });
+    const reader = { getFile: jest.fn(async () => file({ detectedContentType: "image/png" })), getDownloadUrl: jest.fn(async () => ({ url: "fresh-signed", expiresAt: "2026-09-28T08:05:00.000Z" })) };
+    await expect(readOrderArtwork({ fileId: "art1", kind: "artwork" }, "order1", reader)).resolves.toMatchObject({ preview: { url: "fresh-signed", expiresAt: "2026-09-28T08:05:00.000Z" } });
     reader.getDownloadUrl.mockClear();
     reader.getFile.mockResolvedValue(file({ purpose: "verification_document" }));
     await expect(readOrderArtwork({ fileId: "art1", kind: "artwork" }, "order1", reader)).rejects.toThrow();
