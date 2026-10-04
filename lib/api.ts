@@ -320,7 +320,13 @@ export type Device = {
 };
 
 let tokenMemory: string | null = null;
-let tokenProvider: (() => Promise<string | null>) | null = null;
+/**
+ * `skipCache` asks Clerk to mint a new JWT rather than answer from its cache.
+ * Only {@link request} sets it, and only after a `401` on a token it had
+ * already sent — every other read stays on the cheap path.
+ */
+type TokenProvider = (options?: { skipCache?: boolean }) => Promise<string | null>;
+let tokenProvider: TokenProvider | null = null;
 
 /** Fired when a request proves the bearer is invalid (401, not login). */
 let unauthorizedHandler: (() => void) | null = null;
@@ -485,9 +491,7 @@ export function setToken(token: string | null): void {
 }
 
 /** Install Clerk's fresh-token reader without changing any domain call site. */
-export function setTokenProvider(
-  provider: (() => Promise<string | null>) | null,
-): () => void {
+export function setTokenProvider(provider: TokenProvider | null): () => void {
   tokenProvider = provider;
   return () => {
     if (tokenProvider === provider) tokenProvider = null;
@@ -506,13 +510,31 @@ export function getToken(): string | null {
  * uploads used to read memory and went out with no Authorization, which the
  * Android stack then reported as a dead connection.
  */
-export async function resolveBearer(): Promise<string | null> {
+export async function resolveBearer(options?: { skipCache?: boolean }): Promise<string | null> {
   const provider = tokenProvider;
   if (!provider) return tokenMemory;
-  const token = await provider();
+  const token = await provider(options);
   // A superseded identity must never fall back to a previous legacy bearer.
   if (provider !== tokenProvider) return null;
   return token?.trim() || null;
+}
+
+let bearerRefresh: { provider: TokenProvider; promise: Promise<string | null> } | null = null;
+
+/**
+ * Ask Clerk for a newly minted bearer, never throwing. Requests refused in the
+ * same moment — Alerts, the trip and `/auth/me` all poll together — share one
+ * mint rather than each spending a Clerk round trip.
+ */
+function refreshBearer(provider: TokenProvider): Promise<string | null> {
+  if (bearerRefresh?.provider === provider) return bearerRefresh.promise;
+  const promise = resolveBearer({ skipCache: true })
+    .catch(() => null)
+    .finally(() => {
+      if (bearerRefresh?.promise === promise) bearerRefresh = null;
+    });
+  bearerRefresh = { provider, promise };
+  return promise;
 }
 
 /**
@@ -575,29 +597,56 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
   init.signal?.addEventListener("abort", abort, { once: true });
   if (init.signal?.aborted) abort();
   let res: Response;
-  let text: string;
+  let data: unknown = null;
   let sentBearer = false;
+  /*
+    Whether a 401 has been confirmed rather than merely received.
+
+    gridgo-api answers 401 to *any* token it could not verify — a JWT that
+    expired while a slow request was queued, or a key lookup that timed out on
+    a loaded server — and the unauthorized handler ends the Clerk session. On
+    its own that 401 signed an idle rider out mid-shift (gridgo-rider#77). So
+    a Clerk bearer gets one newly minted replacement and one more try, as in
+    gridgo-client and gridgo-supplier. Only a refusal of that fresh token is a
+    verdict. If Clerk cannot mint one, the request fails without signing anyone
+    out: a revoked Clerk session ends through the bridge, which watches Clerk
+    itself, and a dead connection is not a revocation.
+  */
+  let confirmedUnauthorized = true;
   try {
-    const bearer = await Promise.race([resolveBearer(), aborted]);
-    assertLiveGeneration(generation);
-    if (controller.signal.aborted) await aborted;
-    sentBearer = Boolean(bearer);
-    if (bearer) { headers.Authorization = `Bearer ${bearer}`; headers["X-GRIDGO-Role"] = "rider"; }
-    res = await Promise.race([fetch(`${getApiBase()}${path}`, { ...fetchInit, headers, signal: controller.signal }), aborted]);
-    text = await Promise.race([res.text(), aborted]);
+    const provider = tokenProvider;
+    let bearer = await Promise.race([resolveBearer(), aborted]);
+    for (let attempt = 0; ; attempt += 1) {
+      assertLiveGeneration(generation);
+      if (controller.signal.aborted) await aborted;
+      sentBearer = Boolean(bearer);
+      if (bearer) { headers.Authorization = `Bearer ${bearer}`; headers["X-GRIDGO-Role"] = "rider"; }
+      res = await Promise.race([fetch(`${getApiBase()}${path}`, { ...fetchInit, headers: { ...headers }, signal: controller.signal }), aborted]);
+      const text = await Promise.race([res.text(), aborted]);
+      assertLiveGeneration(generation);
+      data = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+      // A probe never signs anyone out, and an unmapped identity is an answer
+      // about the account; a fresher token changes nothing about either.
+      if (res.status !== 401 || attempt > 0 || !sentBearer || !provider || ignoreUnauthorized ||
+          apiErrorCode(new ApiError(res.status, data)) === "unmapped_identity") break;
+      bearer = await Promise.race([refreshBearer(provider), aborted]);
+      if (!bearer) {
+        confirmedUnauthorized = false;
+        break;
+      }
+    }
   } finally {
     clearTimeout(timer);
     init.signal?.removeEventListener("abort", abort);
   }
   assertLiveGeneration(generation);
-  let data: unknown = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-  }
   if (!res.ok) {
     // Expired/invalid bearer — wipe local auth so the routing gate leaves (tabs).
     // Login 401 is wrong password, not session death; skip that path.
@@ -607,7 +656,8 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
     // was read back from the phone. Treating it as expiry deleted the very
     // session that was still loading, which signed the rider out on every cold
     // start.
-    if (!ignoreUnauthorized && sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
+    if (!ignoreUnauthorized && sentBearer && confirmedUnauthorized &&
+        shouldInvalidateSessionOnStatus(res.status, path)) {
       tokenMemory = null;
       unauthorizedHandler?.();
     }
@@ -686,7 +736,7 @@ export function captureLogoutBearer(): Promise<string | null> {
   if (!provider) return Promise.resolve(token);
   return new Promise((resolve) => {
     const deadline = setTimeout(() => resolve(null), 2_500);
-    void Promise.resolve().then(provider).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
+    void Promise.resolve().then(() => provider()).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
   });
 }
 
