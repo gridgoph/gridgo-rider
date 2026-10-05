@@ -1033,16 +1033,55 @@ export async function submitPickupChecklist(
  *
  * The file must be attached to the order first — see `lib/attachments.ts`.
  * Success moves the job to delivered and opens the issue window in one step.
+ *
+ * `otp` is the handover code from `getHandover`, sent only when the order has
+ * one; the server refuses a governed delivery without it
+ * (`409 handover_otp_mismatch`, `429 handover_attempts_exceeded`).
  */
 export async function recordDelivery(
   orderId: string,
-  evidence: { evidenceFileId: string; evidenceType: "photo" | "signature" },
+  evidence: { evidenceFileId: string; evidenceType: "photo" | "signature"; otp?: string },
 ): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {
     method: "POST",
     body: JSON.stringify(evidence),
   });
   return result.order;
+}
+
+/**
+ * The handover code the client also holds, for a delivery at the door.
+ *
+ * Null when the order has none: the setting was off when it became ready, the
+ * code is already used, or the API predates handover codes (404). The server
+ * answers only the assigned rider, and only for a delivery — never ask for a
+ * job that ends at GRIDGO Office. See gridgo-api `docs/HUB_HANDOVER_API.md`.
+ */
+export async function getHandover(orderId: string): Promise<{ otp: string } | null> {
+  try {
+    const result = await request<{ handover: { otp?: string } | null }>(
+      `/orders/${encodeURIComponent(orderId)}/handover`,
+    );
+    const otp = result.handover?.otp;
+    return typeof otp === "string" && otp ? { otp } : null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404 && apiErrorCode(error) !== "order_not_found") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Tell Operations the client's code did not match. Records the reason and
+ * alerts Operations and Super Admin; it is not an override, so the delivery
+ * stays blocked. Repeating it is harmless — the first report is the one kept.
+ */
+export async function escalateHandover(orderId: string, reason: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/handover/escalate`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export type OperationalSettings = {
@@ -1258,6 +1297,16 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "delivery_evidence_required":
       case "invalid_delivery_evidence_type":
         return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
+      case "handover_otp_mismatch":
+        return "The handover code did not match. Do not hand the package over — escalate to Operations.";
+      case "handover_attempts_exceeded":
+        return "Too many codes were refused on this job, so it is locked for a few minutes. Keep the package and escalate to Operations.";
+      case "handover_already_completed":
+        return "This handover is already recorded. Go back to the trip to see where the job is now.";
+      case "handover_not_ready":
+        return "This job has no handover code to check right now. Go back to the trip and pull down to refresh it.";
+      case "handover_verification_required":
+        return "This delivery needs the client's handover code. Open the delivery step and check the codes.";
       case "email_already_registered":
         /*
           Two situations arrive as the same refusal, and the app cannot tell them

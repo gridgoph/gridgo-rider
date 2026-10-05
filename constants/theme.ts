@@ -117,6 +117,8 @@ export type ColorToken = keyof typeof colors.light;
  */
 export const typography = {
   display: { fontSize: 32, lineHeight: 38, fontFamily: fontFamily.bold },
+  /** The handover code only — see `text-code` in global.css. */
+  code: { fontSize: 56, lineHeight: 64, letterSpacing: 4, fontFamily: fontFamily.black },
   h1: { fontSize: 28, lineHeight: 34, fontFamily: fontFamily.bold },
   h2: { fontSize: 24, lineHeight: 30, fontFamily: fontFamily.bold },
   h3: { fontSize: 20, lineHeight: 26, fontFamily: fontFamily.bold },
