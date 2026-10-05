@@ -18,6 +18,8 @@ jest.mock("@/lib/api", () => ({
   health: jest.fn(),
   storageStatus: () => "available",
   recordDelivery: jest.fn(),
+  // No handover code on these jobs: the receipt is the subject here.
+  getHandover: jest.fn(() => Promise.resolve(null)),
 }));
 
 /** Evidence already stored, so the only thing left on the screen is the receipt. */

@@ -38,6 +38,18 @@ describe("no internal identifier reaches a rider's screen", () => {
     ).toMatch(/vehicle/i);
   });
 
+  it("tells the rider to hold the package when the handover code is refused", () => {
+    expect(
+      apiErrorMessage(new ApiError(409, { error: "handover_otp_mismatch" }), FALLBACK),
+    ).toMatch(/do not hand the package over.*escalate to operations/i);
+    expect(
+      apiErrorMessage(new ApiError(429, { error: "handover_attempts_exceeded" }), FALLBACK),
+    ).toMatch(/keep the package and escalate to operations/i);
+    expect(
+      apiErrorMessage(new ApiError(409, { error: "handover_already_completed" }), FALLBACK),
+    ).toMatch(/already recorded/i);
+  });
+
   it("falls back to the caller's sentence for an unmapped code", () => {
     // This is the regression: the old code returned the raw string, so a rider
     // saw "cod_already_collected" on the screen.
