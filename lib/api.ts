@@ -320,7 +320,13 @@ export type Device = {
 };
 
 let tokenMemory: string | null = null;
-let tokenProvider: (() => Promise<string | null>) | null = null;
+/**
+ * `skipCache` asks Clerk to mint a new JWT rather than answer from its cache.
+ * Only {@link request} sets it, and only after a `401` on a token it had
+ * already sent — every other read stays on the cheap path.
+ */
+type TokenProvider = (options?: { skipCache?: boolean }) => Promise<string | null>;
+let tokenProvider: TokenProvider | null = null;
 
 /** Fired when a request proves the bearer is invalid (401, not login). */
 let unauthorizedHandler: (() => void) | null = null;
@@ -485,9 +491,7 @@ export function setToken(token: string | null): void {
 }
 
 /** Install Clerk's fresh-token reader without changing any domain call site. */
-export function setTokenProvider(
-  provider: (() => Promise<string | null>) | null,
-): () => void {
+export function setTokenProvider(provider: TokenProvider | null): () => void {
   tokenProvider = provider;
   return () => {
     if (tokenProvider === provider) tokenProvider = null;
@@ -506,13 +510,31 @@ export function getToken(): string | null {
  * uploads used to read memory and went out with no Authorization, which the
  * Android stack then reported as a dead connection.
  */
-export async function resolveBearer(): Promise<string | null> {
+export async function resolveBearer(options?: { skipCache?: boolean }): Promise<string | null> {
   const provider = tokenProvider;
   if (!provider) return tokenMemory;
-  const token = await provider();
+  const token = await provider(options);
   // A superseded identity must never fall back to a previous legacy bearer.
   if (provider !== tokenProvider) return null;
   return token?.trim() || null;
+}
+
+let bearerRefresh: { provider: TokenProvider; promise: Promise<string | null> } | null = null;
+
+/**
+ * Ask Clerk for a newly minted bearer, never throwing. Requests refused in the
+ * same moment — Alerts, the trip and `/auth/me` all poll together — share one
+ * mint rather than each spending a Clerk round trip.
+ */
+function refreshBearer(provider: TokenProvider): Promise<string | null> {
+  if (bearerRefresh?.provider === provider) return bearerRefresh.promise;
+  const promise = resolveBearer({ skipCache: true })
+    .catch(() => null)
+    .finally(() => {
+      if (bearerRefresh?.promise === promise) bearerRefresh = null;
+    });
+  bearerRefresh = { provider, promise };
+  return promise;
 }
 
 /**
@@ -575,29 +597,56 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
   init.signal?.addEventListener("abort", abort, { once: true });
   if (init.signal?.aborted) abort();
   let res: Response;
-  let text: string;
+  let data: unknown = null;
   let sentBearer = false;
+  /*
+    Whether a 401 has been confirmed rather than merely received.
+
+    gridgo-api answers 401 to *any* token it could not verify — a JWT that
+    expired while a slow request was queued, or a key lookup that timed out on
+    a loaded server — and the unauthorized handler ends the Clerk session. On
+    its own that 401 signed an idle rider out mid-shift (gridgo-rider#77). So
+    a Clerk bearer gets one newly minted replacement and one more try, as in
+    gridgo-client and gridgo-supplier. Only a refusal of that fresh token is a
+    verdict. If Clerk cannot mint one, the request fails without signing anyone
+    out: a revoked Clerk session ends through the bridge, which watches Clerk
+    itself, and a dead connection is not a revocation.
+  */
+  let confirmedUnauthorized = true;
   try {
-    const bearer = await Promise.race([resolveBearer(), aborted]);
-    assertLiveGeneration(generation);
-    if (controller.signal.aborted) await aborted;
-    sentBearer = Boolean(bearer);
-    if (bearer) { headers.Authorization = `Bearer ${bearer}`; headers["X-GRIDGO-Role"] = "rider"; }
-    res = await Promise.race([fetch(`${getApiBase()}${path}`, { ...fetchInit, headers, signal: controller.signal }), aborted]);
-    text = await Promise.race([res.text(), aborted]);
+    const provider = tokenProvider;
+    let bearer = await Promise.race([resolveBearer(), aborted]);
+    for (let attempt = 0; ; attempt += 1) {
+      assertLiveGeneration(generation);
+      if (controller.signal.aborted) await aborted;
+      sentBearer = Boolean(bearer);
+      if (bearer) { headers.Authorization = `Bearer ${bearer}`; headers["X-GRIDGO-Role"] = "rider"; }
+      res = await Promise.race([fetch(`${getApiBase()}${path}`, { ...fetchInit, headers: { ...headers }, signal: controller.signal }), aborted]);
+      const text = await Promise.race([res.text(), aborted]);
+      assertLiveGeneration(generation);
+      data = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+      // A probe never signs anyone out, and an unmapped identity is an answer
+      // about the account; a fresher token changes nothing about either.
+      if (res.status !== 401 || attempt > 0 || !sentBearer || !provider || ignoreUnauthorized ||
+          apiErrorCode(new ApiError(res.status, data)) === "unmapped_identity") break;
+      bearer = await Promise.race([refreshBearer(provider), aborted]);
+      if (!bearer) {
+        confirmedUnauthorized = false;
+        break;
+      }
+    }
   } finally {
     clearTimeout(timer);
     init.signal?.removeEventListener("abort", abort);
   }
   assertLiveGeneration(generation);
-  let data: unknown = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-  }
   if (!res.ok) {
     // Expired/invalid bearer — wipe local auth so the routing gate leaves (tabs).
     // Login 401 is wrong password, not session death; skip that path.
@@ -607,7 +656,8 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
     // was read back from the phone. Treating it as expiry deleted the very
     // session that was still loading, which signed the rider out on every cold
     // start.
-    if (!ignoreUnauthorized && sentBearer && shouldInvalidateSessionOnStatus(res.status, path)) {
+    if (!ignoreUnauthorized && sentBearer && confirmedUnauthorized &&
+        shouldInvalidateSessionOnStatus(res.status, path)) {
       tokenMemory = null;
       unauthorizedHandler?.();
     }
@@ -686,7 +736,7 @@ export function captureLogoutBearer(): Promise<string | null> {
   if (!provider) return Promise.resolve(token);
   return new Promise((resolve) => {
     const deadline = setTimeout(() => resolve(null), 2_500);
-    void Promise.resolve().then(provider).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
+    void Promise.resolve().then(() => provider()).then(resolve, () => resolve(null)).finally(() => clearTimeout(deadline));
   });
 }
 
@@ -983,16 +1033,55 @@ export async function submitPickupChecklist(
  *
  * The file must be attached to the order first — see `lib/attachments.ts`.
  * Success moves the job to delivered and opens the issue window in one step.
+ *
+ * `otp` is the handover code from `getHandover`, sent only when the order has
+ * one; the server refuses a governed delivery without it
+ * (`409 handover_otp_mismatch`, `429 handover_attempts_exceeded`).
  */
 export async function recordDelivery(
   orderId: string,
-  evidence: { evidenceFileId: string; evidenceType: "photo" | "signature" },
+  evidence: { evidenceFileId: string; evidenceType: "photo" | "signature"; otp?: string },
 ): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {
     method: "POST",
     body: JSON.stringify(evidence),
   });
   return result.order;
+}
+
+/**
+ * The handover code the client also holds, for a delivery at the door.
+ *
+ * Null when the order has none: the setting was off when it became ready, the
+ * code is already used, or the API predates handover codes (404). The server
+ * answers only the assigned rider, and only for a delivery — never ask for a
+ * job that ends at GRIDGO Office. See gridgo-api `docs/HUB_HANDOVER_API.md`.
+ */
+export async function getHandover(orderId: string): Promise<{ otp: string } | null> {
+  try {
+    const result = await request<{ handover: { otp?: string } | null }>(
+      `/orders/${encodeURIComponent(orderId)}/handover`,
+    );
+    const otp = result.handover?.otp;
+    return typeof otp === "string" && otp ? { otp } : null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404 && apiErrorCode(error) !== "order_not_found") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Tell Operations the client's code did not match. Records the reason and
+ * alerts Operations and Super Admin; it is not an override, so the delivery
+ * stays blocked. Repeating it is harmless — the first report is the one kept.
+ */
+export async function escalateHandover(orderId: string, reason: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/handover/escalate`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export type OperationalSettings = {
@@ -1208,6 +1297,16 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "delivery_evidence_required":
       case "invalid_delivery_evidence_type":
         return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
+      case "handover_otp_mismatch":
+        return "The handover code did not match. Do not hand the package over — escalate to Operations.";
+      case "handover_attempts_exceeded":
+        return "Too many codes were refused on this job, so it is locked for a few minutes. Keep the package and escalate to Operations.";
+      case "handover_already_completed":
+        return "This handover is already recorded. Go back to the trip to see where the job is now.";
+      case "handover_not_ready":
+        return "This job has no handover code to check right now. Go back to the trip and pull down to refresh it.";
+      case "handover_verification_required":
+        return "This delivery needs the client's handover code. Open the delivery step and check the codes.";
       case "email_already_registered":
         /*
           Two situations arrive as the same refusal, and the app cannot tell them

@@ -16,7 +16,7 @@ jest.mock("@/hooks/useLiveRefresh", () => ({ useLiveRefresh: jest.fn() }));
 jest.mock("@/lib/live", () => ({ liveGeneration: () => 1 }));
 jest.mock("@/lib/api", () => ({
   getOrder: jest.fn(), health: jest.fn(), storageStatus: () => "available",
-  recordDelivery: jest.fn(), ApiError: class ApiError extends Error {},
+  recordDelivery: jest.fn(), getHandover: jest.fn(() => Promise.resolve(null)), ApiError: class ApiError extends Error {},
   apiErrorMessage: (_error, fallback) => fallback,
 }));
 jest.mock("@/store/activeTrip", () => ({ useActiveTrip: () => jest.fn() }));
@@ -26,6 +26,7 @@ jest.mock("@/hooks/useProofEvidence", () => ({ useProofEvidence: () => ({
 }) }));
 jest.mock("@/components/BlockingOverlay", () => ({ BlockingOverlay: "BlockingOverlay" }));
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: "EvidenceCapture" }));
+jest.mock("@/components/HandoverCodeCard", () => ({ HandoverCodeCard: "HandoverCodeCard" }));
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
 jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));
 jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptReminder" }));

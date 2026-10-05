@@ -101,7 +101,8 @@ export function useClerkSessionBridge(): boolean {
     // metadata. Membership is the API projection, not Clerk publicMetadata.
     beginClerkSession();
     handledSession.current = sessionId;
-    const removeProvider = api.setTokenProvider(() => getToken());
+    const removeProvider = api.setTokenProvider((options) =>
+      getToken(options?.skipCache ? { skipCache: true } : undefined));
     let cancelled = false;
 
     void adoptClerkSession().then((adoption) => {
