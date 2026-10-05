@@ -168,7 +168,7 @@ export default function DeliveryProofScreen() {
       setEscalateError(
         api.apiErrorMessage(
           e,
-          "Operations was not alerted. Keep the package, check your connection and try again — or call Operations.",
+          "Keep the package with you, check your connection and try again — or call Operations.",
         ),
       );
     } finally {

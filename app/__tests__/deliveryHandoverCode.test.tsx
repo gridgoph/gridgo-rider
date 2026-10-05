@@ -181,6 +181,21 @@ describe("the handover code at the door", () => {
     expect(button(/escalate to operations/i)).toBeTruthy();
   });
 
+  it("starts the failed escalation's body with what to do, not a repeat of its title", async () => {
+    api.escalateHandover.mockRejectedValue(new ApiError(500, { error: "internal_error" }));
+    await render(<DeliveryProofScreen />);
+    await screen.findByText("Handover code");
+
+    await fireEvent.press(button(/codes don't match/i));
+    await fireEvent.press(button(/escalate to operations/i));
+
+    await screen.findByText("Operations was not alerted");
+    expect(screen.getAllByText(/Operations was not alerted/)).toHaveLength(1);
+    expect(
+      screen.getByText(/^Keep the package with you, check your connection and try again/),
+    ).toBeTruthy();
+  });
+
   it("lets a rider who misread the screen check the codes again", async () => {
     await render(<DeliveryProofScreen />);
     await screen.findByText("Handover code");
