@@ -129,7 +129,7 @@ export type SupplierContact = {
 };
 
 /**
- * One half of the client's digital payment.
+ * One installment of the client's digital payment.
  *
  * The rider is shown the *status* and never the amount: what the client paid is
  * not the rider's business now that no money changes hands at the door.
@@ -137,6 +137,7 @@ export type SupplierContact = {
 export type PaymentInstallmentStatus =
   | "not_submitted"
   | "pending_confirmation"
+  | "not_required"
   | "confirmed"
   | "legacy_confirmed";
 

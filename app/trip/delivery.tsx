@@ -47,9 +47,9 @@ import { useActiveTrip } from "@/store/activeTrip";
  * milestone. The server binds a file to one purpose only, so the alternative
  * was asking a rider to photograph the same doorstep twice.
  *
- * No money is handled here and none is shown. On a delivery the client's final
- * 25% is confirmed by Operations before this screen will let anything through —
- * which is a status the rider needs, not an amount.
+ * No money is handled here and none is shown. On a delivery the client's
+ * balance must be confirmed by Operations or not required because the order
+ * was paid in full — a status the rider needs, not an amount.
  *
  * A collected job is the other shape entirely: the far end is GRIDGO's own
  * counter, so there is nobody to hand it to and nothing to be paid. Holding a
@@ -119,7 +119,7 @@ export default function DeliveryProofScreen() {
   const blocked = !order
     ? "Loading the job."
     : balanceHeld
-      ? "Operations has not confirmed the client's final payment. Call them before you hand the package over."
+      ? "Operations has not confirmed the client's balance due. Call them before you hand the package over."
       : codeBlock ?? evidenceBlockReason(
           evidence.evidence,
           evidence.upload,
@@ -208,8 +208,8 @@ export default function DeliveryProofScreen() {
               <InlineNotice
                 tone="warning"
                 icon="triangle-alert"
-                title="The client's final payment is not confirmed yet"
-                body="GRIDGO cannot close a delivery until Operations has confirmed it. Do not hand the package over — call Operations, and check again once they have."
+                title="The client's balance is not confirmed yet"
+                body="GRIDGO cannot close a delivery with a balance due until Operations has confirmed it. Do not hand the package over — call Operations, and check again once they have."
                 actionLabel="Check again"
                 onAction={() => void reload()}
               />

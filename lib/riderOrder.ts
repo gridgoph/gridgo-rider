@@ -108,14 +108,6 @@ export function zoneLabel(zone: string): string {
 }
 
 /**
- * Whether the client's final 25% has been confirmed by Operations.
- *
- * The server refuses to record a delivery until it has, so the rider is told
- * before they knock rather than after they have handed the package over. The
- * amount is deliberately not part of this: no money changes hands at the door
- * any more, so a peso figure here would only invite a rider to ask for it.
- */
-/**
  * Whether this job ends on GRIDGO's own counter rather than in someone's hands.
  *
  * A collected job still travels — the client fetches it from GRIDGO Office, so
@@ -128,11 +120,12 @@ export function endsAtOffice(order: Pick<Order, "fulfillmentMode">): boolean {
   return order.fulfillmentMode === "pickup";
 }
 
+/** A confirmed balance, or no balance due, permits delivery at the door. */
 export function isBalanceConfirmed(order: Pick<Order, "payments">): boolean {
   // The API returns final_online; balance is retained for older responses.
   // A stale alias must never override the authoritative installment.
   const status = (order.payments?.final_online ?? order.payments?.balance)?.status;
-  return status === "confirmed" || status === "legacy_confirmed";
+  return status === "confirmed" || status === "legacy_confirmed" || status === "not_required";
 }
 
 /** True once the six checks have passed and the package may be carried. */
