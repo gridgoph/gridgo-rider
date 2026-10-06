@@ -1,68 +1,98 @@
-# Android release crash investigation
+# Android release timeline crash
 
-Checkpoint: 2026-10-06. The reported crash is not yet reproduced. No fix is proposed.
+## Cause
 
-## Released APK checks
+A rider order's public timeline intentionally has no actor field. The app typed
+`by` as required and called `by.startsWith(...)` while rendering `TripTimeline`.
+A nonempty projected timeline therefore throws during render and terminates
+release React Native JavaScript on Android.
 
-Tested the official signed GitHub release APKs on Pixel_API_35 (Android 15,
-x86_64). No physical device was available.
+The phone crash buffer contains three matching failures on 2026-10-06. A
+sanitized excerpt from the first:
 
-- v1.0.102 opened and displayed the welcome, update, and sign-in screens.
-- v1.0.107 installed over v1.0.102 successfully. Android reported versionCode
-  107 and versionName 1.0.107.
-- v1.0.107 stayed running through signed-out idle, background/foreground
-  transitions, notification permission being granted while backgrounded,
-  and a cold launch followed by backgrounding after one second and reopening.
-- The documented development credentials were rejected by production on both
-  releases. Authenticated job and delivery paths have **not** been tested.
-- The Android crash buffer was empty. Collected logs contained no fatal
-  exception. Historical process exits showed only the package update and the
-  intentional force-stop used for the cold-launch check.
+```text
+10-06 12:33:45.156 E AndroidRuntime: FATAL EXCEPTION: mqt_v_native
+E AndroidRuntime: com.facebook.react.common.JavascriptException:
+  TypeError: Cannot read property 'startsWith' of undefined
+E AndroidRuntime: timelineActorLabel@1:2947379
+E AndroidRuntime: TripTimeline@1:3018909
+```
 
-This does not rule out a crash during authenticated work or on a physical
-Android device. There is no established trigger, masking condition, or cause.
+The trigger is rendering a progress row without `by`. Signed-out screens,
+empty timelines, and legacy fixtures containing actors mask it. The visible
+symptom is Android closing the app and reporting that it keeps stopping.
 
-APK SHA-256:
+## API trace
 
-| Release | SHA-256 |
-| --- | --- |
-| v1.0.102 | `4d335dd608cf5cdb1e758ad3f2d0ff09a2eb5b5e32f49690788358317bf08ef5` |
-| v1.0.107 | `062d38dd0bda7f0202370315456582872341c308f5e85aaefbc8d2e8da051b26` |
+The API contract, `docs/OPERATIONAL_MODEL_V2_API.md` → production progress,
+explicitly defines client/rider timeline entries as `{ at, state, note }`.
 
-## Static review so far
+- `src/server.js`: `GET /orders`, `GET /orders/:id`, `GET /dispatch/offers`, and
+  dispatch mutation responses pass through `publicOrder`.
+- `publicOrder` calls `publicOrderFor` in `src/operational-model.js`.
+- For readers other than Operations or the assigned supplier, `publicOrderFor`
+  replaces history with `publicProgressTimeline(order.timeline)`.
+- `src/production-progress.js` constructs only `at`, `state`, and a public
+  progress note. Actors, private notes, and internal metadata are deliberately
+  excluded. This source change originated in API commit `deb16f5`.
+- Existing API tests in `tests/operational-model.test.js` explicitly assert the
+  actor-free client/rider projection and preserved supplier/Operations history.
 
-The diff from v1.0.102 to v1.0.107 adds Clerk token retry, the delivery handover
-code, and escalation copy. It contains no dependency or native configuration
-changes. This comparison has not established a causal divergence.
+The rider's active-trip refresh consumes `GET /orders`; past-job details consume
+`GET /orders/:id`. Both render the same `TripTimeline`. There is no API defect to
+fix and no reason to restore private actor fields.
 
-- `hooks/useTripTracking.ts` disables tracking outside the foreground.
-- `hooks/useRiderLocation.ts` uses foreground permission and
-  `Location.watchPositionAsync`, with cleanup and caught setup errors.
-- Application call sites contain no `startLocationUpdatesAsync`, background
-  task definition, or explicit foreground-service start.
-- `lib/arrivalNotify.ts` schedules an immediate notification and catches
-  failures. It does not request an exact timed alarm.
-- `store/push.ts` creates the notification channel before reading permission.
+## Fix and regression evidence
 
-These are observations, not proof that every native path is safe. The service
-implementations, merged manifest, and authenticated runtime still need review.
+`timelineActorLabel` accepts unknown input and labels missing, null, non-string,
+or blank actors `GRIDGO`. Legacy actor strings retain their existing labels;
+raw IDs remain hidden. The order type makes the legacy actor optional.
 
-## Resume plan
+Before the fix, the new helper cases and the real `TripTimeline` render using
+actor-free API-shaped rows failed: nine failures, including the same
+`startsWith` exception. After the fix, all 48 tests in those two suites passed.
+The render test checks that both progress notes, the current status, and the
+fallback actor labels remain visible.
 
-1. Build a debug-signed **release variant** pointing to the development API and
-   development Clerk application, retaining the release native settings and
-   Firebase configuration. Use the existing generated Android project and
-   ignored local configuration. No Gradle build had started at this checkpoint.
-2. Confirm the generated release settings against CI, including Hermes and
-   shrinking flags; do not enable additional optimizations just for this test.
-3. Install on the supervisor-managed emulator, authenticate as a development
-   rider, go online, and exercise a safe test job.
-4. Capture logcat through at least 15 minutes with the screen off, then
-   background/foreground and continue job screens.
-5. Continue native service/configuration review and obtain the failing phone's
-   crash log in parallel. Fix only a concrete, evidenced crash path, add a
-   regression test, and validate the release variant before opening a PR.
+## Earlier emulator checks and limits
 
-Raw logs, APKs, screenshots, generated native files, and environment files are
-local ignored artifacts. They are intentionally absent from this checkpoint
-because logs and configuration require privacy review before publication.
+Official signed v1.0.102 and v1.0.107 opened on API 35/x86_64, and v1.0.107
+installed over v1.0.102. Signed-out idle, background/foreground, notification
+permission grant, and cold-launch checks did not crash. Production rejected the
+documented development credentials, so these checks never reached a timeline.
+The vulnerable helper is unchanged between the two release tags.
+
+A local Hermes release variant built successfully using development services,
+debug signing, x86_64, and unchanged release shrinking settings. Testing required
+local-only HTTP permission and a bundle-only bypass of the production Clerk-key
+guard; tracked source was restored. Its documented development password was
+also rejected. The phone log then established the cause, and emulator work was
+stopped. These builds are diagnostic artifacts, not fixed release validation.
+No APK was installed on the connected physical phone.
+
+## Sibling audit
+
+- Client: `lib/copy.ts:actorLabel` guards missing/null actors; the caller in
+  `lib/orderHistory.ts` also skips absent actors. Truthy non-string actors can
+  still throw from string methods.
+- Supplier: `lib/jobState.ts:presentTimelineActor` calls `by.startsWith` without
+  a type guard; `components/JobTimeline.tsx` passes `entry.by` directly. It has
+  the same latent missing-actor risk, although the assigned-supplier API
+  projection normally preserves raw actors.
+
+Those applications were inspected only. This change fixes the rider consumer.
+
+## Validation
+
+- Full Jest suite: 136 suites / 1,031 tests passed (`--ci --maxWorkers=2`).
+- TypeScript: `npx tsc --noEmit` passed.
+- Expo public configuration resolves successfully.
+- ESLint on all changed TypeScript files passed. Full `npm run lint` reports
+  one pre-existing `react-hooks/set-state-in-effect` error in unchanged
+  `components/SupportChatConversation.tsx:95`, plus 13 existing warnings.
+- Browser counterfactual: the real `TripTimeline` in a temporary fixture route
+  fails with the old helper and renders with the guarded helper at 390×844 and
+  1280×900. The fixture route was removed after capture. Screenshots are in
+  `docs/screenshots/timeline-crash/`; these are component checks, not a claim
+  that a complete delivery was tested on the fixed Android binary.
+- Fixed signed release validation remains part of promotion/release follow-up.
