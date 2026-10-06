@@ -320,15 +320,15 @@ export function sortTimelineNewestFirst<T extends { at: string }>(
     .map(({ entry }) => entry);
 }
 
-/** Actor label for timeline rows. Never show raw user ids. */
-export function timelineActorLabel(by: string, selfId?: string | null): string {
+/** Rider progress omits actors; older API rows may still name one. Never show raw ids. */
+export function timelineActorLabel(by: unknown, selfId?: string | null): string {
+  if (typeof by !== "string" || !by.trim()) return "GRIDGO";
   if (selfId && by === selfId) return "You";
   if (by === "system") return "System";
   if (by === "user_rider") return "Rider";
   if (by === "user_supplier") return "Supplier";
   if (by === "user_client") return "Client";
   if (by === "user_ops" || by === "user_admin") return "Operations";
-  if (by.startsWith("user_")) return "Team member";
   return "Team member";
 }
 
