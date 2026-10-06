@@ -141,14 +141,14 @@ export const DISPATCH_OFFER_TYPES = new Set([
  * - An **announcement**, or any alert with no job, opens **Alerts** — the
  *   contract's instruction for `type: "announcement"` and for an unknown
  *   type. Alerts is a pushed route here, not a tab.
- * - A **dispatch offer** opens **Offers**, which is where Accept lives.
+ * - A **dispatch offer** opens that job in **Offers**, where Accept lives.
  * - Any other alert that names a job opens **Active**, which is the trip
  *   in hand (pickup checks, sign-off, delivery). The push carries no order
  *   state, so Active fetches the trip as it always does.
  */
 export function pushTargetRoute(data: PushData): string {
   if (data.type === "announcement" || !data.orderId) return "/alerts";
-  if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return "/(tabs)/offers";
+  if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/offers?orderId=${encodeURIComponent(data.orderId)}`;
   return "/(tabs)/active";
 }
 

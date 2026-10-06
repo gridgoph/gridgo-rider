@@ -1,3 +1,4 @@
+import * as Notifications from "expo-notifications";
 import {act,renderHook} from "@testing-library/react-native";
 import {usePushNotifications} from "@/hooks/usePushNotifications";
 import {useSession} from "@/store/session";
@@ -55,4 +56,20 @@ it("waits for session hydration to finish after the navigator is ready",async()=
   await act(async()=>{useSession.setState({loading:false});});
   await act(async()=>{jest.advanceTimersByTime(100);});
   expect(mockPush).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(["cold start", "background"])("opens the exact authorized offer from %s once", async (mode) => {
+  mockReady = true;
+  const offerResponse = {notification:{request:{identifier:"offer-tap",content:{data:{notificationId:"offer-notice",orderId:"untrusted",type:"announcement"}}}}};
+  (api.listNotifications as jest.Mock).mockResolvedValue([{id:"offer-notice",orderId:"actual-job",type:"dispatch_available"}]);
+  mockLast.mockResolvedValue(mode === "cold start" ? offerResponse : null);
+  await renderHook(() => usePushNotifications());
+  if (mode === "background") {
+    const onTap = (Notifications.addNotificationResponseReceivedListener as jest.Mock).mock.calls.at(-1)[0];
+    await act(async () => { onTap(offerResponse); onTap(offerResponse); });
+  }
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  expect(mockPush).toHaveBeenCalledWith("/(tabs)/offers?orderId=actual-job");
 });

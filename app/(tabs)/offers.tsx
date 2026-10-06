@@ -1,6 +1,6 @@
 import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
@@ -31,6 +31,8 @@ import { useSession } from "@/store/session";
  */
 export default function OffersScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ orderId?: string | string[] }>();
+  const selectedId = typeof params.orderId === "string" ? params.orderId : null;
   const colors = useThemeColors();
   const user = useSession((s) => s.user);
   const userId = user?.id;
@@ -45,6 +47,7 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const hasActive = Boolean(activeTrip);
+  const visibleOffers = selectedId ? offers?.filter(job => job.id === selectedId) : offers;
   const approval = approvalPresentation(user);
 
   const nextRead = useReadVersion();
@@ -152,6 +155,17 @@ export default function OffersScreen() {
 
         <PushEnableCard />
 
+        {selectedId && approval.canWork && offers !== null && !error ? (
+          <InlineNotice
+            tone="info"
+            icon="info"
+            title={visibleOffers?.length ? "Job from your alert" : "This job is no longer available"}
+            body={visibleOffers?.length ? "Review the pickup and delivery before accepting." : "Another rider may have accepted it, or its availability changed."}
+            actionLabel="View all offers"
+            onAction={() => router.setParams({ orderId: undefined })}
+          />
+        ) : null}
+
         {/*
           One job at a time. With a trip in hand and nothing else waiting, the
           rule is the whole answer, so it fills the screen rather than sitting
@@ -189,9 +203,9 @@ export default function OffersScreen() {
 
         {offers === null && approval.canWork ? <OfferListSkeleton /> : null}
 
-        {offers?.length && approval.canWork ? (
+        {visibleOffers?.length && approval.canWork ? (
           <View className="gap-4">
-            {offers.map((job) => (
+            {visibleOffers.map((job) => (
               <OfferCard
                 key={job.id}
                 offer={job}
@@ -208,7 +222,7 @@ export default function OffersScreen() {
           and offers the next step, so an empty state repeating it would be a
           second invitation to the same place.
         */}
-        {approval.canWork && offers !== null && !offers.length && !error && !hasActive ? (
+        {approval.canWork && offers !== null && !offers.length && !error && !hasActive && !selectedId ? (
           <EmptyState
             icon="offers"
             title="No open offers"
