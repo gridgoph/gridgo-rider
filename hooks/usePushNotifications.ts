@@ -112,7 +112,7 @@ export function usePushNotifications(): void {
         const owned = items.find((item) => item.id === data.notificationId);
         // Older notifications may be outside the inbox page. The authorized inbox is a safe fallback.
         data.orderId = owned?.orderId ?? null;
-        if (!owned) data.type = null;
+        data.type = owned?.type ?? null;
       } else if (data.orderId) {
         await api.getOrder(data.orderId);
       }

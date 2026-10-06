@@ -10,8 +10,10 @@ import { useSession } from "@/store/session";
 
 import OffersScreen from "@/app/(tabs)/offers";
 
+let mockOrderId: string | undefined;
 jest.mock("expo-router", () => ({
-  router: { replace: jest.fn(), push: jest.fn() },
+  useLocalSearchParams: () => ({ orderId: mockOrderId }),
+  router: { replace: jest.fn(), push: jest.fn(), setParams: jest.fn() },
   useRouter: () => jest.requireMock("expo-router").router,
   useFocusEffect: (callback: () => void) => {
     const { useEffect } = jest.requireActual<typeof import("react")>("react");
@@ -102,6 +104,7 @@ describe("Offers accept button", () => {
   let view: Awaited<ReturnType<typeof render>> | undefined;
 
   beforeEach(() => {
+    mockOrderId = undefined;
     jest.clearAllMocks();
     useSession.setState({
       user: rider,
@@ -214,4 +217,37 @@ describe("Offers accept button", () => {
       finishFirst(activeJob);
     });
   });
+});
+
+
+it("opens only the job named by the alert and can return to the pool", async () => {
+  jest.clearAllMocks();
+  mockOrderId = "alert_job";
+  useSession.setState({ user: rider });
+  useActiveTrip.setState({ order: null });
+  api.listOrders.mockResolvedValue([]);
+  api.listOffers.mockResolvedValue([
+    order({id:"other_job",state:"ready_for_dispatch",title:"Other offer"}),
+    order({id:"alert_job",state:"ready_for_dispatch",title:"Alert offer"}),
+  ]);
+  const view = await render(<OffersScreen />);
+  expect(await screen.findByText("Alert offer")).toBeTruthy();
+  expect(screen.queryByText("Other offer")).toBeNull();
+  expect(api.acceptOffer).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByText("View all offers"));
+  expect(jest.requireMock("expo-router").router.setParams).toHaveBeenCalledWith({orderId:undefined});
+  await view.unmount();
+});
+
+it("explains a stale job alert without substituting another offer", async () => {
+  jest.clearAllMocks();
+  mockOrderId = "gone";
+  useSession.setState({ user: rider });
+  useActiveTrip.setState({ order: null });
+  api.listOrders.mockResolvedValue([]);
+  api.listOffers.mockResolvedValue([order({id:"other_job",state:"ready_for_dispatch",title:"Other offer"})]);
+  const view = await render(<OffersScreen />);
+  expect(await screen.findByText("This job is no longer available")).toBeTruthy();
+  expect(screen.queryByText("Other offer")).toBeNull();
+  await view.unmount();
 });

@@ -520,3 +520,14 @@ it("cancels an old account's token lookup and lets the next account register", a
     jest.useRealTimers();
   }
 });
+
+
+it("registers the rotation event token even if the native getter still has the previous token", async () => {
+  usePush.setState({permission:"granted",token:"previous-token"});
+  const register = jest.spyOn(api,"registerDevice").mockResolvedValue({} as never);
+  try {
+    await usePush.getState().adoptToken("fresh-token");
+    expect(register).toHaveBeenCalledWith("fresh-token","android",expect.any(AbortSignal));
+    expect(mocked.getDevicePushTokenAsync).not.toHaveBeenCalled();
+  } finally { register.mockRestore(); }
+});
