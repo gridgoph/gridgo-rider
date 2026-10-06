@@ -245,7 +245,8 @@ export type Order = {
   updatedAt: string;
   cancelledAt?: string | null;
   cancellationReason?: string | null;
-  timeline: { at: string; state: string; by: string; note: string }[];
+  // Rider progress omits actors; keep compatibility with older API history.
+  timeline: { at: string; state: string; by?: string | null; note: string }[];
   /** Supplier pickup stop with lat/lng from the API. */
   pickup?: OrderStop | null;
   /** Client drop-off stop with lat/lng from the API. */

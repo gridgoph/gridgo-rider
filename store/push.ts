@@ -82,7 +82,7 @@ type PushState = {
    */
   enable: () => Promise<boolean>;
   /** Launch, sign-in and token rotation all land here. No dialog is raised. */
-  registerIfGranted: () => Promise<void>;
+  registerIfGranted: (refreshedToken?: string) => Promise<void>;
   /**
    * GRIDGO came back to the front. The rider may have just allowed
    * notifications in the phone's settings (or turned them off), so the
@@ -201,7 +201,7 @@ export const usePush = create<PushState>((set, get) => ({
     return get().permission === "granted";
   },
 
-  registerIfGranted: () => {
+  registerIfGranted: (refreshedToken) => {
     const controller = new AbortController();
     const isCurrent = () => !controller.signal.aborted;
     registrations.add(controller);
@@ -217,7 +217,7 @@ export const usePush = create<PushState>((set, get) => ({
       if (!isCurrent()) return;
       set({ busy: true, error: null });
       try {
-        const token = await fetchToken();
+        const token = refreshedToken || await fetchToken();
         if (!isCurrent()) return;
         if (!token) {
           set({ busy: false, error: "This phone did not return a notification token." });
@@ -265,7 +265,7 @@ export const usePush = create<PushState>((set, get) => ({
   adoptToken: async (token) => {
     if (token === get().token) return;
     set({ token });
-    await get().registerIfGranted();
+    await get().registerIfGranted(token);
   },
 
   release: async () => {

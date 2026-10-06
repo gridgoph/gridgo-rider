@@ -367,10 +367,23 @@ describe("distance band and issue window copy", () => {
 });
 
 describe("timeline and alerts helpers", () => {
-  it("names the current rider You", () => {
+  it.each([undefined, null, 42, true, {}, [], "", "   "])(
+    "uses GRIDGO when the timeline actor is missing or malformed: %p",
+    (by) => {
+      expect(timelineActorLabel(by, "user_rider")).toBe("GRIDGO");
+    },
+  );
+
+  it("preserves legacy actor labels without exposing raw ids", () => {
     expect(timelineActorLabel("user_rider", "user_rider")).toBe("You");
     expect(timelineActorLabel("user_supplier", "user_rider")).toBe("Supplier");
     expect(timelineActorLabel("system")).toBe("System");
+    expect(timelineActorLabel("user_rider")).toBe("Rider");
+    expect(timelineActorLabel("user_client")).toBe("Client");
+    expect(timelineActorLabel("user_ops")).toBe("Operations");
+    expect(timelineActorLabel("user_admin")).toBe("Operations");
+    expect(timelineActorLabel("user_other")).toBe("Team member");
+    expect(timelineActorLabel("private-actor-id")).toBe("Team member");
   });
 
   it("counts unread alerts", () => {

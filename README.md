@@ -39,3 +39,12 @@ On session restore or return from Google, the app checks the rider account. If t
 Typecheck: `npx tsc --noEmit`.
 
 Day-to-day testing is Expo Go. `npm run android` still builds the USB development client when you need native push or custom-scheme work. Set `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`. Do not commit `/android` or `google-services.json`.
+
+## Job alert taps
+
+An available-job push carries `type: dispatch_available` and `orderId`. Cold-start
+and background taps wait for sign-in and navigation, verify the inbox ownership,
+and open only that job on Offers. If it has left the pool, the screen explains
+that and offers a way back to all jobs. Tapping never accepts automatically.
+Notification permission, `gridgo_default`, and token claims use the existing
+push store; token rotation registers the token supplied by the native event.
