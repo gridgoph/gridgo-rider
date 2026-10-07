@@ -308,6 +308,17 @@ function RootStack() {
           ...multiOriginPushedScreenOptions,
         }}
       />
+      {/*
+        Reached only from Danger zone on Your details. It asks for the
+        password (or an emailed code) before anything is sent.
+      */}
+      <Stack.Screen
+        name="delete-account"
+        options={{
+          title: "Delete account",
+          ...multiOriginPushedScreenOptions,
+        }}
+      />
       <Stack.Screen
         name="design-system"
         options={{
@@ -335,6 +346,11 @@ function RootStack() {
       <Stack.Screen
         name="trip/delivery"
         options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
+      />
+      {/* The rider and the client, during one delivery (gridgo-client#198). */}
+      <Stack.Screen
+        name="trip/messages"
+        options={{ title: "Messages", ...multiOriginPushedScreenOptions }}
       />
       {/*
         Confirmations are the platform's own sheet, not a drawn overlay —

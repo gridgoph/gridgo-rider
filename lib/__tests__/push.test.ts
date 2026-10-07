@@ -102,6 +102,12 @@ describe("pushTargetRoute", () => {
     ).toBe("/(tabs)/offers?orderId=ord_demo_1");
   });
 
+  it("opens the conversation for a message from the client", () => {
+    expect(
+      pushTargetRoute(parsePushData({ type: "delivery_message", orderId: "ord demo/1" })),
+    ).toBe("/trip/messages?orderId=ord%20demo%2F1");
+  });
+
   it("opens Alerts when there is no job behind the alert", () => {
     expect(pushTargetRoute(parsePushData({ type: "account_update" }))).toBe("/alerts");
   });
