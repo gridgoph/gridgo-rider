@@ -47,6 +47,7 @@ jest.mock("@/lib/api", () => ({
     unreadCount: 0,
   })),
   markSupportChatRead: jest.fn(async () => ({ thread: null, unreadCount: 0 })),
+  getSupportChatThread: jest.fn(async () => ({ messages: mockMessages })),
   sendSupportChatMessage: jest.fn(),
   apiErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
