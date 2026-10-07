@@ -1080,13 +1080,18 @@ export async function getDeliveryChat(
   return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat`);
 }
 
+/** `attachmentFileIds` are `delivery_chat_image` uploads; a photo may be the whole message. */
 export async function sendDeliveryMessage(
   orderId: string,
   body: string,
+  options?: { attachmentFileIds?: string[] },
 ): Promise<{ chat: DeliveryChatSummary; message: DeliveryChatMessage }> {
   return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat/messages`, {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      body,
+      ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
+    }),
   });
 }
 

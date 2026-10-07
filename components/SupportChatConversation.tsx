@@ -23,12 +23,7 @@ import { Screen } from "@/components/Screen";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
-import {
-  SUPPORT_CHAT_IMAGE_MAX_COUNT,
-  pickChatImages,
-  uploadChatImage,
-  validateChatImageAsset,
-} from "@/lib/chatImages";
+import { addChatPhotos, pickChatImages, uploadChatImage } from "@/lib/chatImages";
 import { openSupportChatStream } from "@/lib/supportChatStream";
 import { useSupportChatStore } from "@/store/supportChat";
 
@@ -358,20 +353,12 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
             <Pressable
               onPress={() => {
                 void pickChatImages().then((assets) => {
-                  const next = [...pending];
-                  for (const asset of assets) {
-                    const problem = validateChatImageAsset(asset);
-                    if (problem) {
-                      setError(problem);
-                      return;
-                    }
-                    if (next.length >= SUPPORT_CHAT_IMAGE_MAX_COUNT) {
-                      setError(`A message can include up to ${SUPPORT_CHAT_IMAGE_MAX_COUNT} photos.`);
-                      return;
-                    }
-                    next.push({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+                  const added = addChatPhotos(pending, assets);
+                  if (!added.ok) {
+                    setError(added.error);
+                    return;
                   }
-                  setPending(next);
+                  setPending(added.pending);
                 }).catch((err) => setError(api.apiErrorMessage(err, "Could not add that photo.")));
               }}
               accessibilityRole="button"

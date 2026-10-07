@@ -21,6 +21,30 @@ export function validateChatImageAsset(asset: {
   return null;
 }
 
+type PickedPhoto = { uri: string; name: string; mimeType: string; size?: number | null };
+/** A photo picked for a message and not yet uploaded. */
+export type ChatPhotoDraft = { uri: string; name: string; mimeType: string };
+
+/**
+ * Adds picked photos to a message's unsent ones, or says why it cannot. The
+ * support chat and the delivery chat both take up to four photos per message.
+ */
+export function addChatPhotos(
+  pending: ChatPhotoDraft[],
+  assets: PickedPhoto[],
+): { ok: true; pending: ChatPhotoDraft[] } | { ok: false; error: string } {
+  const next = [...pending];
+  for (const asset of assets) {
+    const problem = validateChatImageAsset(asset);
+    if (problem) return { ok: false, error: problem };
+    if (next.length >= SUPPORT_CHAT_IMAGE_MAX_COUNT) {
+      return { ok: false, error: `A message can include up to ${SUPPORT_CHAT_IMAGE_MAX_COUNT} photos.` };
+    }
+    next.push({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+  }
+  return { ok: true, pending: next };
+}
+
 export async function pickChatImages(): Promise<Array<{
   uri: string;
   name: string;
@@ -48,15 +72,19 @@ export async function pickChatImages(): Promise<Array<{
   }));
 }
 
-export async function uploadChatImage(asset: {
-  uri: string;
-  name: string;
-  mimeType: string;
-}): Promise<string> {
+/** Uploads one photo for a chat; `purpose` is `delivery_chat_image` for the client conversation. */
+export async function uploadChatImage(
+  asset: {
+    uri: string;
+    name: string;
+    mimeType: string;
+  },
+  purpose: string = SUPPORT_CHAT_IMAGE_PURPOSE,
+): Promise<string> {
   const token = api.getToken();
   if (!token) throw new Error("Sign in again to send this photo.");
   const form = new FormData();
-  form.append("purpose", SUPPORT_CHAT_IMAGE_PURPOSE);
+  form.append("purpose", purpose);
   form.append("file", {
     uri: asset.uri,
     name: asset.name,
