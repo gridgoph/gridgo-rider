@@ -7,6 +7,7 @@ import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
 import { ChatButton } from "@/components/ChatButton";
+import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
@@ -30,6 +31,7 @@ import { useRoute } from "@/hooks/useRoute";
 import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
 import { classifyLocation } from "@/lib/locationFreshness";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
@@ -197,6 +199,7 @@ export default function ActiveScreen() {
   const chip = trip ? orderStateChip(trip) : null;
   const cta = primaryActionLabel(phase, trip ? endsAtOffice(trip) : false);
   const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
+  const deliveryChat = deliveryChatOf(trip);
 
   return (
     <Screen edges={["top"]}>
@@ -334,6 +337,14 @@ export default function ActiveScreen() {
                   }
                 />
               </View>
+            ) : null}
+
+            {/*
+              The client, a tap away while the job is this rider's and readable
+              for a day after delivery. Under the step, never instead of it.
+            */}
+            {deliveryChat ? (
+              <DeliveryChatRow chat={deliveryChat} onPress={() => router.push(deliveryChatRoute(trip.id))} />
             ) : null}
 
             {/*

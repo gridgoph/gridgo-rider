@@ -10,6 +10,7 @@ import PastJobScreen from "@/app/past-job";
 jest.mock("expo-router", () => ({
   useFocusEffect: (callback: () => void) => { jest.requireActual<typeof import("react")>("react").useEffect(callback, [callback]); },
   useLocalSearchParams: () => ({ orderId: "ord_done" }),
+  useRouter: () => ({ push: jest.fn() }),
 }));
 
 jest.mock("@/lib/api", () => ({
@@ -95,6 +96,22 @@ describe("a past job", () => {
     expect(screen.getByText("Rider accepted")).toBeTruthy();
     expect(screen.getByText("PrintRight Davao")).toBeTruthy();
     expect(screen.getByText("Matina Crossing")).toBeTruthy();
+  });
+
+  it("offers no messages once the API has removed them", async () => {
+    await render(<PastJobScreen />);
+    expect(await screen.findByText("Flyers x500")).toBeTruthy();
+    expect(screen.queryByText("Messages with the client")).toBeNull();
+  });
+
+  it("keeps a delivered conversation readable for its day, saying when it goes", async () => {
+    api.getOrder.mockResolvedValue({
+      ...completed,
+      deliveryChat: { status: "read_only", closesAt: "2026-09-02T00:40:00.000Z", retentionHours: 24 },
+    });
+    await render(<PastJobScreen />);
+    expect(await screen.findByText("Messages with the client")).toBeTruthy();
+    expect(screen.getByText(/^Delivered\. Readable until .+, then removed\.$/)).toBeTruthy();
   });
   it.each(["orders", "*"] as const)("keeps the job visible while %s refreshes it", async (resource) => {
     jest.useFakeTimers();

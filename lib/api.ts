@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 
 import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
 import type { DevicePlatform } from "@/lib/push";
+import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 
 /**
  * GRIDGO demo API client.
@@ -242,6 +243,12 @@ export type Order = {
   } | null;
   issueWindowOpenedAt?: string | null;
   issueWindowExpiresAt?: string | null;
+  /**
+   * Messages with the client: `open` while this rider has the job,
+   * `read_only` for a day after delivery, absent otherwise. Read it through
+   * `deliveryChatOf` (`lib/deliveryChat.ts`).
+   */
+  deliveryChat?: DeliveryChatSummary | null;
   promisedDate: string | null;
   artworkName: string | null;
   artworkFileIds?: string[];
@@ -1066,6 +1073,23 @@ export async function recordDelivery(
  * answers only the assigned rider, and only for a delivery — never ask for a
  * job that ends at GRIDGO Office. See gridgo-api `docs/HUB_HANDOVER_API.md`.
  */
+/** The conversation with this job's client (`lib/deliveryChat.ts`). */
+export async function getDeliveryChat(
+  orderId: string,
+): Promise<{ chat: DeliveryChatSummary; messages: DeliveryChatMessage[] }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat`);
+}
+
+export async function sendDeliveryMessage(
+  orderId: string,
+  body: string,
+): Promise<{ chat: DeliveryChatSummary; message: DeliveryChatMessage }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
 export async function getHandover(orderId: string): Promise<{ otp: string } | null> {
   try {
     const result = await request<{ handover: { otp?: string } | null }>(
