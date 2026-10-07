@@ -12,16 +12,19 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { Lock, Send, UserRound } from "lucide-react-native";
+import { ImagePlus, Lock, Send, UserRound, X } from "lucide-react-native";
 
+import { ChatPhoto } from "@/components/ChatPhoto";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { addChatPhotos, pickChatImages, uploadChatImage, type ChatPhotoDraft } from "@/lib/chatImages";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
 import {
+  DELIVERY_CHAT_IMAGE_PURPOSE,
   DELIVERY_CHAT_POLL_MS,
   DELIVERY_MESSAGE_MAX,
   deliveryChatNotice,
@@ -36,7 +39,7 @@ import {
 /**
  * The rider's side of one delivery's conversation with the client.
  *
- * Text only, and no call button: neither side ever sees the other's number.
+ * Text and photos, and no call button: neither side ever sees the other's number.
  * Like the support chat, the message list is the viewport and the composer is
  * pinned under it, so the column shrinks with the keyboard (see
  * `__tests__/keyboardAvoidance.test.ts`). New messages arrive by polling while
@@ -64,6 +67,7 @@ export function DeliveryChatConversation({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [pending, setPending] = useState<ChatPhotoDraft[]>([]);
 
   const load = useCallback(async () => {
     const current = ++sequence.current;
@@ -128,14 +132,35 @@ export function DeliveryChatConversation({
     viewportHeight.current = next;
   }, []);
 
+  const pickPhoto = useCallback(async () => {
+    try {
+      const added = addChatPhotos(pending, await pickChatImages());
+      if (!added.ok) {
+        setSendError(added.error);
+        return;
+      }
+      setSendError(null);
+      setPending(added.pending);
+    } catch {
+      setSendError("Could not add that photo. Try again.");
+    }
+  }, [pending]);
+
   const send = useCallback(async () => {
     const body = draft.trim();
-    if (!body || sending) return;
+    if ((!body && !pending.length) || sending) return;
     setSending(true);
     setSendError(null);
     try {
-      const posted = await api.sendDeliveryMessage(orderId, body);
+      const fileIds: string[] = [];
+      for (const asset of pending) {
+        fileIds.push(await uploadChatImage(asset, DELIVERY_CHAT_IMAGE_PURPOSE));
+      }
+      const posted = fileIds.length
+        ? await api.sendDeliveryMessage(orderId, body, { attachmentFileIds: fileIds })
+        : await api.sendDeliveryMessage(orderId, body);
       setDraft("");
+      setPending([]);
       setChat(posted.chat);
       setMessages((current) =>
         current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message],
@@ -143,15 +168,16 @@ export function DeliveryChatConversation({
       followingEnd.current = true;
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (err) {
+      console.warn("[delivery-chat] Send failed:", err instanceof Error ? err.message : "Unknown error");
       setSendError(deliverySendError(err));
       // A refusal can mean the delivery was just recorded; re-read to say so.
       void load();
     } finally {
       setSending(false);
     }
-  }, [draft, load, orderId, sending]);
+  }, [draft, load, orderId, pending, sending]);
 
-  const canSend = !sending && Boolean(draft.trim());
+  const canSend = !sending && Boolean(draft.trim() || pending.length);
   const open = chat?.status === "open";
 
   if (unavailable) {
@@ -246,12 +272,19 @@ export function DeliveryChatConversation({
                       borderColor: colors.outline,
                     }}
                   >
-                    <Text
-                      className="text-body"
-                      style={{ color: message.mine ? colors.accentOn : colors.textPrimary }}
-                    >
-                      {message.body}
-                    </Text>
+                    {message.body ? (
+                      <Text
+                        className="text-body"
+                        style={{ color: message.mine ? colors.accentOn : colors.textPrimary }}
+                      >
+                        {message.body}
+                      </Text>
+                    ) : null}
+                    {message.attachments?.map((attachment) => (
+                      <View key={attachment.fileId} className={message.body ? "mt-2" : undefined}>
+                        <ChatPhoto attachment={attachment} />
+                      </View>
+                    ))}
                   </View>
                   <Text className="mt-1 text-caption text-text-muted">
                     {senderLabel(message)} · {timeOf(message.createdAt)}
@@ -269,7 +302,34 @@ export function DeliveryChatConversation({
                 {sendError}
               </Text>
             ) : null}
+            {pending.length ? (
+              <View className="mb-2 flex-row items-center gap-2">
+                <Text className="min-w-0 flex-1 text-caption text-text-muted" numberOfLines={1}>
+                  {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
+                </Text>
+                <Pressable
+                  onPress={() => setPending([])}
+                  disabled={sending}
+                  accessibilityRole="button"
+                  accessibilityLabel={pending.length === 1 ? "Remove the photo" : "Remove the photos"}
+                  className="h-11 w-11 items-center justify-center"
+                >
+                  <X size={16} color={colors.textMuted} strokeWidth={2} />
+                </Pressable>
+              </View>
+            ) : null}
             <View className="flex-row items-end gap-2">
+              <Pressable
+                onPress={() => void pickPhoto()}
+                disabled={sending}
+                accessibilityRole="button"
+                accessibilityLabel="Add photos"
+                accessibilityState={{ disabled: sending }}
+                className="h-12 w-12 items-center justify-center rounded-pill"
+                style={{ borderWidth: 1, borderColor: colors.outline, opacity: sending ? 0.38 : 1 }}
+              >
+                <ImagePlus size={18} color={colors.textPrimary} strokeWidth={2} />
+              </Pressable>
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
