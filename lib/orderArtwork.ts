@@ -25,9 +25,11 @@ export function isArtworkImage(file: Pick<StoredFile, "detectedContentType">): b
 }
 
 export function isOrderArtwork(file: StoredFile, orderId: string, kind: ArtworkReference["kind"]): boolean {
+  // The API authorizes the assigned job before returning rider metadata, which
+  // omits internal reference fields. Still check the order, purpose and state.
   return file.purpose === kind && file.state === "ready" && file.references.some((ref) =>
     ref.type === "order" && ref.id === orderId &&
-    (ref.field === `${kind}FileIds` || (ref.field.startsWith("line:") && ref.field.endsWith(`:${kind}`))),
+    (ref.field === undefined || ref.field === `${kind}FileIds` || (ref.field.startsWith("line:") && ref.field.endsWith(`:${kind}`))),
   );
 }
 
