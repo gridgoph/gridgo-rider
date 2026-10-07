@@ -1,3 +1,4 @@
+import { PrivacyPolicyLink } from "@/components/AccountPrivacy";
 import { useAuth, useClerk, useSignUp, useUser } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -561,6 +562,7 @@ export default function SignupScreen() {
           size="large"
         />
 
+      <PrivacyPolicyLink />
         <Pressable
           onPress={() => {
             leaveApplication();
