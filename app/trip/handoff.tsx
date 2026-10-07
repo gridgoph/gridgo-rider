@@ -237,7 +237,7 @@ export default function HandoffSignatureScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the trip"
+            actionLabel="Back to the job"
             onAction={() => router.back()}
           />
         ) : null}

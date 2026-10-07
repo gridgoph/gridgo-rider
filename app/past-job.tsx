@@ -1,6 +1,7 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 
+import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { InlineNotice } from "@/components/InlineNotice";
 import { OrderStageBar } from "@/components/OrderStageBar";
 import { Screen } from "@/components/Screen";
@@ -11,6 +12,7 @@ import { OrderReference } from "@/components/OrderReference";
 import { StatusChip } from "@/components/StatusChip";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useTripOrder } from "@/hooks/useTripOrder";
+import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
 import { orderStage } from "@/lib/orderStage";
 import {
   dropoffLabel,
@@ -25,12 +27,15 @@ import { useSession } from "@/store/session";
  */
 export default function PastJobScreen() {
   const user = useSession((s) => s.user);
+  const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
   const { order, loading, error, reload } = useTripOrder(id);
 
   const chip = order ? orderStateChip(order) : null;
   const progress = order ? orderStage(order) : null;
+  // Readable for a day after delivery, then the API removes it.
+  const deliveryChat = deliveryChatOf(order);
 
   return (
     <Screen edges={["bottom"]}>
@@ -65,6 +70,10 @@ export default function PastJobScreen() {
               <View className="gg-card">
                 <OrderStageBar progress={progress} />
               </View>
+            ) : null}
+
+            {deliveryChat ? (
+              <DeliveryChatRow chat={deliveryChat} onPress={() => router.push(deliveryChatRoute(order.id))} />
             ) : null}
 
             {order.state === "cancelled" && order.cancellationReason ? (

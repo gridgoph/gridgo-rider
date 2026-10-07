@@ -65,6 +65,8 @@ describe("a field a rider is typing into stays visible", () => {
     const overlays = [
       join("app", "(tabs)", "map.tsx"),
       join("components", "SupportChatConversation.tsx"),
+      // The client conversation on a delivery: the same list-over-composer shape.
+      join("components", "DeliveryChatConversation.tsx"),
     ];
 
     const offenders = withFields

@@ -336,6 +336,11 @@ function RootStack() {
         name="trip/delivery"
         options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
       />
+      {/* The rider and the client, during one delivery (gridgo-client#198). */}
+      <Stack.Screen
+        name="trip/messages"
+        options={{ title: "Messages", ...multiOriginPushedScreenOptions }}
+      />
       {/*
         Confirmations are the platform's own sheet, not a drawn overlay —
         see `confirmSheetScreenOptions` for what that buys.

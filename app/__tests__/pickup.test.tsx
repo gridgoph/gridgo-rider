@@ -283,7 +283,7 @@ describe("the count and six checks at the counter", () => {
     await screen.findByText("Pickup blocked. Operations has been alerted.");
     expect(screen.getByText("20 short")).toBeTruthy();
     expect(screen.queryByLabelText(/pieces counted of/i)).toBeNull();
-    await fireEvent.press(screen.getByRole("button", { name: "Back to the trip" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Back to the job" }));
     expect(mockRouter.back).toHaveBeenCalled();
   });
 
