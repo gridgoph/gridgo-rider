@@ -168,6 +168,7 @@ export function DeliveryChatConversation({
       followingEnd.current = true;
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (err) {
+      console.warn("[delivery-chat] Send failed:", err instanceof Error ? err.message : "Unknown error");
       setSendError(deliverySendError(err));
       // A refusal can mean the delivery was just recorded; re-read to say so.
       void load();
