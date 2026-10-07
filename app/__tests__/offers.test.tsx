@@ -143,6 +143,29 @@ describe("Offers accept button", () => {
     await waitFor(() => expect(screen.queryByText("Storefront tarpaulin")).toBeNull());
   });
 
+  it("removes a paused offer and keeps the explanation after refreshing", async () => {
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    api.acceptOffer.mockRejectedValue(new ApiError(409, { error: "dispatch_paused" }));
+    api.listOffers.mockResolvedValue([]);
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+    await waitFor(() => expect(screen.queryByText("Storefront tarpaulin")).toBeNull());
+    expect(screen.getByText(/This job is paused/)).toBeTruthy();
+    expect(screen.getByText("Could not accept this job")).toBeTruthy();
+    expect(screen.queryByText("Offers did not load")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accepting…" })).toBeNull();
+  });
+
+  it("keeps the offers-load heading when loading fails", async () => {
+    api.listOffers.mockRejectedValue(new Error("offline"));
+    view = await render(<OffersScreen />);
+    expect(await screen.findByText("Offers did not load")).toBeTruthy();
+    expect(screen.getByText("Offers did not load. Check the phone's connection and pull down to try again.")).toBeTruthy();
+    expect(screen.queryByText("Could not accept this job")).toBeNull();
+  });
+
   it("does not stay on Accepting when the rider already has a job", async () => {
     useActiveTrip.setState({ order: activeJob, loaded: true });
     api.listOrders.mockResolvedValue([activeJob]);

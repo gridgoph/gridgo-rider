@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
+import { openBrowserAsync } from "expo-web-browser";
 
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import type { DownloadUrl, Order, StoredFile } from "@/lib/api";
@@ -22,7 +23,8 @@ const order = { id: "order1", artworkFileIds: ["art1"], mockupFileIds: [], produ
 const artwork: StoredFile = {
   fileId: "art1", purpose: "artwork", originalFilename: "Banner.png", detectedContentType: "image/png", declaredContentType: "image/png",
   size: 2048, ownerId: "client1", state: "ready", createdAt: "today", readyAt: "today",
-  references: [{ type: "order", id: "order1", field: "artworkFileIds" }],
+  // Rider metadata intentionally omits internal reference fields.
+  references: [{ type: "order", id: "order1" }],
 };
 
 function link(url: string, expiresInMs: number): DownloadUrl {
@@ -54,6 +56,27 @@ const previewUri = () => screen.getByTestId("artwork-preview-image").props.sourc
   fails on a good link, or whose re-read could not replace it.
 */
 describe("ArtworkPanel preview links", () => {
+  it("previews authorized rider artwork and opens a fresh signed link", async () => {
+    mockGetDownloadUrl
+      .mockResolvedValueOnce(link("https://storage.example/preview.png", 300_000))
+      .mockResolvedValueOnce(link("https://storage.example/open.png", 300_000));
+    const view = await render(<ArtworkPanel order={order} />);
+    await waitFor(() => expect(previewUri()).toBe("https://storage.example/preview.png"));
+    expect(screen.queryByText("Attachment unavailable")).toBeNull();
+    await fireEvent.press(screen.getByLabelText("Open Banner.png"));
+    expect(openBrowserAsync).toHaveBeenCalledWith("https://storage.example/open.png");
+    await view.unmount();
+  });
+
+  it("keeps an API access refusal unavailable without requesting a signed link", async () => {
+    mockGetFile.mockRejectedValue(new Error("forbidden"));
+    const view = await render(<ArtworkPanel order={order} />);
+    expect(await screen.findByText("Attachment unavailable")).toBeTruthy();
+    expect(mockGetDownloadUrl).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Open Banner.png")).toBeNull();
+    await view.unmount();
+  });
+
   it("reads exactly one fresh link when the held link has expired, and never says the preview is unavailable", async () => {
     let answer: (value: DownloadUrl) => void = () => undefined;
     mockGetDownloadUrl

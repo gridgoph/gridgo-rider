@@ -279,7 +279,8 @@ export type StoredFile = {
   state: "pending_upload" | "ready" | "delete_pending" | "deleted";
   createdAt: string;
   readyAt: string | null;
-  references: { type: string; id: string; field: string }[];
+  /** Rider responses omit the internal reference field. */
+  references: { type: string; id: string; field?: string }[];
 };
 
 /** A short-lived capability, never file identity. Do not persist or rewrite. */
@@ -1252,8 +1253,13 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     const code = apiErrorCode(error) ?? error.message;
     switch (code) {
+      case "dispatch_paused":
+      case "refund_fulfillment_stopped":
+      case "reschedule_fulfillment_stopped":
+      case "shop_recovery_pending":
+        return "This job is paused. Wait for Operations to clear it, or choose another available job.";
       case "not_offerable":
-        return "Another rider took this job. Pull down to refresh the list.";
+        return "This job is no longer available. Pull down to refresh the list.";
       case "order_not_found":
         return "That job is gone. Open Offers to take a new one.";
       case "tracking_not_active":
