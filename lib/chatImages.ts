@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 import * as api from "@/lib/api";
 
 export const SUPPORT_CHAT_IMAGE_PURPOSE = "support_chat_image";
@@ -81,26 +83,44 @@ export async function uploadChatImage(
   },
   purpose: string = SUPPORT_CHAT_IMAGE_PURPOSE,
 ): Promise<string> {
-  const token = api.getToken();
+  const token = await api.resolveBearer();
   if (!token) throw new Error("Sign in again to send this photo.");
   const form = new FormData();
   form.append("purpose", purpose);
-  form.append("file", {
-    uri: asset.uri,
-    name: asset.name,
-    type: asset.mimeType,
-  } as unknown as Blob);
-  const response = await fetch(`${api.getApiBase()}/files`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      "X-GRIDGO-Role": "rider",
-    },
-    body: form,
+  if (Platform.OS === "web") {
+    const photo = await fetch(asset.uri);
+    form.append("file", await photo.blob(), asset.name);
+  } else {
+    form.append("file", {
+      uri: asset.uri,
+      name: asset.name,
+      type: asset.mimeType,
+    } as unknown as Blob);
+  }
+  // Expo's fetch refuses React Native's { uri, name, type } form part
+  // ("Unsupported FormDataPart implementation"); XMLHttpRequest streams it.
+  const response = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${api.getApiBase()}/files`);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("X-GRIDGO-Role", "rider");
+    xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+    xhr.onerror = () => reject(new Error("That photo did not reach GRIDGO. Try again."));
+    xhr.ontimeout = () => reject(new Error("That photo took too long to send. Try again."));
+    xhr.onabort = () => reject(new Error("The photo upload was cancelled. Try again."));
+    xhr.send(form);
   });
-  const data = (await response.json().catch(() => null)) as { file?: { fileId?: string } } | null;
-  if (!response.ok || !data?.file?.fileId) {
+  let data: { file?: { fileId?: string } } | null = null;
+  try {
+    data = JSON.parse(response.text) as { file?: { fileId?: string } };
+  } catch {
+    data = null;
+  }
+  if (response.status !== 201) {
+    throw new api.ApiError(response.status, data);
+  }
+  if (!data?.file?.fileId) {
     throw new Error("That photo did not reach GRIDGO. Try again.");
   }
   return data.file.fileId;

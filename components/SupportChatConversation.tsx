@@ -171,7 +171,8 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
         current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message]
       ));
       scrollToLatest(true);
-    } catch {
+    } catch (err) {
+      console.warn("[support-chat] Send failed:", err instanceof Error ? err.message : "Unknown error");
       setError("That did not reach Operations. Try sending it again.");
     } finally {
       setSending(false);
