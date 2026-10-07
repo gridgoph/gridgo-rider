@@ -6,6 +6,7 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
+import { DangerZone } from "@/components/AccountPrivacy";
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { ChoiceList } from "@/components/ChoiceList";
 import { FieldShell } from "@/components/FieldShell";
@@ -18,6 +19,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonText } from "@/components/Skeleton";
 import { TextField } from "@/components/TextField";
 import { useThemeColors } from "@/hooks/useTheme";
+import { deletionConfirmMethod } from "@/lib/accountDeletion";
 import type { RiderSelfProfile } from "@/lib/api";
 import { clerkDisplayName } from "@/lib/clerkAuth";
 import { changeRiderPortrait, changeRiderSignInName } from "@/lib/clerkIdentity";
@@ -414,6 +416,15 @@ export default function RiderDetailsScreen() {
             />
           </View>
         ) : null}
+
+        {/*
+          Last on the page and set apart, so it is never what a thumb lands on
+          while correcting a detail above. The button only opens the Delete
+          account screen, which confirms it is the account holder first.
+        */}
+        <View className="mt-10">
+          <DangerZone confirmBy={deletionConfirmMethod(clerkUser)} />
+        </View>
       </FormScroll>
 
       <BlockingOverlay visible={saving} label="Saving your details…" />

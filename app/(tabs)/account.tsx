@@ -1,4 +1,4 @@
-import { AccountPrivacy } from "@/components/AccountPrivacy";
+import { PrivacyPolicyButton } from "@/components/AccountPrivacy";
 import { useUser } from "@clerk/expo";
 import { Bell, ChevronRight, History, Settings2 } from "lucide-react-native";
 import { useCallback } from "react";
@@ -144,7 +144,15 @@ export default function AccountScreen() {
           />
         </View>
 
-        <AccountPrivacy />
+        {/*
+          The policy is a button of its own. Deleting the account is not
+          here: it lives under Danger zone on Your details, behind a check
+          that it is really the account holder asking.
+        */}
+        <View className="gap-2">
+          <Text className="text-overline text-text-muted">PRIVACY</Text>
+          <PrivacyPolicyButton />
+        </View>
 
         <SecondaryButton label="Sign out" onPress={() => void signOut()} />
       </ScrollView>

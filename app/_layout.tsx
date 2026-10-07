@@ -308,6 +308,17 @@ function RootStack() {
           ...multiOriginPushedScreenOptions,
         }}
       />
+      {/*
+        Reached only from Danger zone on Your details. It asks for the
+        password (or an emailed code) before anything is sent.
+      */}
+      <Stack.Screen
+        name="delete-account"
+        options={{
+          title: "Delete account",
+          ...multiOriginPushedScreenOptions,
+        }}
+      />
       <Stack.Screen
         name="design-system"
         options={{
