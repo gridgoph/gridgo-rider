@@ -279,7 +279,8 @@ export type StoredFile = {
   state: "pending_upload" | "ready" | "delete_pending" | "deleted";
   createdAt: string;
   readyAt: string | null;
-  references: { type: string; id: string; field: string }[];
+  /** Rider responses omit the internal reference field. */
+  references: { type: string; id: string; field?: string }[];
 };
 
 /** A short-lived capability, never file identity. Do not persist or rewrite. */
