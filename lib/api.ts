@@ -1377,13 +1377,21 @@ export type SupportChatThread = {
   updatedAt: string;
 };
 
+export type SupportChatAttachment = {
+  fileId: string;
+  contentType?: string | null;
+  originalFilename?: string | null;
+};
+
 export type SupportChatMessage = {
   id: string;
   threadId: string;
   senderUserId: string;
   senderRole: SupportChatSenderRole;
   senderName?: string | null;
+  senderImageUrl?: string | null;
   body: string;
+  attachments?: SupportChatAttachment[];
   createdAt: string;
   mine: boolean;
 };
@@ -1397,11 +1405,20 @@ export async function getSupportChatMe(): Promise<{
   return request("/support-chat/me");
 }
 
-export async function getSupportChatThread(threadId: string): Promise<{
+export async function getSupportChatThread(
+  threadId: string,
+  filters?: { q?: string; media?: boolean },
+): Promise<{
   thread: SupportChatThread;
   messages: SupportChatMessage[];
 }> {
-  return request(`/support-chat/threads/${encodeURIComponent(threadId)}`);
+  const params = new URLSearchParams();
+  if (filters?.q?.trim()) params.set("q", filters.q.trim());
+  if (filters?.media) params.set("media", "1");
+  const query = params.toString();
+  return request(
+    `/support-chat/threads/${encodeURIComponent(threadId)}${query ? `?${query}` : ""}`,
+  );
 }
 
 export async function openSupportChatThread(): Promise<{ thread: SupportChatThread }> {
@@ -1414,13 +1431,26 @@ export async function openSupportChatThread(): Promise<{ thread: SupportChatThre
 export async function sendSupportChatMessage(
   body: string,
   threadId?: string,
+  options?: { attachmentFileIds?: string[] },
 ): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return request("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
+    body: JSON.stringify({
+      body,
+      ...(threadId ? { threadId } : {}),
+      ...(options?.attachmentFileIds?.length
+        ? { attachmentFileIds: options.attachmentFileIds }
+        : {}),
+    }),
+  });
+}
+
+export async function deleteSupportChatThread(threadId: string): Promise<void> {
+  await request(`/support-chat/threads/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
   });
 }
 
