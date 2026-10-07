@@ -77,7 +77,7 @@ it("keeps a delivered conversation readable but closed to new messages", async (
   expect(await screen.findByText("Blue gate, please.")).toBeTruthy();
   expect(screen.getByText(/This delivery is finished, so no new messages can be sent/)).toBeTruthy();
   expect(screen.queryByPlaceholderText("Write to the client")).toBeNull();
-  expect(screen.getByText("Back to the job")).toBeTruthy();
+  expect(screen.getByText("Back to the trip")).toBeTruthy();
 });
 
 it("says the messages were removed once the day after delivery has passed", async () => {

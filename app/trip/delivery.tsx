@@ -195,7 +195,7 @@ export default function DeliveryProofScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the job"
+            actionLabel="Back to the trip"
             onAction={() => router.back()}
           />
         ) : null}

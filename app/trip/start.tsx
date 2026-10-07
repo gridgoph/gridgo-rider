@@ -59,7 +59,7 @@ export default function StartDeliverySheet() {
           icon="circle-x"
           title="This job did not load"
           body={loadError ?? "Go back to your trip and try again."}
-          actionLabel="Back to the job"
+          actionLabel="Back to the trip"
           onAction={() => router.back()}
         />
       </View>

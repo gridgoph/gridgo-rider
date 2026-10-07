@@ -230,7 +230,7 @@ export default function PickupChecklistScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the job"
+            actionLabel="Back to the trip"
             onAction={() => router.back()}
           />
         ) : null}
@@ -365,7 +365,7 @@ export default function PickupChecklistScreen() {
 
       {order && escalated ? (
         <StickyActionBar onHeight={setActionBarHeight}>
-          <SecondaryButton label="Back to the job" onPress={() => router.back()} size="large" />
+          <SecondaryButton label="Back to the trip" onPress={() => router.back()} size="large" />
         </StickyActionBar>
       ) : null}
 

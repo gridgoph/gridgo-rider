@@ -162,7 +162,7 @@ export function DeliveryChatConversation({
             <Text className="text-center text-body-lg font-medium text-text-primary">{unavailable.title}</Text>
             <Text className="text-center text-body text-text-secondary">{unavailable.body}</Text>
           </View>
-          <SecondaryButton label="Back to the job" onPress={onBackToTrip} />
+          <SecondaryButton label="Back to the trip" onPress={onBackToTrip} />
         </View>
       </Screen>
     );
@@ -296,7 +296,7 @@ export function DeliveryChatConversation({
           </View>
         ) : chat ? (
           <View className="gg-page pb-3 pt-2">
-            <SecondaryButton label="Back to the job" onPress={onBackToTrip} />
+            <SecondaryButton label="Back to the trip" onPress={onBackToTrip} />
           </View>
         ) : null}
       </KeyboardAvoidingView>

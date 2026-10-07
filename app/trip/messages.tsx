@@ -29,7 +29,7 @@ export default function TripMessagesScreen() {
               Open your trip to message its client.
             </Text>
           </View>
-          <SecondaryButton label="Back to the job" onPress={backToTrip} />
+          <SecondaryButton label="Back to the trip" onPress={backToTrip} />
         </View>
       </Screen>
     );
