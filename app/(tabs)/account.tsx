@@ -1,3 +1,4 @@
+import { AccountPrivacy } from "@/components/AccountPrivacy";
 import { useUser } from "@clerk/expo";
 import { Bell, ChevronRight, History, Settings2 } from "lucide-react-native";
 import { useCallback } from "react";
@@ -142,6 +143,8 @@ export default function AccountScreen() {
             last
           />
         </View>
+
+        <AccountPrivacy />
 
         <SecondaryButton label="Sign out" onPress={() => void signOut()} />
       </ScrollView>
