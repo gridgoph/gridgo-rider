@@ -19,7 +19,7 @@ describe("no internal identifier reaches a rider's screen", () => {
 
   it("translates the codes the API actually returns", () => {
     expect(apiErrorMessage(new ApiError(409, { error: "not_offerable" }), FALLBACK)).toMatch(
-      /another rider took this job/i,
+      /job is no longer available/i,
     );
     expect(apiErrorMessage(new ApiError(404, { error: "order_not_found" }), FALLBACK)).toMatch(
       /open offers/i,
@@ -85,3 +85,9 @@ describe("no internal identifier reaches a rider's screen", () => {
     );
   });
 });
+
+it.each(['dispatch_paused', 'refund_fulfillment_stopped', 'reschedule_fulfillment_stopped', 'shop_recovery_pending'])(
+  'explains a paused job for %s without exposing an internal code', (code) => {
+    expect(apiErrorMessage(new ApiError(409, { error: code }), FALLBACK)).toMatch(/job is paused/i);
+  },
+);
