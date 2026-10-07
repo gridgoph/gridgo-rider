@@ -153,7 +153,17 @@ describe("Offers accept button", () => {
     });
     await waitFor(() => expect(screen.queryByText("Storefront tarpaulin")).toBeNull());
     expect(screen.getByText(/This job is paused/)).toBeTruthy();
+    expect(screen.getByText("Could not accept this job")).toBeTruthy();
+    expect(screen.queryByText("Offers did not load")).toBeNull();
     expect(screen.queryByRole("button", { name: "Accepting…" })).toBeNull();
+  });
+
+  it("keeps the offers-load heading when loading fails", async () => {
+    api.listOffers.mockRejectedValue(new Error("offline"));
+    view = await render(<OffersScreen />);
+    expect(await screen.findByText("Offers did not load")).toBeTruthy();
+    expect(screen.getByText("Offers did not load. Check the phone's connection and pull down to try again.")).toBeTruthy();
+    expect(screen.queryByText("Could not accept this job")).toBeNull();
   });
 
   it("does not stay on Accepting when the rider already has a job", async () => {
