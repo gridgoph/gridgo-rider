@@ -24,9 +24,11 @@ jest.mock("@/hooks/useLiveRefresh", () => ({ useLiveRefresh: () => undefined }))
 
 const mockGetDeliveryChat = jest.fn();
 const mockSendDeliveryMessage = jest.fn();
+const mockGetDownloadUrl = jest.fn();
 jest.mock("@/lib/api", () => ({
   getDeliveryChat: (...args: unknown[]) => mockGetDeliveryChat(...args),
   sendDeliveryMessage: (...args: unknown[]) => mockSendDeliveryMessage(...args),
+  getDownloadUrl: (...args: unknown[]) => mockGetDownloadUrl(...args),
 }));
 
 function renderScreen(ui: ReactElement) {
@@ -67,6 +69,29 @@ it("shows the conversation and a composer while the job is the rider's, with no 
   expect(screen.queryByText(/call/i)).toBeNull();
 });
 
+it("shows a photo the client sent, opened through its signed link, and offers to add photos", async () => {
+  mockGetDownloadUrl.mockResolvedValue({ url: "https://files.example.invalid/gate.jpg" });
+  mockGetDeliveryChat.mockResolvedValue({
+    chat: { status: "open", closesAt: null, retentionHours: 24 },
+    messages: [
+      {
+        id: "m3",
+        senderRole: "client",
+        body: "This is our gate.",
+        attachments: [{ fileId: "file_gate", contentType: "image/jpeg", originalFilename: "gate.jpg" }],
+        createdAt: "2026-10-07T16:02:00.000Z",
+        mine: false,
+      },
+    ],
+  });
+  await renderScreen(<TripMessagesScreen />);
+
+  expect(await screen.findByLabelText("gate.jpg")).toBeTruthy();
+  expect(screen.getByText("This is our gate.")).toBeTruthy();
+  expect(mockGetDownloadUrl).toHaveBeenCalledWith("file_gate");
+  expect(screen.getByLabelText("Add photos")).toBeTruthy();
+});
+
 it("keeps a delivered conversation readable but closed to new messages", async () => {
   mockGetDeliveryChat.mockResolvedValue({
     chat: { status: "read_only", closesAt: "2026-10-08T14:03:00.000Z", retentionHours: 24 },
@@ -77,6 +102,7 @@ it("keeps a delivered conversation readable but closed to new messages", async (
   expect(await screen.findByText("Blue gate, please.")).toBeTruthy();
   expect(screen.getByText(/This delivery is finished, so no new messages can be sent/)).toBeTruthy();
   expect(screen.queryByPlaceholderText("Write to the client")).toBeNull();
+  expect(screen.queryByLabelText("Add photos")).toBeNull();
   expect(screen.getByText("Back to the trip")).toBeTruthy();
 });
 

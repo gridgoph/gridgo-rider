@@ -98,5 +98,7 @@ describe("refusals", () => {
     );
     expect(deliverySendError(apiError("too_many_requests"))).toMatch(/too fast/);
     expect(deliverySendError(new Error("offline"))).toMatch(/did not reach the client/);
+    expect(deliverySendError(apiError("invalid_chat_image"))).toMatch(/JPEG, PNG, or WebP/);
+    expect(deliverySendError(apiError("file_already_attached"))).toMatch(/already sent/);
   });
 });
