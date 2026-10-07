@@ -52,6 +52,9 @@ describe("a field a rider is typing into stays visible", () => {
       "CodeField.tsx",
       "TextField.tsx",
       "PickupCountField.tsx",
+      // Its only caller owns the keyboard surface, checked below and in
+      // SupportChatConversation-search.test.tsx against the rendered input.
+      "ConversationDetails.tsx",
     ].map((name) => join("components", name));
     // Full-bleed map: the search sits at the top of the canvas. FormScroll
     // would own the map itself, which is the wrong viewport.
@@ -70,6 +73,14 @@ describe("a field a rider is typing into stays visible", () => {
       .filter((file) => !/from "@\/components\/FormScroll"/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps conversation details inside the chat's keyboard-aware caller", () => {
+    const callers = files.filter((file) => /<ConversationDetails\b/.test(readFileSync(file, "utf8")));
+    expect(callers).toEqual([join(__dirname, "..", "components", "SupportChatConversation.tsx")]);
+    const source = readFileSync(callers[0], "utf8");
+    expect(source).toMatch(/<KeyboardAvoidingView\b/);
+    expect(source).toMatch(/from "react-native-keyboard-controller"/);
   });
 
   it("never reaches back for React Native's KeyboardAvoidingView", () => {

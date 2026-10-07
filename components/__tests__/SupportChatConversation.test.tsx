@@ -15,6 +15,10 @@ import { SupportChatConversation } from "@/components/SupportChatConversation";
 
 const mockAvoidingProps = jest.fn();
 
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ back: jest.fn(), canGoBack: () => true }),
+}));
+
 jest.mock("react-native-keyboard-controller", () => {
   const { View } = require("react-native");
   return {
@@ -43,6 +47,7 @@ jest.mock("@/lib/api", () => ({
     unreadCount: 0,
   })),
   markSupportChatRead: jest.fn(async () => ({ thread: null, unreadCount: 0 })),
+  getSupportChatThread: jest.fn(async () => ({ messages: mockMessages })),
   sendSupportChatMessage: jest.fn(),
   apiErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
