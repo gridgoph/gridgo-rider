@@ -172,6 +172,11 @@ export type ProductionItem = {
   mockupFileId: string | null;
 };
 
+export type DropoffConfirmation =
+  | { status: "pending"; requestedAt: string }
+  | { status: "confirmed"; requestedAt: string; answeredAt: string; point: OrderStop }
+  | { status: "needs_review"; requestedAt: string; answeredAt: string };
+
 export type Order = {
   id: string;
   clientId: string;
@@ -252,6 +257,7 @@ export type Order = {
   pickup?: OrderStop | null;
   /** Client drop-off stop with lat/lng from the API. */
   dropoff?: OrderStop | null;
+  dropoffConfirmation?: DropoffConfirmation | null;
   /**
    * How the client receives the job. `"pickup"` means the rider's second
    * stop is GRIDGO Office, not a client door.
