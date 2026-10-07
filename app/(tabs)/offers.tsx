@@ -111,13 +111,12 @@ export default function OffersScreen() {
       setOrder(await api.acceptOffer(id));
       router.push("/(tabs)/active");
     } catch (e) {
-      setError(
-        api.apiErrorMessage(
-          e,
-          "That job could not be accepted. Pull down to refresh and take another.",
-        ),
+      const message = api.apiErrorMessage(
+        e,
+        "That job could not be accepted. Pull down to refresh and take another.",
       );
-      void reload();
+      await reload();
+      setError(message);
     } finally {
       acceptingIdRef.current = null;
       setBusyId(null);
