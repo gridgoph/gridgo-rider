@@ -1,3 +1,5 @@
+import { Linking } from "react-native";
+import * as Notifications from "expo-notifications";
 import {act,renderHook} from "@testing-library/react-native";
 import {usePushNotifications} from "@/hooks/usePushNotifications";
 import {useSession} from "@/store/session";
@@ -55,4 +57,42 @@ it("waits for session hydration to finish after the navigator is ready",async()=
   await act(async()=>{useSession.setState({loading:false});});
   await act(async()=>{jest.advanceTimersByTime(100);});
   expect(mockPush).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(["cold start", "background"])("opens the exact authorized offer from %s once", async (mode) => {
+  mockReady = true;
+  const offerResponse = {notification:{request:{identifier:"offer-tap",content:{data:{notificationId:"offer-notice",orderId:"untrusted",type:"announcement"}}}}};
+  (api.listNotifications as jest.Mock).mockResolvedValue([{id:"offer-notice",orderId:"actual-job",type:"dispatch_available"}]);
+  mockLast.mockResolvedValue(mode === "cold start" ? offerResponse : null);
+  await renderHook(() => usePushNotifications());
+  if (mode === "background") {
+    const onTap = (Notifications.addNotificationResponseReceivedListener as jest.Mock).mock.calls.at(-1)[0];
+    await act(async () => { onTap(offerResponse); onTap(offerResponse); });
+  }
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  expect(mockPush).toHaveBeenCalledWith("/(tabs)/offers?orderId=actual-job");
+});
+
+
+it.each(["cold start", "background"])("opens release download while signed out from %s", async mode => {
+  const open = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+  useSession.setState({ user: null });
+  const release = { notification: { request: { identifier: "release-tap", content: {
+    title: "GRIDGO Rider 1.0.123 is ready", data: { type: "announcement" },
+  } } } };
+  mockLast.mockResolvedValue(mode === "cold start" ? release : null);
+  const view = await renderHook(() => usePushNotifications());
+  if (mode === "background") {
+    const onTap = jest.requireMock("expo-notifications").addNotificationResponseReceivedListener.mock.calls.at(-1)[0];
+    await act(async () => { onTap(release); onTap(release); });
+  }
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(open).toHaveBeenCalledWith("https://gridgo.talasora.com/downloads/gridgo-rider.apk");
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(jest.requireMock("expo-notifications").clearLastNotificationResponseAsync).toHaveBeenCalledTimes(1);
+  expect(mockPush).not.toHaveBeenCalled();
+  await view.unmount();
+  open.mockRestore();
 });

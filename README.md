@@ -39,3 +39,24 @@ On session restore or return from Google, the app checks the rider account. If t
 Typecheck: `npx tsc --noEmit`.
 
 Day-to-day testing is Expo Go. `npm run android` still builds the USB development client when you need native push or custom-scheme work. Set `GOOGLE_SERVICES_JSON` to the captain's Firebase file for every prebuild / `expo run:android`. Do not commit `/android` or `google-services.json`.
+
+## Job alert taps
+
+An available-job push carries `type: dispatch_available` and `orderId`. Cold-start
+and background taps wait for sign-in and navigation, verify the inbox ownership,
+and open only that job on Offers. If it has left the pool, the screen explains
+that and offers a way back to all jobs. Tapping never accepts automatically.
+Notification permission, `gridgo_default`, and token claims use the existing
+push store; token rotation registers the token supplied by the native event.
+
+
+### Release notifications
+
+After the Android workflow uploads the APK and publishes the latest GitHub Release
+on a push to `main`, `scripts/announce-release.mjs` broadcasts the released version.
+Firstmate configures the repository secret `RELEASE_ANNOUNCE_TOKEN` with the same
+value as the API environment variable. Deploy the API release-announcement route
+and migration first. Missing configuration skips with a notice; delivery failures
+warn in the job summary without failing the published release. Manual dispatches
+never broadcast. `lib/releasePush.ts` recognizes the fixed public release copy and
+opens this app's existing download URL on a push tap, including while signed out.

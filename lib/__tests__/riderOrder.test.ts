@@ -233,7 +233,7 @@ describe("the client's digital balance gates delivery", () => {
     confirmationSource: null,
   };
 
-  it.each(["confirmed", "legacy_confirmed"] as const)("accepts canonical final_online %s", (status) => {
+  it.each(["confirmed", "legacy_confirmed", "not_required"] as const)("accepts canonical final_online %s", (status) => {
     expect(isBalanceConfirmed({ payments: { final_online: { ...finalPayment, status } } })).toBe(true);
   });
 
@@ -244,38 +244,26 @@ describe("the client's digital balance gates delivery", () => {
     } })).toBe(true);
   });
 
-  it.each(["not_submitted", "pending_confirmation"] as const)("keeps canonical %s blocked even when an old alias is confirmed", (status) => {
+  it.each(["not_submitted", "pending_confirmation"] as const)("keeps canonical %s blocked even when an old alias has no balance", (status) => {
     expect(isBalanceConfirmed({ payments: {
       final_online: { ...finalPayment, status },
-      balance: { ...finalPayment, status: "confirmed" },
+      balance: { ...finalPayment, status: "not_required" },
     } })).toBe(false);
   });
 
-  it("is confirmed only when Operations says so", () => {
-    const installment = {
-      amountMinor: 19875,
-      method: "qr_manual",
-      submittedAt: null,
-      confirmedAt: null,
-      confirmationSource: null,
-    };
-    expect(
-      isBalanceConfirmed({
-        payments: { balance: { ...installment, status: "confirmed" } },
-      }),
-    ).toBe(true);
-    // Migrated orders carry their own confirmed marker and must not be blocked.
-    expect(
-      isBalanceConfirmed({
-        payments: { balance: { ...installment, status: "legacy_confirmed" } },
-      }),
-    ).toBe(true);
-    expect(
-      isBalanceConfirmed({
-        payments: { balance: { ...installment, status: "pending_confirmation" } },
-      }),
-    ).toBe(false);
+  it.each(["confirmed", "legacy_confirmed", "not_required"] as const)("accepts older balance %s", (status) => {
+    expect(isBalanceConfirmed({ payments: { balance: { ...finalPayment, status } } })).toBe(true);
+  });
+
+  it.each(["not_submitted", "pending_confirmation"] as const)("keeps older balance %s blocked", (status) => {
+    expect(isBalanceConfirmed({ payments: { balance: { ...finalPayment, status } } })).toBe(false);
+  });
+
+  it("blocks missing payment information even if the initial payment is confirmed", () => {
+    expect(isBalanceConfirmed({})).toBe(false);
     expect(isBalanceConfirmed({ payments: null })).toBe(false);
+    expect(isBalanceConfirmed({ payments: {} })).toBe(false);
+    expect(isBalanceConfirmed({ payments: { initial: { ...finalPayment, status: "confirmed" } } })).toBe(false);
   });
 });
 
@@ -367,10 +355,23 @@ describe("distance band and issue window copy", () => {
 });
 
 describe("timeline and alerts helpers", () => {
-  it("names the current rider You", () => {
+  it.each([undefined, null, 42, true, {}, [], "", "   "])(
+    "uses GRIDGO when the timeline actor is missing or malformed: %p",
+    (by) => {
+      expect(timelineActorLabel(by, "user_rider")).toBe("GRIDGO");
+    },
+  );
+
+  it("preserves legacy actor labels without exposing raw ids", () => {
     expect(timelineActorLabel("user_rider", "user_rider")).toBe("You");
     expect(timelineActorLabel("user_supplier", "user_rider")).toBe("Supplier");
     expect(timelineActorLabel("system")).toBe("System");
+    expect(timelineActorLabel("user_rider")).toBe("Rider");
+    expect(timelineActorLabel("user_client")).toBe("Client");
+    expect(timelineActorLabel("user_ops")).toBe("Operations");
+    expect(timelineActorLabel("user_admin")).toBe("Operations");
+    expect(timelineActorLabel("user_other")).toBe("Team member");
+    expect(timelineActorLabel("private-actor-id")).toBe("Team member");
   });
 
   it("counts unread alerts", () => {

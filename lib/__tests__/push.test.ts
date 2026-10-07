@@ -96,10 +96,10 @@ describe("pushTargetRoute", () => {
     // would land them on an empty trip (or a different one).
     expect(
       pushTargetRoute(parsePushData({ type: "dispatch_available", orderId: "ord_demo_1" })),
-    ).toBe("/(tabs)/offers");
+    ).toBe("/(tabs)/offers?orderId=ord_demo_1");
     expect(
       pushTargetRoute(parsePushData({ type: "rider_job_offered", orderId: "ord_demo_1" })),
-    ).toBe("/(tabs)/offers");
+    ).toBe("/(tabs)/offers?orderId=ord_demo_1");
   });
 
   it("opens Alerts when there is no job behind the alert", () => {

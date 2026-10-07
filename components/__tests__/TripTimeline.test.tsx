@@ -18,6 +18,23 @@ const accepted: Order["timeline"][number] = {
 };
 
 describe("TripTimeline", () => {
+  it("renders the rider API progress projection without actor fields", async () => {
+    await render(
+      <TripTimeline
+        timeline={[
+          { at: placed.at, state: "submitted", note: "Order submitted" },
+          { at: accepted.at, state: "rider_assigned", note: "Rider assigned" },
+        ]}
+        selfId="user_rider"
+      />,
+    );
+
+    expect(screen.getByLabelText("Head to pickup, current status")).toBeTruthy();
+    expect(screen.getByText("Order submitted")).toBeTruthy();
+    expect(screen.getByText("Rider assigned")).toBeTruthy();
+    expect(screen.getAllByText(/^GRIDGO ·/)).toHaveLength(2);
+  });
+
   it("renders the latest status first, with the current dot on that row", async () => {
     await render(<TripTimeline timeline={[placed, accepted]} selfId="user_rider" />);
 

@@ -129,7 +129,7 @@ export type SupplierContact = {
 };
 
 /**
- * One half of the client's digital payment.
+ * One installment of the client's digital payment.
  *
  * The rider is shown the *status* and never the amount: what the client paid is
  * not the rider's business now that no money changes hands at the door.
@@ -137,6 +137,7 @@ export type SupplierContact = {
 export type PaymentInstallmentStatus =
   | "not_submitted"
   | "pending_confirmation"
+  | "not_required"
   | "confirmed"
   | "legacy_confirmed";
 
@@ -245,7 +246,8 @@ export type Order = {
   updatedAt: string;
   cancelledAt?: string | null;
   cancellationReason?: string | null;
-  timeline: { at: string; state: string; by: string; note: string }[];
+  // Rider progress omits actors; keep compatibility with older API history.
+  timeline: { at: string; state: string; by?: string | null; note: string }[];
   /** Supplier pickup stop with lat/lng from the API. */
   pickup?: OrderStop | null;
   /** Client drop-off stop with lat/lng from the API. */

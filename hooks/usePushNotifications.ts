@@ -1,9 +1,10 @@
+import { releasePushDownloadUrl } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
 import * as api from "@/lib/api";
 import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
 import { useRouter, useRootNavigationState, type Href } from "expo-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { AppState } from "react-native";
+import { AppState, Linking } from "react-native";
 
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
@@ -112,7 +113,7 @@ export function usePushNotifications(): void {
         const owned = items.find((item) => item.id === data.notificationId);
         // Older notifications may be outside the inbox page. The authorized inbox is a safe fallback.
         data.orderId = owned?.orderId ?? null;
-        if (!owned) data.type = null;
+        data.type = owned?.type ?? null;
       } else if (data.orderId) {
         await api.getOrder(data.orderId);
       }
@@ -164,9 +165,17 @@ export function usePushNotifications(): void {
   }, []);
 
   useEffect(() => {
-    const route = (identifier: string, data: unknown) => {
+    const route = (identifier: string, data: unknown, title?: string | null) => {
       if (routed.current.has(identifier)) return;
       routed.current.add(identifier);
+      const download = releasePushDownloadUrl(data, title);
+      if (download) {
+        pending.current = null;
+        // An update is public and can rescue a signed-out install too.
+        void Linking.openURL(download).catch(() => undefined);
+        void Notifications?.clearLastNotificationResponseAsync?.().catch(() => undefined);
+        return;
+      }
       const owner = useSession.getState().user?.id ?? null;
       pending.current = {identifier, data, owner};
       // Defer capture; spending separately requires navigator and session readiness.
@@ -183,6 +192,7 @@ export function usePushNotifications(): void {
         route(
           response.notification.request.identifier,
           response.notification.request.content.data,
+          response.notification.request.content.title,
         );
       }),
     );
@@ -194,6 +204,7 @@ export function usePushNotifications(): void {
         route(
           response.notification.request.identifier,
           response.notification.request.content.data,
+          response.notification.request.content.title,
         );
       }, noop),
     );
