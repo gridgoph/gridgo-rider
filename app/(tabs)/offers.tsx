@@ -43,7 +43,7 @@ export default function OffersScreen() {
   const [offers, setOffers] = useState<api.Order[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const acceptingIdRef = useRef<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const hasActive = Boolean(activeTrip);
@@ -70,12 +70,13 @@ export default function OffersScreen() {
       setError(null);
     } catch (e) {
       if (!current()) return;
-      setError(
-        api.apiErrorMessage(
+      setError({
+        title: "Offers did not load",
+        body: api.apiErrorMessage(
           e,
           "Offers did not load. Check the phone's connection and pull down to try again.",
         ),
-      );
+      });
       setOffers((current) => current ?? []);
     }
   }, [nextRead, refreshTrip, userId, approval.canWork]);
@@ -116,7 +117,7 @@ export default function OffersScreen() {
         "That job could not be accepted. Pull down to refresh and take another.",
       );
       await reload();
-      setError(message);
+      setError({ title: "Could not accept this job", body: message });
     } finally {
       acceptingIdRef.current = null;
       setBusyId(null);
@@ -193,8 +194,8 @@ export default function OffersScreen() {
           <InlineNotice
             tone="error"
             icon="circle-x"
-            title="Offers did not load"
-            body={error}
+            title={error.title}
+            body={error.body}
             actionLabel="Try again"
             onAction={() => void reload()}
           />
