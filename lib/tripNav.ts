@@ -41,7 +41,7 @@ export function isGridgoOfficePoint(point: LatLng | null | undefined): boolean {
  * After the shop: the client door, or GRIDGO's counter for a collect job.
  */
 export function tripDestination(
-  order: Pick<Order, "dropoff" | "address" | "fulfillmentMode">,
+  order: Pick<Order, "dropoff" | "address" | "fulfillmentMode" | "dropoffConfirmation">,
 ): NextStop {
   if (order.fulfillmentMode === "pickup" || isGridgoOfficePoint(stopLatLng(order.dropoff))) {
     return {
@@ -60,7 +60,9 @@ export function tripDestination(
     cardKind: "dropoff",
     point,
     label: dropoffLabel(order),
-    overline: "NEXT STOP · CLIENT",
+    overline: order.dropoffConfirmation?.status === "confirmed"
+      ? "NEXT STOP · CONFIRMED DROP-OFF"
+      : "NEXT STOP · CLIENT",
     heading: "Hand the package to the client",
     navTitle: "TO THE CLIENT",
   };

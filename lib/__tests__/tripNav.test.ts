@@ -1,5 +1,7 @@
 import { GRIDGO_OFFICE } from "@/lib/gridgoOffice";
 import type { Order } from "@/lib/api";
+import * as api from "@/lib/api";
+import { useActiveTrip } from "@/store/activeTrip";
 import {
   isGridgoOfficePoint,
   nextStop,
@@ -118,4 +120,53 @@ describe("snapRouteOrigin", () => {
     const moved = { lat: here.lat + 0.002, lng: here.lng };
     expect(snapRouteOrigin(moved, here)).toEqual(moved);
   });
+});
+
+// The API projects the accepted destination into dropoff. Navigation must read
+// that projection, never the immutable address or a requested review point.
+describe("client drop-off confirmation", () => {
+  const requestedAt = "2026-10-07T10:00:00Z";
+  const moved = { lat: 7.06, lng: 125.59, label: "Confirmed meeting point" };
+
+  it.each([client, moved])("navigates to the confirmed projection: %j", (point) => {
+    const stop = nextStop(order({
+      state: "out_for_delivery", dropoff: point,
+      dropoffConfirmation: { status: "confirmed", requestedAt, answeredAt: requestedAt, point },
+    }), "delivery_proof");
+    expect(stop?.point).toEqual({ lat: point.lat, lng: point.lng });
+    expect(stop?.label).toBe(point.label);
+    expect(stop?.overline).toBe("NEXT STOP · CONFIRMED DROP-OFF");
+  });
+
+  it.each(["pending", "needs_review"] as const)("keeps the original destination for %s", (status) => {
+    const stop = tripDestination(order({ dropoffConfirmation: { status, requestedAt, answeredAt: requestedAt } }));
+    expect(stop.point).toEqual({ lat: client.lat, lng: client.lng });
+    expect(stop.overline).toBe("NEXT STOP · CLIENT");
+  });
+
+  it("keeps office collection at the office", () => {
+    expect(tripDestination(order({ fulfillmentMode: "pickup", dropoff: moved,
+      dropoffConfirmation: { status: "confirmed", requestedAt, answeredAt: requestedAt, point: moved },
+    })).point).toEqual({ lat: GRIDGO_OFFICE.lat, lng: GRIDGO_OFFICE.lng });
+  });
+});
+
+
+it("replaces an open trip destination when live reconciliation reads a confirmed move", async () => {
+  const before = order({ state: "out_for_delivery" });
+  const point = { lat: 7.06, lng: 125.59, label: "Confirmed meeting point" };
+  const after = order({ state: "out_for_delivery", dropoff: point,
+    dropoffConfirmation: { status: "confirmed", point, requestedAt: "2026-10-07T10:00:00Z", answeredAt: "2026-10-07T10:01:00Z" },
+  });
+  const list = jest.spyOn(api, "listOrders").mockResolvedValueOnce([before]).mockResolvedValueOnce([after]);
+  try {
+    await useActiveTrip.getState().refresh("user_rider");
+    expect(tripDestination(useActiveTrip.getState().order!).label).toBe(client.label);
+    await useActiveTrip.getState().refresh("user_rider", "refresh");
+    expect(tripDestination(useActiveTrip.getState().order!).point).toEqual({ lat: point.lat, lng: point.lng });
+    expect(tripDestination(useActiveTrip.getState().order!).label).toBe(point.label);
+  } finally {
+    list.mockRestore();
+    useActiveTrip.getState().clear();
+  }
 });
