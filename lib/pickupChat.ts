@@ -77,7 +77,7 @@ export function pickupChatEntry(chat: PickupChatSummary, now: Date | number = Da
   if (chat.status === "open") {
     return {
       title: "Message the shop",
-      detail: "Tell the shop when you will arrive or ask where to collect. The shop sees your first name only.",
+      detail: "Ask about collecting this job. The shop sees your first name only.",
       accessibilityLabel: `${unread}Message the shop about this pick-up`,
     };
   }
