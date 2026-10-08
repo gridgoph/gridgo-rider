@@ -1,40 +1,43 @@
 import { ApiError } from "@/lib/api";
-import {
-  handoverBlockReason,
-  handoverCodeGroups,
-  isHandoverRefusal,
-  riderChecksHandoverCode,
-  spokenHandoverCode,
-} from "@/lib/handoverCode";
+import { handoverBlockReason, handoverRefusal, riderChecksHandoverCode } from "@/lib/handoverCode";
 
-describe("handover code rules", () => {
-  it("splits the code into two groups of three and spells it digit by digit", () => {
-    expect(handoverCodeGroups("482913")).toEqual(["482", "913"]);
-    expect(handoverCodeGroups("007100")).toEqual(["007", "100"]);
-    expect(spokenHandoverCode("007100")).toBe("0 0 7 1 0 0");
-  });
-
-  it("asks for a code at a client's door, never at GRIDGO Office", () => {
+describe("spoken handover code rules", () => {
+  it("asks at the client's door, never GRIDGO Office", () => {
     expect(riderChecksHandoverCode({ fulfillmentMode: "delivery" })).toBe(true);
     expect(riderChecksHandoverCode({ fulfillmentMode: null })).toBe(true);
     expect(riderChecksHandoverCode({ fulfillmentMode: "pickup" })).toBe(false);
   });
 
-  it("only a match, or no code at all, clears the gate", () => {
-    const ready = { status: "ready", otp: "482913" } as const;
-    expect(handoverBlockReason({ status: "none" }, "unchecked", false)).toBeNull();
-    expect(handoverBlockReason(ready, "match", false)).toBeNull();
-    expect(handoverBlockReason(ready, "unchecked", false)).toMatch(/check it against yours/);
-    expect(handoverBlockReason(ready, "mismatch", false)).toMatch(/escalate to Operations/);
-    expect(handoverBlockReason(ready, "mismatch", true)).toMatch(/Operations has been alerted/);
-    expect(handoverBlockReason({ status: "loading" }, "unchecked", false)).not.toBeNull();
-    expect(handoverBlockReason({ status: "error", message: "x" }, "match", false)).not.toBeNull();
+  it("requires six digits only when the server requires a code", () => {
+    expect(handoverBlockReason({ status: "none" }, "")).toBeNull();
+    expect(handoverBlockReason({ status: "ready" }, "012345")).toBeNull();
+    for (const otp of ["", "12345", "1234567", "abcdef", " 12345"]) {
+      expect(handoverBlockReason({ status: "ready" }, otp)).toMatch(/six-digit/);
+    }
+    expect(handoverBlockReason({ status: "loading" }, "012345")).not.toBeNull();
+    expect(handoverBlockReason({ status: "error", message: "offline" }, "012345")).not.toBeNull();
   });
 
-  it("recognises the server's refusals of the code and nothing else", () => {
-    expect(isHandoverRefusal(new ApiError(409, { error: "handover_otp_mismatch" }))).toBe(true);
-    expect(isHandoverRefusal(new ApiError(429, { error: "handover_attempts_exceeded" }))).toBe(true);
-    expect(isHandoverRefusal(new ApiError(409, { error: "balance_not_confirmed" }))).toBe(false);
-    expect(isHandoverRefusal(new Error("offline"))).toBe(false);
+  it("distinguishes mismatch and lockout, ignoring unrelated errors", () => {
+    expect(handoverRefusal(new ApiError(409, { error: "handover_otp_mismatch" }))).toEqual({
+      kind: "mismatch", message: "That code does not match.", retryAtMs: null,
+    });
+    const retryAfter = "2026-10-08T09:15:00.000Z";
+    expect(handoverRefusal(new ApiError(429, { error: "handover_attempts_exceeded", retryAfter })))
+      .toMatchObject({ kind: "locked", retryAtMs: Date.parse(retryAfter) });
+    expect(handoverRefusal(new ApiError(409, { error: "balance_not_confirmed" }))).toBeNull();
+    expect(handoverRefusal(new Error("offline"))).toBeNull();
+  });
+
+  it("does not invent counts or a retry time when metadata is absent or malformed", () => {
+    for (const remainingAttempts of [undefined, -1, 1.5, "3"]) {
+      expect(handoverRefusal(new ApiError(409, { error: "handover_otp_mismatch", remainingAttempts }))?.message)
+        .toBe("That code does not match.");
+    }
+    expect(handoverRefusal(new ApiError(409, { error: "handover_otp_mismatch", remainingAttempts: 1 }))?.message)
+      .toContain("1 try remaining");
+    const locked = handoverRefusal(new ApiError(429, { error: "handover_attempts_exceeded", retryAfter: "bad" }));
+    expect(locked?.retryAtMs).toBeNull();
+    expect(locked?.message).not.toContain("Invalid Date");
   });
 });

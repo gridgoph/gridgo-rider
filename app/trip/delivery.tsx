@@ -1,9 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, Text } from "react-native";
+import { Text } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
+import { FormScroll } from "@/components/FormScroll";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { HandoverCodeCard } from "@/components/HandoverCodeCard";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -20,9 +22,9 @@ import { DELIVERY_TARGETS } from "@/lib/attachments";
 import {
   HANDOVER_ESCALATION_REASON,
   handoverBlockReason,
-  isHandoverRefusal,
+  handoverRefusal,
   riderChecksHandoverCode,
-  type CodeMatch,
+  type HandoverRefusal,
 } from "@/lib/handoverCode";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
 import {
@@ -59,15 +61,11 @@ import { useActiveTrip } from "@/store/activeTrip";
  *
  * At a client's door the rider also hands over an acknowledgement receipt —
  * the pilot's only receipt. Its tick is the rider's own reminder: it stays on
- * this phone and never holds the confirm button, because the delivery route
- * accepts evidence and nothing else.
+ * this phone and never holds the confirm button, because it is not a server delivery gate.
  *
- * Before anything changes hands at a door, the rider and the client compare
- * the handover code both their phones show (`lib/handoverCode.ts`). Only the
- * rider's "Codes match" opens the confirm button; "Codes don't match" holds
- * the package and turns the screen's one action into Escalate to Operations.
- * A job with no code — older orders, or the setting off — delivers as before,
- * and a job ending at GRIDGO Office never asks for one.
+ * The client reads their code aloud and the rider types it. Only the server
+ * verifies it, together with the evidence. A job with no requirement delivers
+ * with evidence alone; GRIDGO Office never asks the rider for a client code.
  */
 export default function DeliveryProofScreen() {
   const router = useRouter();
@@ -80,7 +78,9 @@ export default function DeliveryProofScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [storage, setStorage] = useState<"available" | "unavailable" | "unknown">("unknown");
   const [receiptHandedOver, setReceiptHandedOver] = useState(false);
-  const [codeMatch, setCodeMatch] = useState<CodeMatch>("unchecked");
+  const [otp, setOtp] = useState("");
+  const [refusal, setRefusal] = useState<HandoverRefusal | null>(null);
+  const [actionBarHeight, setActionBarHeight] = useState(0);
   const [escalated, setEscalated] = useState(false);
   const [escalating, setEscalating] = useState(false);
   const [escalateError, setEscalateError] = useState<string | null>(null);
@@ -111,10 +111,27 @@ export default function DeliveryProofScreen() {
   const evidenceFileId = evidence.stored.delivery_photo ?? null;
 
   const handover = useHandoverCode(order && riderChecksHandoverCode(order) ? order.id : null);
-  const codeBlock = handoverBlockReason(handover.load, codeMatch, escalated);
-  // The codes differ: nothing is handed over, so nothing is photographed or
-  // receipted, and the screen's one action is telling Operations.
-  const codesDiffer = handover.load.status === "ready" && codeMatch === "mismatch";
+  const codeBlock = refusal?.message ?? handoverBlockReason(handover.load, otp);
+  const codeHeld = refusal !== null;
+
+  useEffect(() => {
+    if (refusal?.kind !== "locked" || refusal.retryAtMs === null) return;
+    const retryAtMs = refusal.retryAtMs;
+    const timer = setInterval(() => {
+      if (Date.now() >= retryAtMs) setRefusal(null);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [refusal]);
+
+  const [previousId, setPreviousId] = useState(id);
+  if (previousId !== id) {
+    setPreviousId(id);
+    setOtp("");
+    setRefusal(null);
+    setEscalated(false);
+    setEscalateError(null);
+    setSubmitError(null);
+  }
 
   const blocked = !order
     ? "Loading the job."
@@ -129,25 +146,28 @@ export default function DeliveryProofScreen() {
         );
 
   async function confirmDelivery() {
-    if (!order || blocked || !evidenceFileId) return;
+    if (!order || busy || escalating || blocked || !evidenceFileId) return;
     setBusy(true);
     setSubmitError(null);
     try {
       const updated = await api.recordDelivery(order.id, {
         evidenceFileId,
         evidenceType: evidence.evidence?.kind === "signature" ? "signature" : "photo",
-        ...(handover.load.status === "ready" ? { otp: handover.load.otp } : {}),
+        ...(handover.load.status === "ready" ? { otp } : {}),
       });
       setActiveOrder(updated);
       router.back();
     } catch (e) {
-      // The server refused the code itself: hold the package, same as a
-      // mismatch the rider saw at the door.
-      if (isHandoverRefusal(e)) setCodeMatch("mismatch");
+      const codeRefusal = handoverRefusal(e);
+      if (codeRefusal) {
+        setRefusal(codeRefusal);
+        setOtp("");
+        return;
+      }
       setSubmitError(
         api.apiErrorMessage(
           e,
-            toOffice
+          toOffice
             ? "The drop-off was not recorded. Do not leave until it shows as recorded — try again."
             : "The delivery was not recorded. Do not leave until it shows as recorded — try again.",
         ),
@@ -158,7 +178,7 @@ export default function DeliveryProofScreen() {
   }
 
   async function escalateMismatch() {
-    if (!order || escalating) return;
+    if (!order || busy || escalating || escalated) return;
     setEscalating(true);
     setEscalateError(null);
     try {
@@ -176,17 +196,15 @@ export default function DeliveryProofScreen() {
     }
   }
 
-  function checkCodesAgain() {
-    setCodeMatch("unchecked");
+  function changeCode(value: string) {
+    setOtp(value);
+    if (refusal?.kind === "mismatch") setRefusal(null);
     setSubmitError(null);
-    setEscalateError(null);
   }
 
   return (
     <Screen edges={["bottom"]}>
-      {/* No field on this screen — evidence is a camera capture or a signature
-          pad, so this is a plain scroll rather than the keyboard-aware one. */}
-      <ScrollView className="flex-1" contentContainerClassName="gg-page gap-8 pb-8 pt-6">
+      <FormScroll contentClassName="gg-page gap-8 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
         {loading ? <ProofStepSkeleton /> : null}
 
         {loadError ? (
@@ -217,11 +235,8 @@ export default function DeliveryProofScreen() {
 
             {handover.load.status === "ready" ? (
               <HandoverCodeCard
-                otp={handover.load.otp}
-                match={codeMatch}
-                onMatch={() => setCodeMatch("match")}
-                onMismatch={() => setCodeMatch("mismatch")}
-                onCheckAgain={checkCodesAgain}
+                otp={otp}
+                onChange={changeCode}
                 disabled={busy || escalating}
               />
             ) : null}
@@ -230,28 +245,36 @@ export default function DeliveryProofScreen() {
               <InlineNotice
                 tone="error"
                 icon="circle-x"
-                title="The handover code did not load"
-                body={`${handover.load.message} Do not hand the package over until it shows.`}
+                title="The handover requirement did not load"
+                body={`${handover.load.message} Do not hand the package over until the requirement loads.`}
                 actionLabel="Try again"
                 onAction={() => void handover.retry()}
               />
             ) : null}
 
-            {codesDiffer && !escalated ? (
+            {refusal ? (
               <InlineNotice
                 tone="error"
-                icon="circle-x"
-                title="Do not hand the package over"
-                body="The client's code is different from yours. Keep the package with you and escalate to Operations — they will check the order and call you. If you misread the client's screen, check the codes again."
+                icon={refusal.kind === "locked" ? "clock" : "circle-x"}
+                title={refusal.kind === "locked" ? "Code check locked" : "That code does not match"}
+                body={`${refusal.message} Keep the package with you. Ask the client to read the code again, or escalate to Operations.`}
               />
             ) : null}
 
-            {codesDiffer && escalated ? (
+            {escalated ? (
               <InlineNotice
                 tone="warning"
                 icon="clock"
                 title="Operations has been alerted"
-                body="Keep the package with you and stay near the drop-off point. Operations is checking the order with the client and will call you or send an alert here. Do not hand it over while you wait. If the client finds the right code, check the codes again."
+                body="Keep the package with you and stay near the drop-off point. Operations will call you or send an alert here. Escalation does not verify the code or complete delivery."
+              />
+            ) : null}
+
+            {handover.load.status === "ready" && !escalated ? (
+              <SecondaryButton
+                label={escalating ? "Alerting Operations…" : "Escalate to Operations"}
+                onPress={() => void escalateMismatch()}
+                disabled={busy || escalating}
               />
             ) : null}
 
@@ -278,6 +301,7 @@ export default function DeliveryProofScreen() {
             ) : null}
 
             <EvidenceCapture
+              key={id}
               title={toOffice ? "Evidence at the office" : "Evidence at the door"}
               instruction={
                 toOffice
@@ -292,12 +316,12 @@ export default function DeliveryProofScreen() {
               onRetry={evidence.retry}
               onClear={evidence.clear}
               onSignature={evidence.attachSignature}
-              disabled={busy || balanceHeld || codesDiffer}
+              disabled={busy || balanceHeld || codeHeld}
             />
 
             {/* Hidden while the balance holds the package: the rider has just
                 been told not to hand anything over. */}
-            {owesAcknowledgementReceipt(order) && !balanceHeld && !codesDiffer ? (
+            {owesAcknowledgementReceipt(order) && !balanceHeld && !codeHeld ? (
               <ReceiptReminder
                 handedOver={receiptHandedOver}
                 onToggle={() => setReceiptHandedOver((v) => !v)}
@@ -315,26 +339,16 @@ export default function DeliveryProofScreen() {
             ) : null}
           </>
         ) : null}
-      </ScrollView>
+      </FormScroll>
 
-      {order && codesDiffer && !escalated ? (
-        <StickyActionBar>
-          <PrimaryButton
-            label={escalating ? "Alerting Operations…" : "Escalate to Operations"}
-            onPress={() => void escalateMismatch()}
-            disabled={escalating}
-            size="large"
-          />
-          <Text className="text-center text-body text-text-secondary">{codeBlock}</Text>
-        </StickyActionBar>
-      ) : order ? (
-        <StickyActionBar>
+      {order ? (
+        <StickyActionBar onHeight={setActionBarHeight}>
           <PrimaryButton
             label={
               busy ? "Recording…" : toOffice ? "Confirm drop-off" : "Confirm delivery"
             }
             onPress={() => void confirmDelivery()}
-            disabled={busy || Boolean(blocked)}
+            disabled={busy || escalating || Boolean(blocked)}
             size="large"
           />
           {blocked ? (

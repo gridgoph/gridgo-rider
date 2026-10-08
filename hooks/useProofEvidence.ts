@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   uploadEvidence,
@@ -44,22 +44,41 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const handleRef = useRef<UploadHandle | null>(null);
-  const aliveRef = useRef(true);
+  const scope = useMemo(() => ({ orderId }), [orderId]);
+  const activeScopeRef = useRef<typeof scope | null>(null);
+  const generationRef = useRef(0);
   // Targets are a literal at every call site; holding the latest in a ref keeps
   // `send` stable without asking each screen to memoise its array.
   const targetsRef = useRef(targets);
-  targetsRef.current = targets;
+  useEffect(() => { targetsRef.current = targets; }, [targets]);
 
+  // Reset before committing a reused screen, so another order never renders
+  // the previous photo or receives its server file ids. Shared by pickup/delivery.
+  const [previousOrderId, setPreviousOrderId] = useState(orderId);
+  if (previousOrderId !== orderId) {
+    setPreviousOrderId(orderId);
+    setEvidence(null);
+    setUpload(UPLOAD_IDLE);
+    setStored({});
+    setCaptureError(null);
+    setCameraBlocked(false);
+  }
+
+  const invalidate = useCallback(() => { ++generationRef.current; }, []);
   useEffect(() => {
-    aliveRef.current = true;
+    activeScopeRef.current = scope;
     return () => {
-      aliveRef.current = false;
+      activeScopeRef.current = null;
+      invalidate();
       handleRef.current?.cancel();
+      handleRef.current = null;
     };
-  }, []);
+  }, [scope, invalidate]);
 
   const send = useCallback(
     (file: ProofEvidence) => {
+      if (activeScopeRef.current !== scope) return;
+      const generation = ++generationRef.current;
       handleRef.current?.cancel();
       setStored({});
       const handle = uploadEvidence({
@@ -67,7 +86,7 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
         evidence: file,
         targets: targetsRef.current,
         onPhase: (phase) => {
-          if (!aliveRef.current) return;
+          if (activeScopeRef.current !== scope || generation !== generationRef.current) return;
           setUpload(phase);
         },
       });
@@ -76,16 +95,19 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
       // rejection from surfacing as an unhandled promise.
       handle.result
         .then((ids) => {
-          if (aliveRef.current) setStored(ids);
+          if (activeScopeRef.current === scope && generation === generationRef.current) setStored(ids);
         })
         .catch(() => undefined);
     },
-    [orderId],
+    [orderId, scope],
   );
 
   const takePhoto = useCallback(async () => {
+    if (activeScopeRef.current !== scope) return;
+    const generation = generationRef.current;
     setCaptureError(null);
     const outcome = await captureProofPhoto(step);
+    if (activeScopeRef.current !== scope || generation !== generationRef.current) return;
     if (!outcome.ok) {
       setCaptureError(captureFailureMessage(outcome.reason));
       setCameraBlocked(outcome.reason !== "cancelled");
@@ -94,20 +116,24 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
     setCameraBlocked(false);
     setEvidence(outcome.evidence);
     send(outcome.evidence);
-  }, [send, step]);
+  }, [scope, send, step]);
 
   const attachSignature = useCallback(
     async (uri: string) => {
+      if (activeScopeRef.current !== scope) return;
+      const generation = generationRef.current;
       setCaptureError(null);
       try {
         const file = await signatureEvidence(uri, Date.now(), step);
+        if (activeScopeRef.current !== scope || generation !== generationRef.current) return;
         setEvidence(file);
         send(file);
       } catch {
+        if (activeScopeRef.current !== scope || generation !== generationRef.current) return;
         setCaptureError("Could not read that signature. Capture it again.");
       }
     },
-    [send, step],
+    [scope, send, step],
   );
 
   const retry = useCallback(() => {
@@ -115,6 +141,7 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
   }, [evidence, send]);
 
   const clear = useCallback(() => {
+    ++generationRef.current;
     handleRef.current?.cancel();
     handleRef.current = null;
     setEvidence(null);
