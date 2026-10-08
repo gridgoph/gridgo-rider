@@ -244,7 +244,7 @@ export default function PickupChecklistScreen() {
 
         {order && !escalated ? (
           <>
-            <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
+            <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} navigate />
 
             <Text className="text-body-lg text-text-secondary">
               At the shop, count the pieces and run all six checks together with the supplier
