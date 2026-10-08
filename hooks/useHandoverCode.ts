@@ -5,13 +5,13 @@ import * as api from "@/lib/api";
 import type { HandoverCodeLoad } from "@/lib/handoverCode";
 
 /**
- * Read the handover code for the delivery step.
+ * Read whether a spoken code is required for the delivery step.
  *
  * `orderId` is null until the job has loaded, and for a job that ends at
  * GRIDGO Office — the server refuses the rider that read, and there is nobody
- * at the far end to compare with. Either way the answer is "none".
+ * at the far end to read a code. Either way the answer is "none".
  *
- * The code is minted once and never changes, so it is read once per job; a
+ * The requirement is read once per job; a
  * failed read is retried by the rider, never assumed away — a governed delivery
  * cannot be recorded without it.
  */
@@ -33,7 +33,7 @@ export function useHandoverCode(orderId: string | null) {
       .getHandover(orderId)
       .then((handover) => {
         if (!current()) return;
-        setLoad(handover ? { status: "ready", otp: handover.otp } : { status: "none" });
+        setLoad(handover ? { status: "ready" } : { status: "none" });
       })
       .catch((e: unknown) => {
         if (!current()) return;
@@ -41,7 +41,7 @@ export function useHandoverCode(orderId: string | null) {
           status: "error",
           message: api.apiErrorMessage(
             e,
-            "The handover code did not load. Check your connection and try again.",
+            "The handover requirement did not load. Check your connection and try again.",
           ),
         });
       });

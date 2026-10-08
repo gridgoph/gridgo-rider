@@ -33,6 +33,7 @@ jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" 
 jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptReminder" }));
 jest.mock("@/components/Screen", () => ({ Screen: "Screen" }));
 jest.mock("@/components/SkeletonScreens", () => ({ ProofStepSkeleton: "ProofStepSkeleton" }));
+jest.mock("@/components/FormScroll", () => ({ FormScroll: "FormScroll" }));
 jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar" }));
 jest.mock("@/components/TripStepHeader", () => ({ TripStepHeader: "TripStepHeader" }));
 
