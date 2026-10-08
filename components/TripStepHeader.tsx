@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 
 import { OrderReference } from "@/components/OrderReference";
+import { NavigateButton } from "@/components/NavigateButton";
 import type { Order } from "@/lib/api";
 
 type Props = {
@@ -27,6 +28,9 @@ export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
       <Text className="text-h2 text-text-primary">{order.title}</Text>
       <OrderReference id={order.id} />
       <Text className="text-body-lg text-text-secondary">{stopLabel}</Text>
+      <View className="mt-3">
+        <NavigateButton order={order} stopKind={stopKind} />
+      </View>
     </View>
   );
 }

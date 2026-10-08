@@ -16,6 +16,7 @@ import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
+import { NavigateButton } from "@/components/NavigateButton";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -279,7 +280,9 @@ export default function ActiveScreen() {
                       : "Measuring the route…"
                 }
                 zone={zoneLabel(trip.zone)}
-              />
+              >
+                <NavigateButton order={trip} stopKind={heading.cardKind} />
+              </NextStopCard>
             ) : null}
 
             {/*

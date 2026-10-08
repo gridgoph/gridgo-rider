@@ -14,6 +14,7 @@ import { Screen } from "@/components/Screen";
 import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
+import { tripDestination } from "@/lib/tripNav";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useTripOrder } from "@/hooks/useTripOrder";
@@ -28,7 +29,6 @@ import {
 } from "@/lib/handoverCode";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
 import {
-  dropoffLabel,
   endsAtOffice,
   isBalanceConfirmed,
   owesAcknowledgementReceipt,
@@ -220,7 +220,7 @@ export default function DeliveryProofScreen() {
 
         {order ? (
           <>
-            <TripStepHeader order={order} stopKind="dropoff" stopLabel={dropoffLabel(order)} />
+            <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} />
 
             {balanceHeld ? (
               <InlineNotice
