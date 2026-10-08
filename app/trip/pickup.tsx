@@ -316,6 +316,7 @@ export default function PickupChecklistScreen() {
                 />
 
                 <EvidenceCapture
+                  key={id}
                   title="Photo of the problem"
                   instruction="Photograph the fault itself — the misprint, the tear, the short count on the counter."
                   evidence={evidence.evidence}

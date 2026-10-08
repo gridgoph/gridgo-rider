@@ -301,6 +301,7 @@ export default function DeliveryProofScreen() {
             ) : null}
 
             <EvidenceCapture
+              key={id}
               title={toOffice ? "Evidence at the office" : "Evidence at the door"}
               instruction={
                 toOffice
