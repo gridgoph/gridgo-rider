@@ -142,7 +142,8 @@ export const DISPATCH_OFFER_TYPES = new Set([
  *   contract's instruction for `type: "announcement"` and for an unknown
  *   type. Alerts is a pushed route here, not a tab.
  * - A **dispatch offer** opens that job in **Offers**, where Accept lives.
- * - A **message from the client** opens that delivery's conversation.
+ * - A **message from the client** opens that delivery's conversation, and a
+ *   **message from the shop** opens the shop's — two threads, two routes.
  * - Any other alert that names a job opens **Active**, which is the trip
  *   in hand (pickup checks, sign-off, delivery). The push carries no order
  *   state, so Active fetches the trip as it always does.
@@ -152,6 +153,8 @@ export function pushTargetRoute(data: PushData): string {
   if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/offers?orderId=${encodeURIComponent(data.orderId)}`;
   // A message from the client opens the conversation itself (gridgo-client#198).
   if (data.type === "delivery_message") return `/trip/messages?orderId=${encodeURIComponent(data.orderId)}`;
+  // A message from the shop opens the shop's conversation, never the client's (C2BE8E7A).
+  if (data.type === "pickup_chat_message") return `/trip/shop-messages?orderId=${encodeURIComponent(data.orderId)}`;
   return "/(tabs)/active";
 }
 

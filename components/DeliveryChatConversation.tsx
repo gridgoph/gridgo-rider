@@ -12,7 +12,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { ImagePlus, Lock, Send, UserRound, X } from "lucide-react-native";
+import { ImagePlus, Lock, Send, Store, UserRound, X } from "lucide-react-native";
 
 import { ChatPhoto } from "@/components/ChatPhoto";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -24,43 +24,65 @@ import * as api from "@/lib/api";
 import { addChatPhotos, pickChatImages, uploadChatImage, type ChatPhotoDraft } from "@/lib/chatImages";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
 import {
-  DELIVERY_CHAT_IMAGE_PURPOSE,
   DELIVERY_CHAT_POLL_MS,
-  DELIVERY_MESSAGE_MAX,
-  deliveryChatNotice,
-  deliveryChatUnavailable,
-  deliverySendError,
-  senderLabel,
   type DeliveryChatMessage,
   type DeliveryChatSummary,
   type DeliveryChatUnavailable,
 } from "@/lib/deliveryChat";
+import type { PickupChatMessage } from "@/lib/pickupChat";
+import { senderLabel, tripChatWords, type TripChatParty } from "@/lib/tripChat";
+
+type ChatMessage = DeliveryChatMessage | PickupChatMessage;
+type ChatSummary = Pick<DeliveryChatSummary, "status" | "closesAt" | "retentionHours">;
+
+/** The two conversations a job can hold, each on its own route. */
+const CHAT_API = {
+  client: {
+    load: (orderId: string) => api.getDeliveryChat(orderId),
+    send: (orderId: string, body: string, options?: { attachmentFileIds?: string[] }) =>
+      options ? api.sendDeliveryMessage(orderId, body, options) : api.sendDeliveryMessage(orderId, body),
+  },
+  shop: {
+    load: (orderId: string) => api.getPickupChat(orderId),
+    send: (orderId: string, body: string, options?: { attachmentFileIds?: string[] }) =>
+      options ? api.sendPickupMessage(orderId, body, options) : api.sendPickupMessage(orderId, body),
+  },
+};
 
 /**
- * The rider's side of one delivery's conversation with the client.
+ * The rider's side of one job's conversation with the client it is delivered
+ * to, or with the shop it is collected from (`party`). The two are separate
+ * threads; every label here comes from `lib/tripChat.ts` and names who reads
+ * what the rider writes, and the heading's glyph differs, so the shop's chat
+ * can never be mistaken for the client's.
  *
  * Text and photos, and no call button: neither side ever sees the other's number.
  * Like the support chat, the message list is the viewport and the composer is
  * pinned under it, so the column shrinks with the keyboard (see
  * `__tests__/keyboardAvoidance.test.ts`). New messages arrive by polling while
- * the screen is in front; the client's first message of a burst also lands as
- * an alert.
+ * the screen is in front; the other side's first message of a burst also lands
+ * as an alert.
  */
 export function DeliveryChatConversation({
   orderId,
   onBackToTrip,
+  party = "client",
 }: {
   orderId: string;
   onBackToTrip: () => void;
+  party?: TripChatParty;
 }) {
   const colors = useThemeColors();
+  const words = tripChatWords(party);
+  const chatApi = CHAT_API[party];
+  const PartyIcon = party === "shop" ? Store : UserRound;
   const listRef = useRef<ScrollView>(null);
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
   const followingEnd = useRef(true);
   const viewportHeight = useRef<number | null>(null);
   const sequence = useRef(0);
-  const [chat, setChat] = useState<DeliveryChatSummary | null>(null);
-  const [messages, setMessages] = useState<DeliveryChatMessage[]>([]);
+  const [chat, setChat] = useState<ChatSummary | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<DeliveryChatUnavailable | null>(null);
@@ -72,7 +94,7 @@ export function DeliveryChatConversation({
   const load = useCallback(async () => {
     const current = ++sequence.current;
     try {
-      const result = await api.getDeliveryChat(orderId);
+      const result = await chatApi.load(orderId);
       if (current !== sequence.current) return;
       setChat(result.chat);
       setUnavailable(null);
@@ -88,9 +110,9 @@ export function DeliveryChatConversation({
       });
     } catch (err) {
       if (current !== sequence.current) return;
-      const closed = deliveryChatUnavailable(err);
+      const closed = words.unavailable(err);
       if (closed) {
-        // Removed, reassigned, or never a door delivery: drop what was shown.
+        // Removed, reassigned, or not open for this job: drop what was shown.
         setUnavailable(closed);
         setChat(null);
         setMessages([]);
@@ -100,7 +122,7 @@ export function DeliveryChatConversation({
     } finally {
       if (current === sequence.current) setLoading(false);
     }
-  }, [orderId]);
+  }, [chatApi, orderId, words]);
 
   useLiveRefresh(["notifications", "orders"], load);
 
@@ -154,11 +176,11 @@ export function DeliveryChatConversation({
     try {
       const fileIds: string[] = [];
       for (const asset of pending) {
-        fileIds.push(await uploadChatImage(asset, DELIVERY_CHAT_IMAGE_PURPOSE));
+        fileIds.push(await uploadChatImage(asset, words.imagePurpose));
       }
       const posted = fileIds.length
-        ? await api.sendDeliveryMessage(orderId, body, { attachmentFileIds: fileIds })
-        : await api.sendDeliveryMessage(orderId, body);
+        ? await chatApi.send(orderId, body, { attachmentFileIds: fileIds })
+        : await chatApi.send(orderId, body);
       setDraft("");
       setPending([]);
       setChat(posted.chat);
@@ -168,14 +190,14 @@ export function DeliveryChatConversation({
       followingEnd.current = true;
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (err) {
-      console.warn("[delivery-chat] Send failed:", err instanceof Error ? err.message : "Unknown error");
-      setSendError(deliverySendError(err));
+      console.warn(`[${party}-chat] Send failed:`, err instanceof Error ? err.message : "Unknown error");
+      setSendError(words.sendError(err));
       // A refusal can mean the delivery was just recorded; re-read to say so.
       void load();
     } finally {
       setSending(false);
     }
-  }, [draft, load, orderId, pending, sending]);
+  }, [chatApi, draft, load, orderId, party, pending, sending, words]);
 
   const canSend = !sending && Boolean(draft.trim() || pending.length);
   const open = chat?.status === "open";
@@ -199,7 +221,7 @@ export function DeliveryChatConversation({
       <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={headerHeight} style={{ flex: 1 }}>
         <ScrollView
           ref={listRef}
-          testID="delivery-chat-transcript"
+          testID={`${party}-chat-transcript`}
           className="flex-1"
           contentContainerClassName="gg-page grow gap-3 pb-3 pt-4"
           keyboardShouldPersistTaps="handled"
@@ -212,12 +234,12 @@ export function DeliveryChatConversation({
               className="h-11 w-11 items-center justify-center rounded-pill"
               style={{ backgroundColor: colors.surfaceVariant }}
             >
-              <UserRound size={20} color={colors.textPrimary} strokeWidth={2} />
+              <PartyIcon size={20} color={colors.textPrimary} strokeWidth={2} />
             </View>
             <View className="min-w-0 flex-1">
-              <Text className="text-h3 text-text-primary">The client</Text>
+              <Text className="text-h3 text-text-primary">{words.counterpart}</Text>
               <Text className="text-caption text-text-muted">
-                {open ? "On this delivery" : chat ? "Delivered" : " "}
+                {open ? words.openStatus : chat ? words.closedStatus : " "}
               </Text>
             </View>
           </View>
@@ -227,10 +249,10 @@ export function DeliveryChatConversation({
               className="flex-row items-start gap-2 rounded-field px-3 py-2"
               style={{ backgroundColor: colors.surfaceVariant }}
               accessible
-              accessibilityLabel={deliveryChatNotice(chat)}
+              accessibilityLabel={words.notice(chat)}
             >
               <Lock size={14} color={colors.textMuted} strokeWidth={2} style={{ marginTop: 3 }} />
-              <Text className="flex-1 text-caption text-text-secondary">{deliveryChatNotice(chat)}</Text>
+              <Text className="flex-1 text-caption text-text-secondary">{words.notice(chat)}</Text>
             </View>
           ) : null}
 
@@ -253,9 +275,7 @@ export function DeliveryChatConversation({
               <View className="gg-panel items-center py-8">
                 <Text className="text-body-lg font-medium text-text-primary">No messages yet</Text>
                 <Text className="mt-2 text-center text-body text-text-secondary">
-                  {open
-                    ? "Ask the client for a gate, a landmark, or who will receive the package."
-                    : "Nobody wrote during this delivery."}
+                  {open ? words.emptyOpen : words.emptyClosed}
                 </Text>
               </View>
             ) : (
@@ -287,7 +307,7 @@ export function DeliveryChatConversation({
                     ))}
                   </View>
                   <Text className="mt-1 text-caption text-text-muted">
-                    {senderLabel(message)} · {timeOf(message.createdAt)}
+                    {senderLabel(message, party)} · {timeOf(message.createdAt)}
                   </Text>
                 </View>
               ))
@@ -333,10 +353,10 @@ export function DeliveryChatConversation({
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
-                placeholder="Write to the client"
-                accessibilityLabel="Message the client"
+                placeholder={words.placeholder}
+                accessibilityLabel={words.inputLabel}
                 multiline
-                maxLength={DELIVERY_MESSAGE_MAX}
+                maxLength={words.maxLength}
                 editable={!sending}
                 className="min-h-12 min-w-0 flex-1 rounded-field border border-outline bg-surface px-3 py-2 text-body text-text-primary"
                 placeholderTextColor={colors.textMuted}
@@ -345,7 +365,7 @@ export function DeliveryChatConversation({
                 onPress={() => void send()}
                 disabled={!canSend}
                 accessibilityRole="button"
-                accessibilityLabel="Send"
+                accessibilityLabel={words.sendLabel}
                 accessibilityState={{ disabled: !canSend }}
                 className="h-12 w-12 items-center justify-center rounded-pill bg-accent"
                 style={{ opacity: canSend ? 1 : 0.38 }}

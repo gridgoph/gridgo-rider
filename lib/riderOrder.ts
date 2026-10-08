@@ -140,11 +140,22 @@ export function isTransportBlocked(order: Pick<Order, "pickupChecklist">): boole
 }
 
 /**
- * Whether location sharing is required for this trip state.
- * Only while the package is in transit with the rider.
+ * Whether location sharing is required for this trip state: from the moment
+ * the rider accepts the pick-up until the job leaves their hands (C2BE8E7A).
+ *
+ * Who sees it is the API's rule, not this app's: the shop only on the way to
+ * the shop (`rider_assigned`), losing it at pick-up; the client only after
+ * pick-up, near the drop-off. `locationAudience` words that for the rider.
  */
 export function shouldShareLocation(state: string): boolean {
-  return state === "picked_up" || state === "out_for_delivery";
+  return state === "rider_assigned" || state === "picked_up" || state === "out_for_delivery";
+}
+
+/** Who the rider's position is shared with in this trip state. */
+export function locationAudience(state: string): "shop" | "client" | null {
+  if (state === "rider_assigned") return "shop";
+  if (state === "picked_up" || state === "out_for_delivery") return "client";
+  return null;
 }
 
 export function isActiveTripState(state: string): state is ActiveTripState {

@@ -61,7 +61,7 @@ it("sends a typed message to the client and shows it at once", async () => {
 
   fireEvent.changeText(field, " I am at the gate. ");
   await waitFor(() => expect(screen.getByPlaceholderText("Write to the client").props.value).toBe(" I am at the gate. "));
-  fireEvent.press(screen.getByLabelText("Send"));
+  fireEvent.press(screen.getByLabelText("Send to the client"));
 
   await waitFor(() => expect(mockSendDeliveryMessage).toHaveBeenCalledWith("order_1", "I am at the gate."));
   expect(await screen.findByText("I am at the gate.")).toBeTruthy();

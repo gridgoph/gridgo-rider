@@ -347,10 +347,18 @@ function RootStack() {
         name="trip/delivery"
         options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
       />
-      {/* The rider and the client, during one delivery (gridgo-client#198). */}
+      {/*
+        The rider and the client, during one delivery (gridgo-client#198), and
+        the rider and the shop, from acceptance (C2BE8E7A). Two threads, so the
+        header names whose it is.
+      */}
       <Stack.Screen
         name="trip/messages"
-        options={{ title: "Messages", ...multiOriginPushedScreenOptions }}
+        options={{ title: "Client messages", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="trip/shop-messages"
+        options={{ title: "Shop messages", ...multiOriginPushedScreenOptions }}
       />
       {/*
         Confirmations are the platform's own sheet, not a drawn overlay —

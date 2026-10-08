@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
 import type { DevicePlatform } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
+import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
 
 /**
  * GRIDGO demo API client.
@@ -249,6 +250,12 @@ export type Order = {
    * `deliveryChatOf` (`lib/deliveryChat.ts`).
    */
   deliveryChat?: DeliveryChatSummary | null;
+  /**
+   * Messages with the shop: `open` from the rider's acceptance until the job
+   * is finished, `read_only` for a day after, absent otherwise, with this
+   * rider's unread count. Read it through `pickupChatOf` (`lib/pickupChat.ts`).
+   */
+  pickupChat?: PickupChatSummary | null;
   promisedDate: string | null;
   artworkName: string | null;
   artworkFileIds?: string[];
@@ -1087,6 +1094,28 @@ export async function sendDeliveryMessage(
   });
 }
 
+/** The conversation with the shop this job is collected from (`lib/pickupChat.ts`). Reading it marks it read. */
+export async function getPickupChat(
+  orderId: string,
+): Promise<{ chat: PickupChatSummary; messages: PickupChatMessage[] }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/pickup-chat`);
+}
+
+/** `attachmentFileIds` are `pickup_chat_image` uploads; a photo may be the whole message. */
+export async function sendPickupMessage(
+  orderId: string,
+  body: string,
+  options?: { attachmentFileIds?: string[] },
+): Promise<{ chat: PickupChatSummary; message: PickupChatMessage }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/pickup-chat/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      body,
+      ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
+    }),
+  });
+}
+
 /** Assigned riders receive a requirement only, never the client's credentials. */
 export async function getHandover(orderId: string): Promise<{ otpRequired: true } | null> {
   const result = await request<{ handover: { otpRequired: true } | null }>(
@@ -1286,7 +1315,7 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "order_not_found":
         return "That job is gone. Open Offers to take a new one.";
       case "tracking_not_active":
-        return "Location sharing only runs while a package is with you.";
+        return "Location sharing only runs while a job is yours.";
       case "forbidden":
         return "This job is not assigned to you.";
       case "invalid_transition":

@@ -108,6 +108,14 @@ describe("pushTargetRoute", () => {
     ).toBe("/trip/messages?orderId=ord%20demo%2F1");
   });
 
+  // C2BE8E7A: the shop's thread and the client's are separate routes, so a tap
+  // can only open the conversation the message was written in.
+  it("opens the shop's conversation, never the client's, for a message from the shop", () => {
+    expect(
+      pushTargetRoute(parsePushData({ type: "pickup_chat_message", orderId: "ord demo/1" })),
+    ).toBe("/trip/shop-messages?orderId=ord%20demo%2F1");
+  });
+
   it("opens Alerts when there is no job behind the alert", () => {
     expect(pushTargetRoute(parsePushData({ type: "account_update" }))).toBe("/alerts");
   });

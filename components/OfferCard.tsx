@@ -111,6 +111,10 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
         Accept, travel to the shop, then run all six pickup checks together with the supplier
         before carrying the package.
       </Text>
+      {/* Said before the tap, because the tap is what starts it. */}
+      <Text className="text-caption text-text-muted">
+        Once you accept, the shop can see your position on the way there, until you collect the job.
+      </Text>
 
       <PrimaryButton
         label={accepting ? "Accepting…" : "Accept this job"}

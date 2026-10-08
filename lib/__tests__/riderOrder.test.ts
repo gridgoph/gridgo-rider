@@ -19,6 +19,7 @@ import {
   selectActiveTrip,
   selectOffers,
   shouldShareLocation,
+  locationAudience,
   signOffPrompt,
   sortTimelineNewestFirst,
   stopLatLng,
@@ -328,11 +329,21 @@ describe("selectOffers / selectActiveTrip", () => {
 });
 
 describe("location sharing window", () => {
-  it("shares only while the package is with the rider en route", () => {
-    expect(shouldShareLocation("rider_assigned")).toBe(false);
+  // C2BE8E7A: the shop watches the rider come to it, so sharing starts at acceptance.
+  it("shares from acceptance until the job leaves the rider's hands", () => {
+    expect(shouldShareLocation("ready_for_dispatch")).toBe(false);
+    expect(shouldShareLocation("rider_assigned")).toBe(true);
     expect(shouldShareLocation("picked_up")).toBe(true);
     expect(shouldShareLocation("out_for_delivery")).toBe(true);
+    expect(shouldShareLocation("awaiting_collection")).toBe(false);
     expect(shouldShareLocation("issue_window_open")).toBe(false);
+  });
+
+  it("names the shop as the watcher before pick-up and the client after", () => {
+    expect(locationAudience("rider_assigned")).toBe("shop");
+    expect(locationAudience("picked_up")).toBe("client");
+    expect(locationAudience("out_for_delivery")).toBe("client");
+    expect(locationAudience("delivered")).toBeNull();
   });
 });
 
