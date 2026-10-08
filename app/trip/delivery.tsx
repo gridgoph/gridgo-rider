@@ -220,7 +220,7 @@ export default function DeliveryProofScreen() {
 
         {order ? (
           <>
-            <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} />
+            <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} navigate />
 
             {balanceHeld ? (
               <InlineNotice

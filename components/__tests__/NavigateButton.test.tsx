@@ -29,8 +29,8 @@ beforeEach(() => {
 
 it.each(["pickup", "dropoff"] as const)("opens the exact %s pin from the proof header", async (stopKind) => {
   const stop = order[stopKind]!;
-  await render(<TripStepHeader order={order} stopKind={stopKind} stopLabel={stop.label} />);
-  const button = screen.getByRole("button", { name: "Navigate" });
+  await render(<TripStepHeader order={order} stopKind={stopKind} stopLabel={stop.label} navigate />);
+  const button = screen.getByRole("button", { name: "Navigate in Google Maps" });
   expect(button.props.accessibilityHint).toContain(stop.label);
   await fireEvent.press(button);
   expect(Linking.openURL).toHaveBeenCalledWith(
@@ -46,7 +46,7 @@ it.each(["pickup_checks", "delivery_proof"] as const)("navigates to the active c
       <NavigateButton order={order} stopKind={stop.cardKind} />
     </NextStopCard>,
   );
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
   const point = stop.cardKind === "pickup" ? order.pickup! : order.dropoff!;
   expect(Linking.openURL).toHaveBeenCalledWith(
     `https://www.google.com/maps/dir/?api=1&destination=${point.lat}%2C${point.lng}&travelmode=driving`,
@@ -55,7 +55,7 @@ it.each(["pickup_checks", "delivery_proof"] as const)("navigates to the active c
 
 it("uses the map's GRIDGO Office pin for a collection job", async () => {
   await render(<NavigateButton order={{ ...order, fulfillmentMode: "pickup", dropoff: null }} stopKind="dropoff" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
   expect(Linking.openURL).toHaveBeenCalledWith(
     `https://www.google.com/maps/dir/?api=1&destination=${GRIDGO_OFFICE.lat}%2C${GRIDGO_OFFICE.lng}&travelmode=driving`,
   );
@@ -64,12 +64,14 @@ it("uses the map's GRIDGO Office pin for a collection job", async () => {
 it("recovers from a rejected open with a copy action and supports retry", async () => {
   jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler"));
   await render(<NavigateButton order={order} stopKind="pickup" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate" }));
-  expect(screen.getByText(/Could not open Google Maps/)).toBeTruthy();
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  expect(screen.getByText("Google Maps did not open")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Copy address" }));
   expect(copyAddress).toHaveBeenCalledWith("Shop & print");
-  expect(screen.getByText("Address copied.")).toBeTruthy();
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate" }));
+  expect(screen.getByRole("button", { name: "Address copied" })).toBeTruthy();
+  // The address is already on screen; a successful copy does not print it twice.
+  expect(screen.queryByText("Shop & print")).toBeNull();
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
   expect(screen.queryByText("Copy address")).toBeNull();
 });
 
@@ -77,7 +79,7 @@ it("keeps the address selectable if copying fails", async () => {
   jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler"));
   jest.mocked(copyAddress).mockRejectedValueOnce(new Error("Unavailable"));
   await render(<NavigateButton order={order} stopKind="dropoff" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
   await fireEvent.press(screen.getByRole("button", { name: "Copy address" }));
   expect(screen.getByText(/Could not copy/)).toBeTruthy();
   expect(screen.getByText("Client door").props.selectable).toBe(true);
@@ -96,7 +98,7 @@ it.each(["delivered", "cancelled", "awaiting_collection"])("hides navigation aft
 it("removes failure recovery on reassignment or sign-out", async () => {
   jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler"));
   const view = await render(<NavigateButton order={order} stopKind="pickup" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
   await view.rerender(<NavigateButton order={{ ...order, riderId: "another_rider" }} stopKind="pickup" />);
   expect(screen.queryByRole("button")).toBeNull();
   await view.rerender(<NavigateButton order={order} stopKind="pickup" />);
@@ -107,6 +109,7 @@ it("removes failure recovery on reassignment or sign-out", async () => {
 it("never turns a missing pin into a label-based Maps destination", async () => {
   await render(<NavigateButton order={{ ...order, dropoff: null, address: "Client street" }} stopKind="dropoff" />);
   expect(screen.queryByText("Navigate")).toBeNull();
+  expect(screen.getByText("No exact pin for this stop")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Copy address" }));
   expect(copyAddress).toHaveBeenCalledWith("Client street");
   expect(Linking.openURL).not.toHaveBeenCalled();
@@ -117,4 +120,26 @@ it("rejects malformed pins without rounding valid coordinates", () => {
   expect(googleMapsDirectionsUrl({ lat: NaN, lng: 125 })).toBeNull();
   expect(googleMapsDirectionsUrl({ lat: 7, lng: 181 })).toBeNull();
   expect(googleMapsDirectionsUrl({ lat: 0, lng: 0 })).toContain("destination=0%2C0");
+});
+
+it.each(["pickup", "dropoff"] as const)("leaves Navigate off a %s header that does not ask for it", async (stopKind) => {
+  await render(<TripStepHeader order={order} stopKind={stopKind} stopLabel="Counter" />);
+  expect(screen.queryByRole("button")).toBeNull();
+});
+
+it("opens Maps once while a launch is in flight", async () => {
+  let finish: (value: unknown) => void = () => {};
+  jest.mocked(Linking.openURL).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  await render(<NavigateButton order={order} stopKind="pickup" />);
+  // Not awaited: the press is still waiting on Maps while we look at it.
+  void fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  expect(await screen.findByText("Opening Maps…")).toBeTruthy();
+  const busy = screen.getByRole("button", { name: "Navigate in Google Maps" });
+  expect(busy.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
+  void fireEvent.press(busy);
+  expect(Linking.openURL).toHaveBeenCalledTimes(1);
+  await act(async () => finish(true));
+  await screen.findByText("Navigate");
+  expect(screen.getByRole("button", { name: "Navigate in Google Maps" }).props.accessibilityState)
+    .toMatchObject({ busy: false, disabled: false });
 });

@@ -281,7 +281,10 @@ export default function ActiveScreen() {
                 }
                 zone={zoneLabel(trip.zone)}
               >
-                <NavigateButton order={trip} stopKind={heading.cardKind} />
+                {/* Held at the counter, the rider is already where Maps would send them. */}
+                {phase !== "pickup_blocked" ? (
+                  <NavigateButton order={trip} stopKind={heading.cardKind} />
+                ) : null}
               </NextStopCard>
             ) : null}
 
