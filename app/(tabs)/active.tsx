@@ -16,6 +16,7 @@ import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
+import { NavigateButton } from "@/components/NavigateButton";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -279,7 +280,12 @@ export default function ActiveScreen() {
                       : "Measuring the route…"
                 }
                 zone={zoneLabel(trip.zone)}
-              />
+              >
+                {/* Held at the counter, the rider is already where Maps would send them. */}
+                {phase !== "pickup_blocked" ? (
+                  <NavigateButton order={trip} stopKind={heading.cardKind} />
+                ) : null}
+              </NextStopCard>
             ) : null}
 
             {/*

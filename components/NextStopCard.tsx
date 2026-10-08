@@ -1,4 +1,5 @@
 import { MapPin, Package, Route } from "lucide-react-native";
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
@@ -16,6 +17,7 @@ type Props = {
   zone?: string | null;
   /** Overrides the default NEXT STOP · PICKUP / DROP-OFF overline. */
   overline?: string;
+  children?: ReactNode;
 };
 
 /**
@@ -34,6 +36,7 @@ export function NextStopCard({
   routeSummary,
   zone,
   overline,
+  children,
 }: Props) {
   const colors = useThemeColors();
   const Icon = kind === "pickup" ? Package : MapPin;
@@ -57,6 +60,7 @@ export function NextStopCard({
         <Text className="min-w-0 flex-1 text-body-lg text-text-primary">{routeSummary}</Text>
         {zone ? <Text className="text-caption text-text-muted">{zone}</Text> : null}
       </View>
+      {children}
     </View>
   );
 }

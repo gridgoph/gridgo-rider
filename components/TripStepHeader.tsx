@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 
 import { OrderReference } from "@/components/OrderReference";
+import { NavigateButton } from "@/components/NavigateButton";
 import type { Order } from "@/lib/api";
 
 type Props = {
@@ -8,6 +9,12 @@ type Props = {
   /** Where the rider is standing while they do this step. */
   stopLabel: string;
   stopKind: "pickup" | "dropoff";
+  /**
+   * Offer Google Maps to this stop. Only the first screen of each stop takes
+   * it — the rider may still be riding there. Once the supplier is signing or
+   * the package is held at the counter, a way out of the app is noise.
+   */
+  navigate?: boolean;
 };
 
 /**
@@ -18,7 +25,7 @@ type Props = {
  * heavy header competes with it. Overline, title, order reference, stop — no
  * chip. The screen title in the navigation bar already says which step this is.
  */
-export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
+export function TripStepHeader({ order, stopLabel, stopKind, navigate = false }: Props) {
   return (
     <View className="gap-1">
       <Text className="text-overline text-text-muted">
@@ -27,6 +34,11 @@ export function TripStepHeader({ order, stopLabel, stopKind }: Props) {
       <Text className="text-h2 text-text-primary">{order.title}</Text>
       <OrderReference id={order.id} />
       <Text className="text-body-lg text-text-secondary">{stopLabel}</Text>
+      {navigate ? (
+        <View className="mt-3">
+          <NavigateButton order={order} stopKind={stopKind} />
+        </View>
+      ) : null}
     </View>
   );
 }
