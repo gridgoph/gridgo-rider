@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import { ApiError, type Order } from "@/lib/api";
 import { HANDOVER_ESCALATION_REASON } from "@/lib/handoverCode";
@@ -88,163 +88,170 @@ const confirm = () => button(/confirm delivery/i);
 const isDisabled = (node: { props: { accessibilityState?: { disabled?: boolean } } }) =>
   Boolean(node.props.accessibilityState?.disabled);
 
-describe("the handover code at the door", () => {
+const codeInput = () => screen.getByLabelText("Client's six-digit handover code");
+const enterCode = (code = "012345") => fireEvent.changeText(codeInput(), code);
+
+async function openDelivery() {
+  await render(<DeliveryProofScreen />);
+  await screen.findByText("Handover code");
+}
+
+async function refuseCode(body: Record<string, unknown> = { error: "handover_otp_mismatch" }) {
+  api.recordDelivery.mockRejectedValueOnce(new ApiError(409, body));
+  await enterCode();
+  await fireEvent.press(confirm());
+  await screen.findByText("That code does not match");
+}
+
+describe("the spoken handover code at the door", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    for (const mock of [api.health, api.getOrder, api.getHandover, api.recordDelivery, api.escalateHandover]) mock.mockReset();
     api.health.mockResolvedValue({});
     api.getOrder.mockResolvedValue(atDoor);
-    api.getHandover.mockResolvedValue({ otp: "482913" });
+    api.getHandover.mockResolvedValue({ otpRequired: true });
     api.escalateHandover.mockResolvedValue(undefined);
     api.recordDelivery.mockResolvedValue({ ...atDoor, state: "issue_window_open" });
   });
 
-  it("shows the rider's code large, in two groups, and spells it out for a screen reader", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    expect(screen.getByText("482")).toBeTruthy();
-    expect(screen.getByText("913")).toBeTruthy();
-    expect(screen.getByLabelText("Your handover code: 4 8 2 9 1 3")).toBeTruthy();
+  it("starts empty, uses a numeric keypad, and has no rider code or match buttons", async () => {
+    await openDelivery();
+    expect(codeInput().props.value).toBe("");
+    expect(codeInput().props.keyboardType).toBe("number-pad");
+    expect(codeInput().props.maxLength).toBe(6);
+    expect(screen.queryByLabelText(/Your handover code/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /codes match/i })).toBeNull();
     expect(api.getHandover).toHaveBeenCalledWith("ord_1");
-  });
-
-  it("holds the delivery until the rider has compared codes", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
     expect(isDisabled(confirm())).toBe(true);
-    expect(
-      screen.getByText("Ask the client for their handover code and check it against yours."),
-    ).toBeTruthy();
+    await enterCode("01234");
+    expect(isDisabled(confirm())).toBe(true);
     await fireEvent.press(confirm());
     expect(api.recordDelivery).not.toHaveBeenCalled();
   });
 
-  it("on a match, completes the delivery as before and sends the code with the evidence", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    await fireEvent.press(button(/^codes match$/i));
-    expect(screen.getByText("The client's code is the same as yours. Hand the package over.")).toBeTruthy();
+  it("filters non-digits, limits entry to six and preserves leading zeroes in the submission", async () => {
+    await openDelivery();
+    await enterCode("01x234567");
+    expect(codeInput().props.value).toBe("012345");
     expect(isDisabled(confirm())).toBe(false);
-
+    expect(api.recordDelivery).not.toHaveBeenCalled();
     await fireEvent.press(confirm());
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
-      evidenceFileId: "fil_door",
-      evidenceType: "photo",
-      otp: "482913",
+      evidenceFileId: "fil_door", evidenceType: "photo", otp: "012345",
     });
   });
 
-  it("on a mismatch, blocks the handover and makes escalation the one action", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    await fireEvent.press(button(/codes don't match/i));
-
-    expect(screen.getByText("Do not hand the package over")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /confirm delivery/i })).toBeNull();
+  it("holds a wrong code without guessing remaining tries and permits a corrected retry", async () => {
+    await openDelivery();
+    await refuseCode();
+    expect(screen.getAllByText("That code does not match.").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/tries remaining/)).toBeNull();
+    expect(codeInput().props.value).toBe("");
+    expect(isDisabled(confirm())).toBe(true);
     expect(screen.getByText("evidence locked")).toBeTruthy();
-    expect(screen.queryByText("Acknowledgement receipt")).toBeNull();
-    expect(
-      screen.getByText("The codes do not match. Keep the package and escalate to Operations."),
-    ).toBeTruthy();
-    expect(api.recordDelivery).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    await enterCode("001234");
+    await fireEvent.press(confirm());
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+    expect(api.recordDelivery).toHaveBeenLastCalledWith("ord_1", {
+      evidenceFileId: "fil_door", evidenceType: "photo", otp: "001234",
+    });
   });
 
-  it("escalates to Operations through the API and says what to do while waiting", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
+  it("shows remaining tries only when the API supplies them", async () => {
+    await openDelivery();
+    await refuseCode({ error: "handover_otp_mismatch", remainingAttempts: 2 });
+    expect(screen.getAllByText(/2 tries remaining/).length).toBeGreaterThan(0);
+  });
 
-    await fireEvent.press(button(/codes don't match/i));
+  it("shows the server lockout time and prevents even a corrected code until expiry", async () => {
+    jest.useFakeTimers();
+    try {
+      const retryAtMs = Date.now() + 15 * 60 * 1000;
+      const retryAfter = new Date(retryAtMs).toISOString();
+      api.recordDelivery.mockRejectedValueOnce(new ApiError(429, {
+        error: "handover_attempts_exceeded", retryAfter, canEscalate: true,
+      }));
+      await openDelivery();
+      await enterCode();
+      await fireEvent.press(confirm());
+      await screen.findByText("Code check locked");
+      const retryLabel = new Date(retryAfter).toLocaleString("en-PH", {
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit",
+      });
+      expect(screen.getAllByText(`Too many attempts. Try again at ${retryLabel}.`).length).toBeGreaterThan(0);
+      await enterCode("001234");
+      expect(isDisabled(confirm())).toBe(true);
+      await fireEvent.press(confirm());
+      expect(api.recordDelivery).toHaveBeenCalledTimes(1);
+      await fireEvent.press(button(/escalate to operations/i));
+      await screen.findByText("Operations has been alerted");
+      expect(isDisabled(confirm())).toBe(true);
+      await act(async () => { jest.advanceTimersByTime(15 * 60 * 1000); });
+      expect(screen.queryByText("Code check locked")).toBeNull();
+      expect(isDisabled(confirm())).toBe(false);
+      await fireEvent.press(confirm());
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("escalates a refused code without completing delivery or clearing the code gate", async () => {
+    await openDelivery();
+    await refuseCode();
     await fireEvent.press(button(/escalate to operations/i));
-
     await screen.findByText("Operations has been alerted");
     expect(api.escalateHandover).toHaveBeenCalledWith("ord_1", HANDOVER_ESCALATION_REASON);
-    expect(screen.getByText(/Keep the package with you and stay near the drop-off point/)).toBeTruthy();
-    // Escalation records the report; it never unlocks the delivery.
     expect(isDisabled(confirm())).toBe(true);
-    expect(api.recordDelivery).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(api.recordDelivery).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the package held when the escalation does not reach Operations", async () => {
-    api.escalateHandover.mockRejectedValue(new Error("Network request failed"));
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    await fireEvent.press(button(/codes don't match/i));
-    await fireEvent.press(button(/escalate to operations/i));
-
-    await screen.findByText("Operations was not alerted");
-    expect(screen.queryByText("Operations has been alerted")).toBeNull();
-    expect(button(/escalate to operations/i)).toBeTruthy();
-  });
-
-  it("starts the failed escalation's body with what to do, not a repeat of its title", async () => {
+  it("keeps escalation available if Operations could not be alerted", async () => {
     api.escalateHandover.mockRejectedValue(new ApiError(500, { error: "internal_error" }));
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    await fireEvent.press(button(/codes don't match/i));
+    await openDelivery();
+    await refuseCode();
     await fireEvent.press(button(/escalate to operations/i));
-
     await screen.findByText("Operations was not alerted");
-    expect(screen.getAllByText(/Operations was not alerted/)).toHaveLength(1);
-    expect(
-      screen.getByText(/^Keep the package with you, check your connection and try again/),
-    ).toBeTruthy();
-  });
-
-  it("lets a rider who misread the screen check the codes again", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    await fireEvent.press(button(/codes don't match/i));
-    await fireEvent.press(button(/check the codes again/i));
-    await fireEvent.press(button(/^codes match$/i));
-
-    expect(isDisabled(confirm())).toBe(false);
-  });
-
-  it("turns a server refusal of the code into the mismatch hold", async () => {
-    api.recordDelivery.mockRejectedValue(
-      new ApiError(409, { error: "handover_otp_mismatch", canEscalate: true }),
-    );
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Handover code");
-
-    await fireEvent.press(button(/^codes match$/i));
-    await fireEvent.press(confirm());
-
-    await screen.findByText("Do not hand the package over");
+    expect(screen.getByText(/^Keep the package with you, check your connection and try again/)).toBeTruthy();
     expect(button(/escalate to operations/i)).toBeTruthy();
+    expect(isDisabled(confirm())).toBe(true);
+  });
+
+  it("does not mistake a network failure for a wrong code", async () => {
+    api.recordDelivery.mockRejectedValueOnce(new Error("Network request failed"));
+    await openDelivery();
+    await enterCode();
+    await fireEvent.press(confirm());
+    await screen.findByText("Delivery not recorded");
+    expect(screen.queryByText("That code does not match")).toBeNull();
+    expect(codeInput().props.value).toBe("012345");
     expect(mockRouter.back).not.toHaveBeenCalled();
   });
 
-  it("delivers as before, without a code, on a job that has none", async () => {
+  it("delivers with evidence alone when the switch is off or no code was issued", async () => {
     api.getHandover.mockResolvedValue(null);
     await render(<DeliveryProofScreen />);
     await screen.findByRole("button", { name: /confirm delivery/i });
-    await waitFor(() => expect(api.getHandover).toHaveBeenCalled());
-
+    await waitFor(() => expect(isDisabled(confirm())).toBe(false));
     expect(screen.queryByText("Handover code")).toBeNull();
     await fireEvent.press(confirm());
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
-      evidenceFileId: "fil_door",
-      evidenceType: "photo",
+      evidenceFileId: "fil_door", evidenceType: "photo",
     });
   });
 
-  it("does not hand over blind when the code cannot be read", async () => {
+  it("blocks an unread requirement and retries without bypassing entry", async () => {
     api.getHandover.mockRejectedValueOnce(new Error("Network request failed"));
     await render(<DeliveryProofScreen />);
-    await screen.findByText("The handover code did not load");
-
+    await screen.findByText("The handover requirement did not load");
     expect(isDisabled(confirm())).toBe(true);
     await fireEvent.press(button(/try again/i));
     await screen.findByText("Handover code");
+    expect(isDisabled(confirm())).toBe(true);
     expect(api.getHandover).toHaveBeenCalledTimes(2);
   });
 
@@ -252,14 +259,12 @@ describe("the handover code at the door", () => {
     api.getOrder.mockResolvedValue({ ...atDoor, fulfillmentMode: "pickup" });
     await render(<DeliveryProofScreen />);
     await screen.findByRole("button", { name: /confirm drop-off/i });
-
     expect(api.getHandover).not.toHaveBeenCalled();
     expect(screen.queryByText("Handover code")).toBeNull();
     await fireEvent.press(button(/confirm drop-off/i));
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
-      evidenceFileId: "fil_door",
-      evidenceType: "photo",
+      evidenceFileId: "fil_door", evidenceType: "photo",
     });
   });
 });

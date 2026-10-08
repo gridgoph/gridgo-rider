@@ -1050,8 +1050,8 @@ export async function submitPickupChecklist(
  * The file must be attached to the order first — see `lib/attachments.ts`.
  * Success moves the job to delivered and opens the issue window in one step.
  *
- * `otp` is the handover code from `getHandover`, sent only when the order has
- * one; the server refuses a governed delivery without it
+ * `otp` is the six-digit string typed from the client's spoken code, preserving
+ * leading zeroes; the server refuses a governed delivery without it
  * (`409 handover_otp_mismatch`, `429 handover_attempts_exceeded`).
  */
 export async function recordDelivery(
@@ -1065,14 +1065,6 @@ export async function recordDelivery(
   return result.order;
 }
 
-/**
- * The handover code the client also holds, for a delivery at the door.
- *
- * Null when the order has none: the setting was off when it became ready, the
- * code is already used, or the API predates handover codes (404). The server
- * answers only the assigned rider, and only for a delivery — never ask for a
- * job that ends at GRIDGO Office. See gridgo-api `docs/HUB_HANDOVER_API.md`.
- */
 /** The conversation with this job's client (`lib/deliveryChat.ts`). */
 export async function getDeliveryChat(
   orderId: string,
@@ -1095,19 +1087,15 @@ export async function sendDeliveryMessage(
   });
 }
 
-export async function getHandover(orderId: string): Promise<{ otp: string } | null> {
-  try {
-    const result = await request<{ handover: { otp?: string } | null }>(
-      `/orders/${encodeURIComponent(orderId)}/handover`,
-    );
-    const otp = result.handover?.otp;
-    return typeof otp === "string" && otp ? { otp } : null;
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404 && apiErrorCode(error) !== "order_not_found") {
-      return null;
-    }
-    throw error;
-  }
+/** Assigned riders receive a requirement only, never the client's credentials. */
+export async function getHandover(orderId: string): Promise<{ otpRequired: true } | null> {
+  const result = await request<{ handover: { otpRequired: true } | null }>(
+    `/orders/${encodeURIComponent(orderId)}/handover`,
+  );
+  if (result.handover === null) return null;
+  if (result.handover?.otpRequired === true) return { otpRequired: true };
+  // An unexpected/older response must not silently bypass the code entry.
+  throw new Error("The handover requirement could not be read. Try again or contact Operations.");
 }
 
 /**
@@ -1349,7 +1337,7 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "handover_not_ready":
         return "This job has no handover code to check right now. Go back to the trip and pull down to refresh it.";
       case "handover_verification_required":
-        return "This delivery needs the client's handover code. Open the delivery step and check the codes.";
+        return "This delivery needs the client's handover code. Open the delivery step and enter the code they read aloud.";
       case "email_already_registered":
         /*
           Two situations arrive as the same refusal, and the app cannot tell them

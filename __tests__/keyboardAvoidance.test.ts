@@ -52,6 +52,7 @@ describe("a field a rider is typing into stays visible", () => {
       "CodeField.tsx",
       "TextField.tsx",
       "PickupCountField.tsx",
+      "HandoverCodeCard.tsx",
       // Its only caller owns the keyboard surface, checked below and in
       // SupportChatConversation-search.test.tsx against the rendered input.
       "ConversationDetails.tsx",
@@ -75,6 +76,12 @@ describe("a field a rider is typing into stays visible", () => {
       .filter((file) => !/from "@\/components\/FormScroll"/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps delivery code entry above the keyboard and action bar", () => {
+    const source = readFileSync(join(__dirname, "..", "app", "trip", "delivery.tsx"), "utf8");
+    expect(source).toMatch(/<FormScroll[^>]*stickyActionHeight=\{actionBarHeight\}/);
+    expect(source).toMatch(/<StickyActionBar onHeight=\{setActionBarHeight\}/);
   });
 
   it("keeps conversation details inside the chat's keyboard-aware caller", () => {
