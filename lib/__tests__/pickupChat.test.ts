@@ -43,7 +43,7 @@ describe("pickupChatOf", () => {
   });
 
   it("is a separate thing from the client conversation on the same order", () => {
-    const order = {
+    const order: { pickupChat?: unknown; deliveryChat?: unknown } = {
       deliveryChat: { status: "open", closesAt: null, retentionHours: 24 },
     };
     expect(pickupChatOf(order)).toBeNull();
