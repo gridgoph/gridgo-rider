@@ -13,6 +13,7 @@ import { StatusChip } from "@/components/StatusChip";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
 import { orderStage } from "@/lib/orderStage";
 import {
   dropoffLabel,
@@ -36,6 +37,7 @@ export default function PastJobScreen() {
   const progress = order ? orderStage(order) : null;
   // Readable for a day after delivery, then the API removes it.
   const deliveryChat = deliveryChatOf(order);
+  const pickupChat = pickupChatOf(order);
 
   return (
     <Screen edges={["bottom"]}>
@@ -74,6 +76,10 @@ export default function PastJobScreen() {
 
             {deliveryChat ? (
               <DeliveryChatRow chat={deliveryChat} onPress={() => router.push(deliveryChatRoute(order.id))} />
+            ) : null}
+
+            {pickupChat ? (
+              <DeliveryChatRow party="shop" chat={pickupChat} onPress={() => router.push(pickupChatRoute(order.id))} />
             ) : null}
 
             {order.state === "cancelled" && order.cancellationReason ? (

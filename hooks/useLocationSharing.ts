@@ -23,7 +23,11 @@ type Args = {
  * Posts periodic location pings while a trip is in transit.
  *
  * - Explicit UI (LocationSharingBanner) must show when `sharing` is true.
- * - Sharing stops the moment the trip leaves picked_up / out_for_delivery.
+ * - Sharing runs from acceptance (rider_assigned, seen by the shop) through
+ *   picked_up / out_for_delivery, and stops the moment the trip leaves them.
+ * - An API older than the pick-up leg refuses a rider_assigned ping with
+ *   `tracking_not_active`; that is not the rider's problem, so the hook goes
+ *   quiet for the rest of the leg instead of reporting it every interval.
  * - Coordinates are never persisted; the root tracking owner shares them in memory.
  * - Sends each fresh fix once with its capture time; sharing becomes true only after a successful ping.
  */
@@ -66,13 +70,14 @@ export function useLocationSharing({
     let cancelled = false;
     let inFlight = false;
     let sentFix: number | null = null;
+    let legRefused = false;
 
     async function pingOnce() {
       const id = orderIdRef.current;
       const tripState = stateRef.current;
       const point = coordsRef.current;
       const fix = fixRef.current;
-      if (cancelled || inFlight || !id || !shouldShareLocation(tripState ?? "") || !point) return;
+      if (cancelled || inFlight || legRefused || !id || !shouldShareLocation(tripState ?? "") || !point) return;
       if (fix == null || !Number.isFinite(fix) || Date.now() - fix >= STALE_FIX_MS || fix > Date.now() + 10_000) {
         return;
       }
@@ -89,6 +94,11 @@ export function useLocationSharing({
         sentFix = fix;
         if (!cancelled) { setLastError(null); setSharing(true); }
       } catch (e) {
+        if (tripState === "rider_assigned" && errorCode(e) === "tracking_not_active") {
+          legRefused = true;
+          if (!cancelled) setSharing(false);
+          return;
+        }
         if (!cancelled) {
           setLastError(api.apiErrorMessage(e, "Location ping failed."));
           setSharing(false);
@@ -112,4 +122,10 @@ export function useLocationSharing({
   }, [orderId, state, enabled, hasCoords, active]);
 
   return { sharing, lastError };
+}
+
+/** Read off the body, as `lib/deliveryChat.ts` does, so a mocked client still answers. */
+function errorCode(error: unknown): string | null {
+  const body = error && typeof error === "object" ? (error as { body?: unknown }).body : null;
+  return body && typeof body === "object" && "error" in body ? String((body as { error: unknown }).error) : null;
 }

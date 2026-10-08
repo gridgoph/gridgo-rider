@@ -28,6 +28,8 @@ export type FreshnessInput = {
   permission: "unknown" | "granted" | "denied";
   /** Reported accuracy radius in metres, when the platform gives one. */
   accuracyMetres?: number | null;
+  /** Who is watching: the shop on the way to pick up, the client after. */
+  audience?: "shop" | "client" | null;
 };
 
 /** Whole seconds, minutes, or hours since a fix — never a bare timestamp. */
@@ -49,13 +51,14 @@ export function classifyLocation({
   nowMs,
   permission,
   accuracyMetres = null,
+  audience = null,
 }: FreshnessInput): LocationFreshness {
   if (permission === "denied") {
     return {
       level: "off",
       label: "Location is off",
       detail:
-        "The client cannot see you moving. Turn location on for GRIDGO in your phone settings.",
+        `The ${audience === "shop" ? "shop" : "client"} cannot see you moving. Turn location on for GRIDGO in your phone settings.`,
       tone: "warning",
       icon: "circle-x",
     };

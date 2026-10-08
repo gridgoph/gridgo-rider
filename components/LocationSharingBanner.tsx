@@ -9,19 +9,35 @@ type Props = {
   sharing: boolean;
   /** How old the position on the map is. Null when there is nothing to say. */
   freshness?: LocationFreshness | null;
+  /**
+   * Who the position goes to (`locationAudience` in `lib/riderOrder.ts`): the
+   * shop on the way to pick up, the client after. Defaults to the client.
+   */
+  audience?: "shop" | "client" | null;
 };
 
+/** The line that tells the rider who is watching, while it is true. */
+export function audienceLine(audience: "shop" | "client"): string {
+  return audience === "shop"
+    ? "The shop sees you on the way to collect this job and stops seeing you once you pick it up. Keep GRIDGO open; positions are not saved on this phone."
+    : "Keep GRIDGO open to share your position during this trip. Positions are not saved on this phone.";
+}
+
 /**
- * What the client can see of the rider, and how much to trust it.
+ * What the shop or the client can see of the rider, and how much to trust it.
  *
  * Two facts belong together and are shown in one card rather than two stacked
  * banners: that a position is leaving the phone, and how old that position is.
  * Sharing a fix without its age tells the rider their client is watching them
  * move when the dot may not have moved in five minutes.
  *
- * Location is shared only while a trip is in transit and is never persisted.
+ * Location is shared from acceptance until the job leaves the rider's hands,
+ * and is never persisted. On the way to the shop the card says plainly that
+ * the shop is the one watching, because that is new to riders used to sharing
+ * only once a package is with them.
  */
-export function LocationSharingBanner({ sharing, freshness = null }: Props) {
+export function LocationSharingBanner({ sharing, freshness = null, audience = "client" }: Props) {
+  const watcher = audience === "shop" ? "shop" : "client";
   const colors = useThemeColors();
   const degraded = freshness?.level === "stale" || freshness?.level === "off";
 
@@ -38,9 +54,11 @@ export function LocationSharingBanner({ sharing, freshness = null }: Props) {
     doing something about is the broken fix.
   */
   const title = degraded
-    ? (freshness?.label ?? "Location is not reaching the client")
+    ? (freshness?.label ?? `Location is not reaching the ${watcher}`)
     : sharing
-      ? "Location sharing on"
+      ? watcher === "shop"
+        ? "Sharing your location with the shop"
+        : "Location sharing on"
       : "Location sharing paused";
 
   return (
@@ -72,9 +90,7 @@ export function LocationSharingBanner({ sharing, freshness = null }: Props) {
           <Text className="text-body text-text-secondary">{freshness.detail}</Text>
         ) : null}
         {sharing && !degraded ? (
-          <Text className="text-caption text-text-muted">
-            Keep GRIDGO open to share your position during this trip. Positions are not saved on this phone.
-          </Text>
+          <Text className="text-caption text-text-muted">{audienceLine(watcher)}</Text>
         ) : null}
       </View>
     </View>

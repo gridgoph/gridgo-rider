@@ -33,6 +33,8 @@ import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
+import { tripChatOrder } from "@/lib/tripChat";
 import { classifyLocation } from "@/lib/locationFreshness";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
@@ -40,6 +42,7 @@ import { approvalPresentation } from "@/lib/riderApproval";
 import {
   endsAtOffice,
   issueWindowLabel,
+  locationAudience,
   orderStateChip,
   owesSignOff,
   primaryActionLabel,
@@ -112,6 +115,7 @@ export default function ActiveScreen() {
   });
 
   const sharing = riderLocation.sharing;
+  const audience = trip ? locationAudience(trip.state) : null;
 
   // A fix does not go stale because something re-rendered, so its age is on its
   // own clock.
@@ -144,9 +148,10 @@ export default function ActiveScreen() {
             nowMs: now,
             permission: riderLocation.permission,
             accuracyMetres: riderLocation.accuracy,
+            audience,
           })
         : null,
-    [needsGps, riderLocation.fixAtMs, riderLocation.permission, riderLocation.accuracy, now],
+    [needsGps, riderLocation.fixAtMs, riderLocation.permission, riderLocation.accuracy, now, audience],
   );
 
   const reload = useCallback(
@@ -201,6 +206,7 @@ export default function ActiveScreen() {
   const cta = primaryActionLabel(phase, trip ? endsAtOffice(trip) : false);
   const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
   const deliveryChat = deliveryChatOf(trip);
+  const pickupChat = pickupChatOf(trip);
 
   return (
     <Screen edges={["top"]}>
@@ -346,12 +352,29 @@ export default function ActiveScreen() {
             ) : null}
 
             {/*
-              The client, a tap away while the job is this rider's and readable
-              for a day after delivery. Under the step, never instead of it.
+              The shop and the client, each a tap away while the job is this
+              rider's and readable for a day after. Under the step, never
+              instead of it. Two threads with two people: the one the rider is
+              heading to comes first.
             */}
-            {deliveryChat ? (
-              <DeliveryChatRow chat={deliveryChat} onPress={() => router.push(deliveryChatRoute(trip.id))} />
-            ) : null}
+            {tripChatOrder(trip.state).map((party) =>
+              party === "shop" ? (
+                pickupChat ? (
+                  <DeliveryChatRow
+                    key={party}
+                    party="shop"
+                    chat={pickupChat}
+                    onPress={() => router.push(pickupChatRoute(trip.id))}
+                  />
+                ) : null
+              ) : deliveryChat ? (
+                <DeliveryChatRow
+                  key={party}
+                  chat={deliveryChat}
+                  onPress={() => router.push(deliveryChatRoute(trip.id))}
+                />
+              ) : null,
+            )}
 
             {/*
               A picture of the trip with one control on it. A map inside a
@@ -394,7 +417,11 @@ export default function ActiveScreen() {
               </Text>
             ) : null}
 
-            <LocationSharingBanner sharing={sharing} freshness={freshness} />
+            <LocationSharingBanner
+              sharing={sharing}
+              freshness={freshness}
+              audience={audience}
+            />
 
             {phase === "complete" ? (
               <InlineNotice

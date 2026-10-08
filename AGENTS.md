@@ -23,7 +23,7 @@ The app includes:
 - Navigate to supplier for pickup and client for delivery
 - The six-point pickup check, its escalation, and the spoken sign-off
 - Delivery evidence (photo, or signature when the camera cannot be used)
-- Active-trip location pings (live GPS while package is with the rider)
+- Active-trip location pings (live GPS from accepting the pick-up until the job leaves the rider: the shop sees it on the way to the shop, the client after pick-up)
 
 **No cash.** Operational model v2 removed cash on delivery outright — the captain's risk decision about riders carrying the client's balance. There is no cash screen, no COD path, and no peso figure on any screen except the rider's own earnings and, as secondary detail, the gross delivery fee they are a share of. Do not reintroduce one.
 
