@@ -1,8 +1,9 @@
 /** Silent refresh hints. Never contains domain data or grants access. */
-export const LIVE_RESOURCES = ["orders", "jobs", "approvals", "escalations", "claims", "dispatch", "payouts", "notifications", "identity", "catalog", "services", "availability", "settings", "location", "credits"] as const;
+export const LIVE_RESOURCES = ["orders", "jobs", "approvals", "escalations", "claims", "dispatch", "payouts", "notifications", "identity", "catalog", "services", "availability", "settings", "location", "credits", "calls"] as const;
 export type LiveResource = typeof LIVE_RESOURCES[number];
 export type Invalidation = { resource: LiveResource; id?: string };
-type Listener = (resource: LiveResource | "*") => void;
+/** `id` names the record when the server did (`calls` names the order). */
+type Listener = (resource: LiveResource | "*", id?: string) => void;
 const listeners = new Set<Listener>();
 let owner: string | null = null;
 let generation = 0;
@@ -15,8 +16,11 @@ export function setLiveOwner(next: string | null): void {
 export function assertLiveGeneration(expected: number): void {
   if (expected !== generation) throw new Error("The account changed. Open this screen again.");
 }
-export function invalidate(resource: LiveResource | "*" = "*"): void {
-  for (const listener of listeners) listener(resource);
+export function invalidate(resource: LiveResource | "*" = "*", id?: string): void {
+  for (const listener of listeners) {
+    if (id === undefined) listener(resource);
+    else listener(resource, id);
+  }
 }
 export function subscribeLive(listener: Listener): () => void {
   listeners.add(listener);

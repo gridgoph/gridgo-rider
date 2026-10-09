@@ -9,8 +9,8 @@
   never works the window out from the order's state, because a second copy of
   the rule is how a screen offers a conversation the server has deleted.
 
-  There is no call button. Neither side ever sees the other's phone number;
-  calling waits on a masked-call service.
+  Neither side ever sees the other's phone number. Voice calls between the
+  two run inside GRIDGO on the same window (`lib/orderCalls.ts`).
 
   A message may carry photos (gridgo-client#218), uploaded as
   `delivery_chat_image` and drawn with the support chat's `ChatPhoto`. Only the

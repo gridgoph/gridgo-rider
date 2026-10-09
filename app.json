@@ -32,7 +32,8 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CAMERA"
-      ]
+      ],
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"]
     },
     "web": {
       "output": "static",
@@ -82,6 +83,12 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "GRIDGO shares your position only while a package is with you, so the client can track delivery. Sharing stops when the trip ends."
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "GRIDGO uses the microphone only during a call you place or answer with the client or the shop. Nothing is recorded."
         }
       ],
       [

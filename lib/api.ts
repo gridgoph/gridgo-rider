@@ -6,6 +6,7 @@ import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
 import type { DevicePlatform } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
+import { parseOrderCall, parseOrderCalls, type CallPair, type OrderCall } from "@/lib/orderCalls";
 
 /**
  * GRIDGO demo API client.
@@ -1114,6 +1115,94 @@ export async function sendPickupMessage(
       ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
     }),
   });
+}
+
+/*
+  Voice calls on a job (`lib/orderCalls.ts`, gridgo-api `docs/CALLS_API.md`).
+  Media never passes through here: these routes carry state, signals and ICE
+  server credentials only.
+*/
+function callsPath(orderId: string, rest = ""): string {
+  return `/orders/${encodeURIComponent(orderId)}/calls${rest}`;
+}
+
+function callOf(result: { call?: unknown }): OrderCall {
+  const call = parseOrderCall(result.call);
+  if (!call) throw new Error("The call could not be read. Try again.");
+  return call;
+}
+
+/** This rider's calls on the job, live first then newest. */
+export async function listOrderCalls(orderId: string): Promise<OrderCall[]> {
+  return parseOrderCalls(await request<unknown>(callsPath(orderId)));
+}
+
+export async function startOrderCall(orderId: string, pair: CallPair): Promise<OrderCall> {
+  return callOf(await request(callsPath(orderId), { method: "POST", body: JSON.stringify({ pair }) }));
+}
+
+export async function getOrderCall(orderId: string, callId: string): Promise<OrderCall> {
+  return callOf(await request(callsPath(orderId, `/${encodeURIComponent(callId)}`)));
+}
+
+export type CallAction = "accept" | "decline" | "cancel" | "end" | "heartbeat";
+
+export async function orderCallAction(orderId: string, callId: string, action: CallAction): Promise<OrderCall> {
+  return callOf(
+    await request(callsPath(orderId, `/${encodeURIComponent(callId)}/${action}`), {
+      method: "POST",
+      body: "{}",
+    }),
+  );
+}
+
+export type CallSignalBody =
+  | { clientId: string; kind: "offer" | "answer"; sdp: string }
+  | { clientId: string; kind: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
+
+export type CallSignal =
+  | { id: number; kind: "offer" | "answer"; sdp: string }
+  | { id: number; kind: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
+
+export async function sendCallSignal(orderId: string, callId: string, signal: CallSignalBody): Promise<{ id: number }> {
+  return request(callsPath(orderId, `/${encodeURIComponent(callId)}/signals`), {
+    method: "POST",
+    body: JSON.stringify(signal),
+  });
+}
+
+/** The other party's signals after `after`, with the call's current state. */
+export async function getCallSignals(
+  orderId: string,
+  callId: string,
+  after: number,
+): Promise<{ signals: CallSignal[]; cursor: number; call: OrderCall }> {
+  const result = await request<{ signals?: unknown; cursor?: unknown; call?: unknown }>(
+    callsPath(orderId, `/${encodeURIComponent(callId)}/signals?after=${after}`),
+  );
+  const signals = Array.isArray(result.signals) ? (result.signals as CallSignal[]) : [];
+  const cursor = typeof result.cursor === "number" ? result.cursor : after;
+  return { signals, cursor, call: callOf(result) };
+}
+
+export type CallIceServer = { urls: string | string[]; username?: string; credential?: string };
+
+/** Fresh STUN/TURN servers for one call. Never cached across calls. */
+export async function getCallIceServers(
+  orderId: string,
+  callId: string,
+): Promise<{ iceServers: CallIceServer[]; relayAvailable: boolean }> {
+  const result = await request<{ iceServers?: unknown; relayAvailable?: unknown }>(
+    callsPath(orderId, `/${encodeURIComponent(callId)}/ice`),
+  );
+  const iceServers = Array.isArray(result.iceServers)
+    ? (result.iceServers as CallIceServer[]).map(({ urls, username, credential }) => ({
+        urls,
+        ...(username ? { username } : {}),
+        ...(credential ? { credential } : {}),
+      }))
+    : [];
+  return { iceServers, relayAvailable: result.relayAvailable === true };
 }
 
 /** Assigned riders receive a requirement only, never the client's credentials. */

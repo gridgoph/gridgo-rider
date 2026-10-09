@@ -1,5 +1,6 @@
 import { useTripTracking } from "@/hooks/useTripTracking";
 import { useAlertStream } from "@/hooks/useAlertStream";
+import { useIncomingCalls } from "@/hooks/useIncomingCalls";
 import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
 import "../global.css";
 
@@ -27,6 +28,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { BrandIntro } from "@/components/BrandIntro";
+import { OngoingCallBar } from "@/components/OngoingCallBar";
 import { SessionShell } from "@/components/SessionShell";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
@@ -39,6 +41,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { usePushPrompt } from "@/hooks/usePushPrompt";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
+  callScreenOptions,
   confirmSheetScreenOptions,
   fullBleedScreenOptions,
   multiOriginPushedScreenOptions,
@@ -170,6 +173,7 @@ function AppShell() {
         {launchReady ? (
         <AuthGate>
           <RootStack />
+          <CallWatcher />
           <AppUpdatePrompt ready={!introPlaying} />
           <PushPrompt ready={!introPlaying} />
         </AuthGate>
@@ -193,6 +197,15 @@ function AppShell() {
 function AppUpdatePrompt({ ready }: { ready: boolean }) {
   useAppUpdateCheck({ ready });
   return null;
+}
+
+/**
+ * Rings for incoming calls and, while a call is going on another screen, draws
+ * the bar back to it. Mounted with the navigator it pushes the call screen onto.
+ */
+function CallWatcher() {
+  useIncomingCalls();
+  return <OngoingCallBar />;
 }
 
 /**
@@ -371,6 +384,11 @@ function RootStack() {
         by dragging in the direction they are trying to pan.
       */}
       <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
+      {/*
+        A voice call with the client or the shop (16B159C0): full screen,
+        over everything, whether it was placed here or rang in.
+      */}
+      <Stack.Screen name="call" options={callScreenOptions} />
       <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
       <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
       <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
