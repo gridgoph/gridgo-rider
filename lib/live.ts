@@ -17,7 +17,10 @@ export function assertLiveGeneration(expected: number): void {
   if (expected !== generation) throw new Error("The account changed. Open this screen again.");
 }
 export function invalidate(resource: LiveResource | "*" = "*", id?: string): void {
-  for (const listener of listeners) listener(resource, id);
+  for (const listener of listeners) {
+    if (id === undefined) listener(resource);
+    else listener(resource, id);
+  }
 }
 export function subscribeLive(listener: Listener): () => void {
   listeners.add(listener);
