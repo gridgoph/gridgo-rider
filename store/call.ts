@@ -21,6 +21,15 @@ type CallStore = {
   rung: string[];
   /** Missed calls the rider waved away on the trip. */
   dismissedMissed: string[];
+  /**
+   * A call the rider just asked for by tapping Call on the trip. The call
+   * screen places a call only against this, so a link that opens the screen
+   * can never dial on its own.
+   */
+  armed: { orderId: string; pair: CallPair; atMs: number } | null;
+  arm: (orderId: string, pair: CallPair) => void;
+  /** True once, for a fresh tap on the same order and person. */
+  takeArmed: (orderId: string, pair: CallPair) => boolean;
   /** Whether the call screen is showing (the bar back to it is not needed then). */
   screenOpen: boolean;
   setScreenOpen: (open: boolean) => void;
@@ -40,6 +49,9 @@ type CallStore = {
   /** The account changed: drop the call without a word to the API. */
   reset: () => void;
 };
+
+/** How long a tap on Call stays good for opening the call screen. */
+const ARM_FRESH_MS = 15_000;
 
 let session: CallSession | null = null;
 let unsubscribe: (() => void) | null = null;
@@ -80,6 +92,15 @@ export const useCall = create<CallStore>((set, get) => {
     dismissedMissed: [],
     screenOpen: false,
     setScreenOpen: (screenOpen) => set({ screenOpen }),
+    armed: null,
+    arm: (orderId, pair) => set({ armed: { orderId, pair, atMs: Date.now() } }),
+    takeArmed: (orderId, pair) => {
+      const armed = get().armed;
+      set({ armed: null });
+      return Boolean(
+        armed && armed.orderId === orderId && armed.pair === pair && Date.now() - armed.atMs < ARM_FRESH_MS,
+      );
+    },
 
     place: (orderId, pair) => {
       if (callInProgress(get().snapshot)) return;
@@ -141,7 +162,7 @@ export const useCall = create<CallStore>((set, get) => {
       unsubscribe?.();
       unsubscribe = null;
       session = null;
-      set({ snapshot: null, rung: [], dismissedMissed: [] });
+      set({ snapshot: null, rung: [], dismissedMissed: [], armed: null });
     },
   };
 });

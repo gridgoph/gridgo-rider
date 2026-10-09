@@ -161,11 +161,11 @@ describe("calling the client", () => {
       expect.objectContaining({ kind: "offer", clientId: expect.stringMatching(/^offer_/) }),
     );
 
-    // A local candidate goes out after the offer.
+    // A local candidate (this phone's address) is held while the call only rings.
+    const kinds = () => r.api.sendCallSignal.mock.calls.map((call) => ((call as unknown[])[2] as { kind: string }).kind);
     r.peers[0]!.emit("icecandidate", { candidate: { candidate: "candidate:1 1 UDP 1 192.0.2.1 1234 typ host", sdpMid: "0", sdpMLineIndex: 0 } });
     await jest.advanceTimersByTimeAsync(0);
-    const kinds = r.api.sendCallSignal.mock.calls.map((call) => (call as unknown[])[2] as { kind: string }).map((s) => s.kind);
-    expect(kinds).toEqual(["offer", "ice"]);
+    expect(kinds()).toEqual(["offer"]);
 
     // The client answers; their candidate arrives before the answer is applied and waits.
     r.setServer({ state: "accepted", acceptedAt: new Date(NOW + 5_000).toISOString() });
@@ -178,6 +178,8 @@ describe("calling the client", () => {
     expect(r.peers[0]!.candidates).toHaveLength(1);
     expect(session.snapshot.phase).toBe("connecting");
     expect(r.audio.routeCallAudio).toHaveBeenCalledWith(false);
+    // Answered: the held candidate goes now, after the offer.
+    expect(kinds()).toEqual(["offer", "ice"]);
 
     r.peers[0]!.emit("connectionstatechange", { state: "connected" });
     expect(session.snapshot.phase).toBe("connected");
@@ -220,6 +222,18 @@ describe("calling the client", () => {
     r.setServer({ state: "missed" });
     await jest.advanceTimersByTimeAsync(2_000);
     expect(session.snapshot.endReason).toBe("no_answer");
+  });
+
+  it("never sends this phone's network candidates for a call nobody answered", async () => {
+    const r = rig();
+    const session = new CallSession(r.deps, { direction: "outgoing", orderId: "ord_1", pair: "delivery" });
+    await session.place();
+    r.peers[0]!.emit("icecandidate", { candidate: { candidate: "candidate:1 1 UDP 1 192.0.2.1 1234 typ host", sdpMid: "0", sdpMLineIndex: 0 } });
+    r.setServer({ state: "missed" });
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot.endReason).toBe("no_answer");
+    const sent = r.api.sendCallSignal.mock.calls.map((call) => ((call as unknown[])[2] as { kind: string }).kind);
+    expect(sent).toEqual(["offer"]);
   });
 
   it("cancels a call the rider ends while it rings", async () => {
@@ -324,6 +338,30 @@ describe("a call ringing in from the shop", () => {
       expect.objectContaining({ kind: "answer", clientId: expect.stringMatching(/^answer_/) }),
     );
     expect(session.snapshot.phase).toBe("connecting");
+  });
+
+  it("keeps the shop's offer when a poll lands before the audio is set up", async () => {
+    const r = rig();
+    r.setServer(incoming());
+    r.signals.push({ id: 21, kind: "offer", sdp: "v=0\r\noffer\r\n" });
+    let releaseIce: () => void = () => undefined;
+    r.api.getCallIceServers.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        releaseIce = () => resolve({ iceServers: [], relayAvailable: false });
+      }),
+    );
+    const session = new CallSession(r.deps, { direction: "incoming", call: incoming() });
+    session.ring();
+    const answering = session.answer();
+    await jest.advanceTimersByTimeAsync(0);
+    // The stream nudges a poll while the ICE servers are still on their way.
+    session.refresh();
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(r.api.getCallSignals).not.toHaveBeenCalled();
+    releaseIce();
+    await answering;
+    await jest.advanceTimersByTimeAsync(0);
+    expect(r.peers[0]!.remote).toEqual({ type: "offer", sdp: "v=0\r\noffer\r\n" });
   });
 
   it("declines, telling the API", async () => {

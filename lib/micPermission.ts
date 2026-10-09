@@ -49,6 +49,9 @@ export function readMicPermission(answer: PermissionAnswer): MicPermission {
  * (or WebRTC itself) raises the phone's own dialog.
  */
 export async function getMicPermission(): Promise<MicPermission> {
+  // expo-audio's web read *asks* when the browser has not decided, which
+  // would skip the explanation; the browser's own permission state does not.
+  if (Platform.OS === "web") return browserMicPermission();
   const module = audioPermissions();
   if (!module) return "undetermined";
   try {
@@ -67,5 +70,17 @@ export async function requestMicPermission(): Promise<MicPermission> {
     return readMicPermission(await module.requestRecordingPermissionsAsync());
   } catch {
     return "blocked";
+  }
+}
+
+async function browserMicPermission(): Promise<MicPermission> {
+  try {
+    const permissions = (globalThis as { navigator?: { permissions?: { query: (d: { name: string }) => Promise<{ state: string }> } } })
+      .navigator?.permissions;
+    if (!permissions) return "undetermined";
+    const { state } = await permissions.query({ name: "microphone" });
+    return state === "granted" ? "granted" : state === "denied" ? "blocked" : "undetermined";
+  } catch {
+    return "undetermined";
   }
 }

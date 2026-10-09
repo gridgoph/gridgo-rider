@@ -219,6 +219,7 @@ export default function ActiveScreen() {
     if (!trip) return;
     // An earlier call's ended screen is not this call.
     useCall.getState().clear();
+    useCall.getState().arm(trip.id, pairOfParty(party));
     router.push(`/call?orderId=${encodeURIComponent(trip.id)}&pair=${pairOfParty(party)}` as Href);
   }
 

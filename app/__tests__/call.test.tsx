@@ -121,6 +121,7 @@ afterAll(() => setCallSessionDeps(null));
 it("in Expo Go, says calls need the latest app instead of crashing, and never starts a call", async () => {
   mockWebRTC = false;
   mockParams = { orderId: "ord_1", pair: "delivery" };
+  useCall.getState().arm("ord_1", "delivery");
   await renderScreen(<CallScreen />);
 
   expect(await screen.findByText(UNSUPPORTED_TITLE)).toBeTruthy();
@@ -135,6 +136,7 @@ it("explains the microphone at the first call, and stops when the phone refuses 
   mockGetMic.mockResolvedValue("undetermined");
   mockRequestMic.mockResolvedValue("blocked");
   mockParams = { orderId: "ord_1", pair: "pickup" };
+  useCall.getState().arm("ord_1", "pickup");
   await renderScreen(<CallScreen />);
 
   expect(await screen.findByText("Calls use your microphone")).toBeTruthy();
@@ -153,6 +155,7 @@ it("explains the microphone at the first call, and stops when the phone refuses 
 it("places the call and names who is being called, by role and first name", async () => {
   mockStart.mockResolvedValue(makeCall());
   mockParams = { orderId: "ord_1", pair: "delivery" };
+  useCall.getState().arm("ord_1", "delivery");
   await renderScreen(<CallScreen />);
 
   expect(await screen.findByText("Alex")).toBeTruthy();
@@ -163,6 +166,23 @@ it("places the call and names who is being called, by role and first name", asyn
   expect(screen.getByText("Mute")).toBeTruthy();
   expect(screen.getByText("Speaker")).toBeTruthy();
   expect(screen.queryByText(/\+63|09\d{9}/)).toBeNull();
+});
+
+it("never dials from a link alone: it asks first, then calls on the tap", async () => {
+  mockStart.mockResolvedValue(makeCall());
+  mockParams = { orderId: "ord_1", pair: "delivery" };
+  await renderScreen(<CallScreen />);
+
+  expect(await screen.findByText("Call the client")).toBeTruthy();
+  await act(async () => undefined);
+  expect(mockStart).not.toHaveBeenCalled();
+  expect(mockGetMic).not.toHaveBeenCalled();
+
+  await act(async () => {
+    await fireEvent.press(screen.getByText("Call the client"));
+  });
+  expect(await screen.findByText("Alex")).toBeTruthy();
+  expect(mockStart).toHaveBeenCalledWith("ord_1", "delivery");
 });
 
 it("rings for a pushed call that is still ringing, and declines it", async () => {

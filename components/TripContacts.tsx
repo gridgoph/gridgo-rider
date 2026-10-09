@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Text, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 
 import { CallPartyButton } from "@/components/CallPartyButton";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
@@ -25,6 +25,9 @@ type Props = {
  */
 export function TripContacts({ trip, onCall }: Props) {
   const router = useRouter();
+  const { width, fontScale } = useWindowDimensions();
+  // Large text or a narrow phone: Call goes under the row instead of beside it.
+  const stacked = fontScale >= 1.2 || width < 360;
   const deliveryChat = deliveryChatOf(trip);
   const pickupChat = pickupChatOf(trip);
 
@@ -43,10 +46,17 @@ export function TripContacts({ trip, onCall }: Props) {
         if (!row) return null;
         return (
           <View key={party} className="gap-2">
-            <View className="flex-row items-stretch gap-2">
-              <View className="min-w-0 flex-1">{row}</View>
-              {window.open ? <CallPartyButton party={party} onPress={() => onCall(party)} /> : null}
-            </View>
+            {stacked ? (
+              <>
+                {row}
+                {window.open ? <CallPartyButton party={party} layout="wide" onPress={() => onCall(party)} /> : null}
+              </>
+            ) : (
+              <View className="flex-row items-stretch gap-2">
+                <View className="min-w-0 flex-1">{row}</View>
+                {window.open ? <CallPartyButton party={party} onPress={() => onCall(party)} /> : null}
+              </View>
+            )}
             {!window.open && window.note ? <Text className="px-1 text-caption text-text-muted">{window.note}</Text> : null}
           </View>
         );

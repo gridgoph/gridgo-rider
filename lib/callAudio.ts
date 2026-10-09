@@ -20,7 +20,7 @@ import { Platform, Vibration } from "react-native";
 
 import { audio } from "@/constants/audio";
 
-type Player = { play: () => void; pause: () => void; remove: () => void; loop: boolean };
+type Player = { play: () => void | Promise<void>; pause: () => void; remove: () => void; loop: boolean };
 type AudioModule = {
   createAudioPlayer: (source: number, options?: { downloadFirst?: boolean }) => Player;
   setAudioModeAsync: (mode: {
@@ -74,7 +74,8 @@ export function startRinging(): () => void {
         if (stopped) return;
         player = module.createAudioPlayer(audio.ring, { downloadFirst: true });
         player.loop = true;
-        player.play();
+        // A browser player rejects when the ring is stopped mid-start; that is fine.
+        void Promise.resolve(player.play()).catch(() => undefined);
       } catch {
         // Silent ring; the screen and the vibration still say it.
       }

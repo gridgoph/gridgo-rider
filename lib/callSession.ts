@@ -20,7 +20,9 @@
  *   released and the peer connection closed. The server cannot cut a direct
  *   media path; only this can.
  * - **No identity in the media.** Audio only, no camera, no data channel, and
- *   nothing about the rider goes into a signal.
+ *   nothing about the rider goes into a signal. A ringing call's network
+ *   candidates wait until it is answered, so someone who never picks up never
+ *   learns this phone's addresses.
  */
 
 import type * as api from "@/lib/api";
@@ -125,6 +127,8 @@ export class CallSession {
   private pendingRemoteIce: RtcCandidate[] = [];
   private answered = false;
   private outbox: Promise<void> = Promise.resolve();
+  /** Outgoing candidates kept back until the call is answered. */
+  private heldIce: api.CallSignalBody[] = [];
   private signalCount = 0;
   private readonly tag = randomTag();
   private lastRenewedMs = 0;
@@ -357,6 +361,9 @@ export class CallSession {
     this.update({ phase: this.state.connectedAtMs ? this.state.phase : "connecting" });
     void this.deps.audio.routeCallAudio(this.state.speaker);
     this.heartbeatTimer = setInterval(() => void this.heartbeat(), CALL_HEARTBEAT_MS);
+    const held = this.heldIce;
+    this.heldIce = [];
+    for (const signal of held) this.queueSignal(signal);
     this.connectTimer = setTimeout(() => {
       if (!this.state.connectedAtMs && !this.finished) void this.hangUp("failed");
     }, CALL_CONNECT_TIMEOUT_MS);
@@ -390,13 +397,17 @@ export class CallSession {
     peer.addEventListener("icecandidate", (event: { candidate?: { candidate?: string; sdpMid?: string | null; sdpMLineIndex?: number | null } | null }) => {
       if (this.finished) return;
       const candidate = event.candidate;
-      this.queueSignal({
+      const signal: api.CallSignalBody = {
         clientId: `ice_${this.tag}_${++this.signalCount}`,
         kind: "ice",
         candidate: candidate?.candidate ?? "",
         sdpMid: candidate ? (candidate.sdpMid ?? null) : null,
         sdpMLineIndex: candidate ? (candidate.sdpMLineIndex ?? null) : null,
-      });
+      };
+      // A candidate carries this phone's network address. Until the other
+      // person picks up, they have not agreed to a call, so it waits here.
+      if (this.state.call?.state !== "accepted") this.heldIce.push(signal);
+      else this.queueSignal(signal);
     });
     peer.addEventListener("track", (event: { streams?: unknown[] }) => {
       const stream = event.streams?.[0];
@@ -460,7 +471,9 @@ export class CallSession {
     try {
       this.checkLease();
       if (this.finished) return;
-      if (this.state.direction === "incoming" && !this.answered) {
+      // Signals are read only into a peer that can take them: one fetched
+      // before the peer exists would move the cursor past the offer for good.
+      if (!this.peer) {
         this.adopt(await this.deps.api.getOrderCall(call.orderId, call.id));
         return;
       }

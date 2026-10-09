@@ -38,7 +38,7 @@ import { callInProgress, useCall } from "@/store/call";
  * explaining the microphone, a microphone the phone refuses, or a binary
  * with no calling in it.
  */
-type Gate = "none" | "checking" | "permission" | "blocked" | "unsupported";
+type Gate = "none" | "checking" | "confirm" | "permission" | "blocked" | "unsupported";
 
 /** Words the brief fixed for a build without WebRTC (Expo Go, an older APK). */
 export const UNSUPPORTED_TITLE = "Calls need the latest GRIDGO app from the download page";
@@ -133,7 +133,10 @@ export default function CallScreen() {
       })();
       return;
     }
-    if (intentOrder && intentPair) void outgoingGate().then((next) => enter(intentOrder, intentPair, next));
+    if (!intentOrder || !intentPair) return;
+    // Only a tap on Call places a call. Opened any other way (a link), ask first.
+    const tapped = useCall.getState().takeArmed(intentOrder, intentPair);
+    void (tapped ? outgoingGate() : Promise.resolve<Gate>("confirm")).then((next) => enter(intentOrder, intentPair, next));
   }, [enter, incomingIntent, intentOrder, intentPair, router]);
 
   // The microphone for an incoming call is read, not asked, until Answer.
@@ -209,7 +212,9 @@ export default function CallScreen() {
   const status =
     gate === "checking"
       ? "Checking the call…"
-      : gate === "permission" || gate === "blocked"
+      : gate === "confirm"
+        ? `Call the ${roleLabel.toLowerCase()}?`
+        : gate === "permission" || gate === "blocked"
         ? `Call the ${roleLabel.toLowerCase()}`
         : gate === "unsupported"
           ? "Calls are not in this version"
@@ -292,6 +297,20 @@ export default function CallScreen() {
         ) : null}
 
         {/* ---------------------------------------------------------------- */}
+        {gate === "confirm" && outgoing ? (
+          <View className="gap-3">
+            <PrimaryButton
+              label={`Call the ${roleLabel.toLowerCase()}`}
+              size="large"
+              onPress={() => {
+                const { orderId: order, pair: who } = outgoing;
+                void outgoingGate().then((next) => enter(order, who, next));
+              }}
+            />
+            <SecondaryButton label="Cancel" size="large" onPress={leave} />
+          </View>
+        ) : null}
+
         {gate === "permission" ? (
           <View className="gap-3">
             <View className="gg-card gap-1">
