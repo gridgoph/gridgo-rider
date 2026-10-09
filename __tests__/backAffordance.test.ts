@@ -16,6 +16,7 @@ import { join } from "path";
  *    matters — never lets the `(tabs)` route group become its label;
  *  - a `confirmSheetScreenOptions` sheet, which has no header and therefore
  *    has to carry a labelled cancel in its own body, in every state;
+ *  - the `callScreenOptions` call screen, full-screen with its own Close/Hide;
  *  - a `fullBleedScreenOptions` screen, which owns its whole surface because a
  *    header would take the top of a display being read, and which carries its
  *    own labelled close for the same reason a sheet does. That promise is
@@ -83,7 +84,8 @@ describe("every route is reachable and escapable", () => {
         ([, options]) =>
           !options.includes("multiOriginPushedScreenOptions") &&
           !options.includes("confirmSheetScreenOptions") &&
-          !options.includes("fullBleedScreenOptions"),
+          !options.includes("fullBleedScreenOptions") &&
+          !options.includes("callScreenOptions"),
       )
       .map(([name]) => name);
 
@@ -104,6 +106,18 @@ describe("every route is reachable and escapable", () => {
       expect(source).toMatch(/accessibilityLabel="Close[^"]*"/);
       expect(source).toMatch(/router\.back\(\)/);
     }
+  });
+
+  it("makes the call screen carry its own way out", () => {
+    // Full-screen with the swipe disabled, so the drawn control is the way
+    // back to the trip (the call keeps going behind it).
+    const calls = [...screens.entries()]
+      .filter(([, options]) => options.includes("callScreenOptions"))
+      .map(([name]) => name);
+    expect(calls).toEqual(["call"]);
+    const source = readFileSync(join(APP, "call.tsx"), "utf8");
+    expect(source).toMatch(/accessibilityLabel=\{[^}]*"Close[^"]*"/);
+    expect(source).toMatch(/router\.back\(\)/);
   });
 
   it("titles the tab shell so iOS can never label a back control '(tabs)'", () => {

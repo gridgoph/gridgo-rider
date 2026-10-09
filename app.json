@@ -85,6 +85,12 @@
         }
       ],
       [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "GRIDGO uses the microphone only during a call you place or answer with the client or the shop. Nothing is recorded."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "cameraPermission": "GRIDGO uses the camera for pickup and delivery proof photos.",

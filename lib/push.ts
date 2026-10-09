@@ -144,6 +144,10 @@ export const DISPATCH_OFFER_TYPES = new Set([
  * - A **dispatch offer** opens that job in **Offers**, where Accept lives.
  * - A **message from the client** opens that delivery's conversation, and a
  *   **message from the shop** opens the shop's — two threads, two routes.
+ * - A **call ringing in** opens the call screen, which reads the order's calls
+ *   and rings only for one that is still ringing; a stale push lands on the
+ *   trip instead. A **missed call** opens the trip, where it waits with
+ *   Call back.
  * - Any other alert that names a job opens **Active**, which is the trip
  *   in hand (pickup checks, sign-off, delivery). The push carries no order
  *   state, so Active fetches the trip as it always does.
@@ -155,6 +159,10 @@ export function pushTargetRoute(data: PushData): string {
   if (data.type === "delivery_message") return `/trip/messages?orderId=${encodeURIComponent(data.orderId)}`;
   // A message from the shop opens the shop's conversation, never the client's (C2BE8E7A).
   if (data.type === "pickup_chat_message") return `/trip/shop-messages?orderId=${encodeURIComponent(data.orderId)}`;
+  // A call ringing in opens the call screen, which rings only if it still is (16B159C0).
+  if (data.type === "order_call_incoming") return `/call?orderId=${encodeURIComponent(data.orderId)}&incoming=1`;
+  // A missed call opens the trip, where the missed call waits with a Call back.
+  if (data.type === "order_call_missed") return "/(tabs)/active";
   return "/(tabs)/active";
 }
 

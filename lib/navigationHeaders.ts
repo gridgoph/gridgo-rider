@@ -77,3 +77,21 @@ export const fullBleedScreenOptions = {
   // rather than the only one.
   gestureEnabled: true,
 };
+
+/**
+ * The call screen (`app/call.tsx`): the whole display, over everything,
+ * opened by a tap or by a call ringing in.
+ *
+ * Full-screen and headerless like every phone's call screen. The swipe-back
+ * gesture is off, because a call is the one screen where a stray edge swipe
+ * should not be how it disappears — though leaving it never ends the call: its
+ * own labelled Close/Hide control (checked by `__tests__/backAffordance.test.ts`)
+ * and the Android back button both return to the trip with the call still
+ * going, and `OngoingCallBar` leads back.
+ */
+export const callScreenOptions = {
+  presentation: "fullScreenModal" as const,
+  headerShown: false,
+  gestureEnabled: false,
+  animation: "fade" as const,
+};

@@ -1,13 +1,13 @@
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
 import { ChatButton } from "@/components/ChatButton";
-import { DeliveryChatRow } from "@/components/DeliveryChatRow";
+import { MissedCallCard } from "@/components/MissedCallCard";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
@@ -24,7 +24,9 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { RiderPayRows } from "@/components/RiderPayRows";
 import { StatusChip } from "@/components/StatusChip";
 import { TripMap } from "@/components/TripMap";
+import { TripContacts } from "@/components/TripContacts";
 import { TripTimeline } from "@/components/TripTimeline";
+import { useOrderCalls } from "@/hooks/useOrderCalls";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useTripLocation } from "@/store/tripLocation";
@@ -32,9 +34,8 @@ import { useRoute } from "@/hooks/useRoute";
 import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
-import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
-import { tripChatOrder } from "@/lib/tripChat";
+import { callWindow, latestMissedCall, pairOfParty, partyOfPair } from "@/lib/orderCalls";
+import type { TripChatParty } from "@/lib/tripChat";
 import { classifyLocation } from "@/lib/locationFreshness";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
@@ -51,6 +52,7 @@ import {
 } from "@/lib/riderOrder";
 import { nextStop, tripDestination, tripShop } from "@/lib/tripNav";
 import { useActiveTrip } from "@/store/activeTrip";
+import { useCall } from "@/store/call";
 import { useSession } from "@/store/session";
 
 /** How often the position age on screen is recomputed. */
@@ -205,8 +207,20 @@ export default function ActiveScreen() {
   const chip = trip ? orderStateChip(trip) : null;
   const cta = primaryActionLabel(phase, trip ? endsAtOffice(trip) : false);
   const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
-  const deliveryChat = deliveryChatOf(trip);
-  const pickupChat = pickupChatOf(trip);
+  // Calls ride beside the conversations: the same two people, a narrower window.
+  const clientCall = callWindow(trip, "client");
+  const shopCall = callWindow(trip, "shop");
+  const calls = useOrderCalls(trip?.id ?? null, approval.canWork && (clientCall.open || shopCall.open));
+  const dismissedMissed = useCall((s) => s.dismissedMissed);
+  const missed = latestMissedCall(calls, dismissedMissed);
+  const missedCall = missed && callWindow(trip, partyOfPair(missed.call.pair)).open ? missed : null;
+
+  function call(party: TripChatParty) {
+    if (!trip) return;
+    // An earlier call's ended screen is not this call.
+    useCall.getState().clear();
+    router.push(`/call?orderId=${encodeURIComponent(trip.id)}&pair=${pairOfParty(party)}` as Href);
+  }
 
   return (
     <Screen edges={["top"]}>
@@ -272,6 +286,18 @@ export default function ActiveScreen() {
 
         {trip && approval.canWork ? (
           <>
+            {/* Time-sensitive, so above the route: they may still be waiting. */}
+            {missedCall ? (
+              <MissedCallCard
+                missed={missedCall}
+                onCallBack={() => {
+                  useCall.getState().dismissMissed(missedCall.call.id);
+                  call(partyOfPair(missedCall.call.pair));
+                }}
+                onDismiss={() => useCall.getState().dismissMissed(missedCall.call.id)}
+              />
+            ) : null}
+
             {heading ? (
               <NextStopCard
                 kind={heading.cardKind}
@@ -351,30 +377,7 @@ export default function ActiveScreen() {
               </View>
             ) : null}
 
-            {/*
-              The shop and the client, each a tap away while the job is this
-              rider's and readable for a day after. Under the step, never
-              instead of it. Two threads with two people: the one the rider is
-              heading to comes first.
-            */}
-            {tripChatOrder(trip.state).map((party) =>
-              party === "shop" ? (
-                pickupChat ? (
-                  <DeliveryChatRow
-                    key={party}
-                    party="shop"
-                    chat={pickupChat}
-                    onPress={() => router.push(pickupChatRoute(trip.id))}
-                  />
-                ) : null
-              ) : deliveryChat ? (
-                <DeliveryChatRow
-                  key={party}
-                  chat={deliveryChat}
-                  onPress={() => router.push(deliveryChatRoute(trip.id))}
-                />
-              ) : null,
-            )}
+            <TripContacts trip={trip} onCall={call} />
 
             {/*
               A picture of the trip with one control on it. A map inside a
