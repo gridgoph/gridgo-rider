@@ -205,6 +205,9 @@ export default function CallScreen() {
   const messageLabel = party === "shop" ? "Message the shop" : "Message the client";
 
   const phase = gate === "none" ? snapshot?.phase ?? null : null;
+  // A panel under the identity (confirm, microphone, no calling) needs the room;
+  // at large text a full-size avatar pushed the job's title out of view.
+  const panelShown = gate === "confirm" || gate === "permission" || gate === "blocked" || gate === "unsupported";
   const ringing = phase === "incoming" || phase === "ringing" || phase === "calling";
   const live = Boolean(phase && phase !== "ended");
   const ended = phase === "ended" && snapshot?.endReason ? endReasonCopy(snapshot.endReason, person) : null;
@@ -246,7 +249,7 @@ export default function CallScreen() {
         </View>
 
         <ScrollView className="flex-1" contentContainerClassName="flex-grow items-center justify-center gap-2 py-4">
-          <CallAvatar role={role} ringing={ringing} />
+          <CallAvatar role={role} ringing={ringing} size={panelShown ? 72 : undefined} />
           <View
             className="items-center gap-1"
             accessible
@@ -344,7 +347,7 @@ export default function CallScreen() {
               tone="info"
               icon="info"
               title={UNSUPPORTED_TITLE}
-              body={`This version of GRIDGO cannot make calls. Install the latest app from ${APP_UPDATE_SOURCE.downloadPage}. Messages still work here.`}
+              body={`Install it from ${APP_UPDATE_SOURCE.downloadPage}. Messages still work here.`}
             />
             <PrimaryButton
               label="Open the download page"
