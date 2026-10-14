@@ -6,6 +6,7 @@ import { useRouter, useRootNavigationState, type Href } from "expo-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { AppState, Linking } from "react-native";
 
+import { CHAT_LIST_ROUTE } from "@/lib/chatThreads";
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
 import { useNotifications } from "@/store/notifications";
@@ -25,6 +26,13 @@ const Notifications = loadExpoNotifications();
  * go to Alerts; offline taps stay pending for a live refresh retry. Changing
  * accounts drops taps captured for the previous owner. Approval is not required
  * to open Alerts.
+ *
+ * A support reply opens its exact conversation. The push carries no thread ID
+ * (by contract), so the tap marks the notification read with
+ * `PATCH /notifications/:id`, which returns the owner's `threadId`; a deleted
+ * notification or a missing thread lands on the chat history instead of a
+ * guessed thread. Each notification opens its screen once, however many times
+ * the platform reports the same tap (`notificationId`, else the response id).
  */
 
 /**
@@ -96,7 +104,7 @@ export function usePushNotifications(): void {
    * cold-start path already has a user by the time the layout mounts.
    */
   const pending = useRef<{identifier:string; data:unknown; owner:string|null} | null>(null);
-  /** Response identifiers already routed, so a tap opens its screen once. */
+  /** Notifications (or response ids) already routed, so a tap opens its screen once. */
   const routed = useRef(new Set<string>());
 
   async function spendPending(): Promise<void> {
@@ -106,28 +114,42 @@ export function usePushNotifications(): void {
     if (target.owner && target.owner !== session?.id) { pending.current = null; return; }
     const generation = liveGeneration();
     const data = parsePushData(target.data);
+    const support = data.type === "support_message";
+    let threadId: string | null = null;
     try {
       // A device may carry an old owner's push. Never trust its orderId as access.
-      if (data.notificationId) {
+      if (data.notificationId && support) {
+        // Only the owner's own notification names the thread. Reading it is
+        // also what the rider just did, so it is marked read in the same call.
+        const owned = await api.readNotification(data.notificationId);
+        data.orderId = owned.orderId ?? null;
+        data.type = owned.type ?? data.type;
+        threadId = owned.threadId ?? null;
+        void refreshUnread();
+      } else if (data.notificationId) {
         const items = await api.listNotifications();
         const owned = items.find((item) => item.id === data.notificationId);
         // Older notifications may be outside the inbox page. The authorized inbox is a safe fallback.
         data.orderId = owned?.orderId ?? null;
         data.type = owned?.type ?? null;
+        threadId = owned?.threadId ?? null;
       } else if (data.orderId) {
         await api.getOrder(data.orderId);
       }
       if (generation !== liveGeneration() || pending.current !== target || !ready.current) return;
       pending.current = null;
       invalidate("*");
-      const destination = pushTargetRoute(data);
+      const destination = pushTargetRoute(data, threadId);
       router.push(destination as Href);
       withoutNativeModule(() => Notifications?.clearLastNotificationResponseAsync().catch(noop));
     } catch (error) {
-      // Offline taps stay pending until reconnect. Explicit revocation goes to the inbox only.
+      // Offline taps stay pending until reconnect. Explicit revocation goes to
+      // the inbox, or for a support reply to the chat history, never a guess.
       if (generation === liveGeneration() && pending.current === target && error instanceof api.ApiError && (error.status === 403 || error.status === 404)) {
         pending.current = null;
-        router.push("/alerts");
+        router.push(support ? CHAT_LIST_ROUTE : "/alerts");
+        // Spent: a cold start must not replay a tap that already landed.
+        withoutNativeModule(() => Notifications?.clearLastNotificationResponseAsync().catch(noop));
       }
     }
   }
@@ -166,8 +188,11 @@ export function usePushNotifications(): void {
 
   useEffect(() => {
     const route = (identifier: string, data: unknown, title?: string | null) => {
-      if (routed.current.has(identifier)) return;
-      routed.current.add(identifier);
+      // The same notification can arrive as a background tap and again as
+      // the launch response; it opens once.
+      const key = parsePushData(data).notificationId ?? `response:${identifier}`;
+      if (routed.current.has(key)) return;
+      routed.current.add(key);
       const download = releasePushDownloadUrl(data, title);
       if (download) {
         pending.current = null;

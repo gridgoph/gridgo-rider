@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
+import { LocationHealthCard } from "@/components/LocationHealthCard";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { NavigateButton } from "@/components/NavigateButton";
@@ -38,6 +39,7 @@ import * as api from "@/lib/api";
 import { callWindow, latestMissedCall, pairOfParty, partyOfPair } from "@/lib/orderCalls";
 import type { TripChatParty } from "@/lib/tripChat";
 import { classifyLocation } from "@/lib/locationFreshness";
+import { useLocationHealth } from "@/hooks/useLocationHealth";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
 import { approvalPresentation } from "@/lib/riderApproval";
@@ -119,6 +121,12 @@ export default function ActiveScreen() {
 
   const sharing = riderLocation.sharing;
   const audience = trip ? locationAudience(trip.state) : null;
+  // Read only while the job is tracked and this tab is in front of the rider.
+  const locationHealth = useLocationHealth({
+    enabled: focused && approval.canWork && audience != null,
+    watcher: audience ?? "client",
+  });
+  const locationBlocked = locationHealth.issues.some((issue) => issue.severity === "blocking");
 
   // A fix does not go stale because something re-rendered, so its age is on its
   // own clock.
@@ -303,6 +311,15 @@ export default function ActiveScreen() {
               />
             ) : null}
 
+            {/* Above the route: until this is fixed, nobody sees the rider move. */}
+            {audience ? (
+              <LocationHealthCard
+                issues={locationHealth.issues}
+                watcher={audience}
+                onFix={(fix) => void locationHealth.fix(fix)}
+              />
+            ) : null}
+
             {heading ? (
               <NextStopCard
                 kind={heading.cardKind}
@@ -427,7 +444,8 @@ export default function ActiveScreen() {
 
             <LocationSharingBanner
               sharing={sharing}
-              freshness={freshness}
+              // The card above already says location is off, with the fix.
+              freshness={locationBlocked && freshness?.level === "off" ? null : freshness}
               audience={audience}
             />
 

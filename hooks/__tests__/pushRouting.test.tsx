@@ -14,7 +14,7 @@ jest.mock("expo-notifications",()=>({
   addNotificationResponseReceivedListener:jest.fn(()=>({remove:jest.fn()})),addNotificationReceivedListener:jest.fn(()=>({remove:jest.fn()})),addPushTokenListener:jest.fn(()=>({remove:jest.fn()}))
 }));
 jest.mock("@/store/push",()=>({cancelDeviceRegistrations:jest.fn(),usePush:{getState:()=>({registerIfGranted:jest.fn(),adoptToken:jest.fn()})}}));
-jest.mock("@/lib/api",()=>({...jest.requireActual("@/lib/api"),listNotifications:jest.fn(),getOrder:jest.fn()}));
+jest.mock("@/lib/api",()=>({...jest.requireActual("@/lib/api"),listNotifications:jest.fn(),getOrder:jest.fn(),readNotification:jest.fn()}));
 const user={id:"owner",role:"rider" as const,name:"Owner",email:"owner@test",verificationStatus:"pending" as const};
 const response={notification:{request:{identifier:"push_one",content:{data:{notificationId:"n",orderId:"o"}}}}};
 beforeEach(()=>{
@@ -95,4 +95,64 @@ it.each(["cold start", "background"])("opens release download while signed out f
   expect(mockPush).not.toHaveBeenCalled();
   await view.unmount();
   open.mockRestore();
+});
+
+const THREAD="0b9a1f2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c";
+const supportTap=(identifier:string)=>({notification:{request:{identifier,content:{data:{notificationId:"support-notice",type:"support_message",at:"2026-10-14T01:00:00.000Z"}}}}});
+
+it.each(["cold start", "background"])("opens the exact support thread from the owner's notification on %s", async (mode) => {
+  mockReady = true;
+  (api.readNotification as jest.Mock).mockResolvedValue({id:"support-notice",type:"support_message",threadId:THREAD,read:true});
+  mockLast.mockResolvedValue(mode === "cold start" ? supportTap("cold") : null);
+  await renderHook(() => usePushNotifications());
+  if (mode === "background") {
+    const onTap = (Notifications.addNotificationResponseReceivedListener as jest.Mock).mock.calls.at(-1)[0];
+    await act(async () => { onTap(supportTap("bg")); });
+  }
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(api.readNotification).toHaveBeenCalledWith("support-notice");
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  expect(mockPush).toHaveBeenCalledWith(`/chat/${THREAD}`);
+});
+
+it("opens one screen for one notification, even reported under two response ids", async () => {
+  mockReady = true;
+  (api.readNotification as jest.Mock).mockResolvedValue({id:"support-notice",type:"support_message",threadId:THREAD,read:true});
+  mockLast.mockResolvedValue(supportTap("launch-id"));
+  await renderHook(() => usePushNotifications());
+  const onTap = (Notifications.addNotificationResponseReceivedListener as jest.Mock).mock.calls.at(-1)[0];
+  await act(async () => { onTap(supportTap("tray-id")); });
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledTimes(1);
+});
+
+it("lands a deleted support notification on chat history and spends the launch tap", async () => {
+  mockReady = true;
+  (api.readNotification as jest.Mock).mockRejectedValue(new api.ApiError(404, {error:"notification_not_found"}));
+  mockLast.mockResolvedValue(supportTap("gone"));
+  await renderHook(() => usePushNotifications());
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledWith("/chat");
+  expect(jest.requireMock("expo-notifications").clearLastNotificationResponseAsync).toHaveBeenCalled();
+});
+
+it("opens chat history when the notification names no thread (older API)", async () => {
+  mockReady = true;
+  (api.readNotification as jest.Mock).mockResolvedValue({id:"support-notice",type:"support_message",read:true});
+  mockLast.mockResolvedValue(supportTap("old"));
+  await renderHook(() => usePushNotifications());
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledWith("/chat");
+});
+
+it.each([
+  ["delivery_message", "/trip/messages?orderId=job-1"],
+  ["pickup_chat_message", "/trip/shop-messages?orderId=job-1"],
+])("opens the %s conversation for the authorized order", async (type, route) => {
+  mockReady = true;
+  (api.listNotifications as jest.Mock).mockResolvedValue([{id:"chat-notice",orderId:"job-1",type}]);
+  mockLast.mockResolvedValue({notification:{request:{identifier:`tap-${type}`,content:{data:{notificationId:"chat-notice",type,orderId:"job-1"}}}}});
+  await renderHook(() => usePushNotifications());
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledWith(route);
 });

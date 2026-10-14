@@ -5,6 +5,7 @@ import { useRiderLocation } from "@/hooks/useRiderLocation";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
 import * as api from "@/lib/api";
+import * as task from "@/lib/tripLocationTask";
 jest.mock("@/hooks/useRiderLocation",()=>({useRiderLocation:jest.fn()}));
 jest.mock("@/lib/api",()=>({...jest.requireActual("@/lib/api"),postLocation:jest.fn(async()=>({}))}));
 it("publishes for the trip independently of route, pauses in background and stops on revocation",async()=>{
@@ -30,4 +31,45 @@ it("publishes for the trip independently of route, pauses in background and stop
   await act(async()=>{jest.advanceTimersByTime(30_000);});
   expect(api.postLocation).toHaveBeenCalledTimes(last);
   listener.mockRestore();jest.useRealTimers();
+});
+
+it("runs the background service for the tracked window only, and stops on delivery or sign-out", async () => {
+  jest.spyOn(AppState,"addEventListener").mockImplementation(()=>({remove:jest.fn()}));
+  const start = jest.spyOn(task, "startTripLocationUpdates").mockResolvedValue(true);
+  const stop = jest.spyOn(task, "stopTripLocationUpdates").mockResolvedValue(undefined);
+  const target = jest.spyOn(task, "setTripLocationTarget");
+  const user = {id:"r",role:"rider" as const,name:"R",email:"r@test",verificationStatus:"approved" as const};
+  useSession.setState({user});
+  useActiveTrip.setState({order:{id:"o",riderId:"r",state:"rider_assigned"} as api.Order});
+  const fix = {coords:{lat:7,lng:125},accuracy:8,fixAtMs:Date.now(),permission:"granted",heading:null,speed:null,error:null};
+  (useRiderLocation as jest.Mock).mockImplementation(() => fix);
+  await renderHook(() => useTripTracking());
+  // From acceptance: the shop is watching on the way to pick up.
+  expect(target).toHaveBeenLastCalledWith({orderId:"o"});
+  expect(start).toHaveBeenCalled();
+  await act(async () => { useActiveTrip.setState({order:{id:"o",riderId:"r",state:"out_for_delivery"} as api.Order}); });
+  expect(target).toHaveBeenLastCalledWith({orderId:"o"});
+  stop.mockClear();
+  await act(async () => { useActiveTrip.setState({order:{id:"o",riderId:"r",state:"delivered"} as api.Order}); });
+  expect(target).toHaveBeenLastCalledWith(null);
+  expect(stop).toHaveBeenCalled();
+  await act(async () => { useActiveTrip.setState({order:{id:"p",riderId:"r",state:"picked_up"} as api.Order}); });
+  expect(target).toHaveBeenLastCalledWith({orderId:"p"});
+  stop.mockClear();
+  await act(async () => { useSession.setState({user:null}); });
+  expect(target).toHaveBeenLastCalledWith(null);
+  expect(stop).toHaveBeenCalled();
+  start.mockRestore(); stop.mockRestore(); target.mockRestore();
+});
+
+it("does not start the service until location is allowed", async () => {
+  jest.spyOn(AppState,"addEventListener").mockImplementation(()=>({remove:jest.fn()}));
+  const start = jest.spyOn(task, "startTripLocationUpdates").mockResolvedValue(true);
+  const user = {id:"r",role:"rider" as const,name:"R",email:"r@test",verificationStatus:"approved" as const};
+  useSession.setState({user});
+  useActiveTrip.setState({order:{id:"o",riderId:"r",state:"picked_up"} as api.Order});
+  (useRiderLocation as jest.Mock).mockImplementation(() => ({coords:null,accuracy:null,fixAtMs:null,permission:"denied",heading:null,speed:null,error:"off"}));
+  await renderHook(() => useTripTracking());
+  expect(start).not.toHaveBeenCalled();
+  start.mockRestore();
 });

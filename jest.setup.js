@@ -105,19 +105,38 @@ jest.mock("react-native-keyboard-controller", () =>
 // Location is native. Arrival and the trip map read it; tests supply a fix
 // only when they are about that. Default is "no permission asked yet, no fix".
 jest.mock("expo-location", () => ({
-  Accuracy: { Balanced: 3 },
+  Accuracy: { Balanced: 3, High: 4 },
+  ActivityType: { OtherNavigation: 4 },
   PermissionStatus: { GRANTED: "granted", DENIED: "denied", UNDETERMINED: "undetermined" },
   getForegroundPermissionsAsync: jest.fn(async () => ({ status: "undetermined" })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ status: "denied" })),
   getLastKnownPositionAsync: jest.fn(async () => null),
   watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
+  hasServicesEnabledAsync: jest.fn(async () => true),
+  enableNetworkProviderAsync: jest.fn(async () => undefined),
+  hasStartedLocationUpdatesAsync: jest.fn(async () => false),
+  startLocationUpdatesAsync: jest.fn(async () => undefined),
+  stopLocationUpdatesAsync: jest.fn(async () => undefined),
+}));
+
+// The trip's background location service. Tests that drive it reach the
+// defined task through `defineTask.mock.calls`.
+jest.mock("expo-task-manager", () => ({
+  defineTask: jest.fn(),
+}));
+
+// Battery switches the location card reads. Default: nothing in the way.
+jest.mock("expo-battery", () => ({
+  isBatteryOptimizationEnabledAsync: jest.fn(async () => false),
+  isLowPowerModeEnabledAsync: jest.fn(async () => false),
 }));
 
 jest.mock("expo-notifications", () => ({
   __esModule: true,
-  AndroidImportance: { HIGH: 4 },
+  AndroidImportance: { NONE: 2, LOW: 4, DEFAULT: 5, HIGH: 6 },
   setNotificationHandler: jest.fn(),
   setNotificationChannelAsync: jest.fn(async () => undefined),
+  getNotificationChannelAsync: jest.fn(async () => null),
   getPermissionsAsync: jest.fn(async () => ({
     status: "undetermined",
     granted: false,

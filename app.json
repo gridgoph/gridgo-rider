@@ -13,7 +13,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "ph.gridgo.rider",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "GRIDGO shares your position only while a package is with you, so the client can track delivery. Sharing stops when the trip ends.",
+        "NSLocationWhenInUseUsageDescription": "GRIDGO shares your position only during a delivery job you accepted: with the shop until pick-up, then with the client until delivery. Sharing stops when the job ends.",
         "NSCameraUsageDescription": "GRIDGO uses the camera for pickup and delivery proof photos.",
         "NSPhotoLibraryUsageDescription": "GRIDGO needs your photos so you can set a profile picture and attach a proof photo when the camera is unavailable."
       }
@@ -82,7 +82,9 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "GRIDGO shares your position only while a package is with you, so the client can track delivery. Sharing stops when the trip ends."
+          "locationWhenInUsePermission": "GRIDGO shares your position only during a delivery job you accepted: with the shop until pick-up, then with the client until delivery. Sharing stops when the job ends.",
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
         }
       ],
       [
