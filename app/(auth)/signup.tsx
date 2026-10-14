@@ -1,4 +1,3 @@
-import { PrivacyPolicyLink } from "@/components/AccountPrivacy";
 import { useAuth, useClerk, useSignUp, useUser } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -9,6 +8,8 @@ import { CodeField } from "@/components/CodeField";
 import { FormScroll } from "@/components/FormScroll";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
+import { SignupConsentFields } from "@/components/legal/SignupConsentFields";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { PasswordField } from "@/components/PasswordField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -23,6 +24,14 @@ import {
 } from "@/lib/clerkAuth";
 import { continuationAfterSignUp } from "@/lib/clerkSignUp";
 import {
+  EMPTY_SIGNUP_CONSENT,
+  enrollmentConsentBody,
+  signupConsentProblem,
+  signupDocuments,
+  type SignupConsent,
+} from "@/lib/legal";
+import { legalContext } from "@/lib/legalContext";
+import {
   EMPTY_SIGNUP,
   VEHICLE_TYPES,
   canSubmitSignup,
@@ -32,6 +41,7 @@ import {
   type SignupFields,
   type VehicleType,
 } from "@/lib/signup";
+import { useLegalLibrary } from "@/store/legalLibrary";
 import { useSession } from "@/store/session";
 
 /** Clerk's emailed verification codes are six digits. */
@@ -51,6 +61,11 @@ const RESEND_COOLDOWN_SECONDS = 30;
  * password, then `POST /auth/clerk/enroll/rider` files the profile against that
  * session. Clerk may demand an emailed code in between, which is why this
  * screen has a second face rather than a second route.
+ *
+ * GRIDGO files nobody who has not agreed to its terms: the form names the
+ * Rider Agreement, Terms of Service and Privacy Notice in effect now, asks the
+ * age question, and holds the button until the unticked agreement box is
+ * ticked. The enrollment carries those exact version IDs (`docs/LEGAL_API.md`).
  */
 export default function SignupScreen() {
   const router = useRouter();
@@ -75,6 +90,12 @@ export default function SignupScreen() {
   // One attempt keeps one key, so a retry after a lost reply is a retry to the
   // API rather than a second application.
   const [enrollKey] = useState(() => enrollmentIdempotencyKey());
+  const [consent, setConsent] = useState<SignupConsent>(EMPTY_SIGNUP_CONSENT);
+  // The tick belongs to the versions it was given against: a version that
+  // takes effect while the form is open is never agreed to by an older tick.
+  const [agreedTo, setAgreedTo] = useState<string | null>(null);
+  const libraryDocuments = useLegalLibrary((state) => state.documents);
+  const libraryStatus = useLegalLibrary((state) => state.status);
 
   const emailField = useRef<TextInput>(null);
   const phoneField = useRef<TextInput>(null);
@@ -82,6 +103,10 @@ export default function SignupScreen() {
   const confirmationField = useRef<TextInput>(null);
   const plateField = useRef<TextInput>(null);
   const licenceField = useRef<TextInput>(null);
+
+  useEffect(() => {
+    void useLegalLibrary.getState().load({ force: true });
+  }, []);
 
   // Tick the resend cooldown down to zero, one second at a time.
   useEffect(() => {
@@ -91,6 +116,20 @@ export default function SignupScreen() {
   }, [resendIn]);
 
   if (user) return <Redirect href="/(tabs)/active" />;
+
+  const consentDocuments = signupDocuments(libraryDocuments);
+  const consentSignature = consentDocuments?.map((doc) => doc.id).join("|") ?? "";
+  const shownConsent: SignupConsent = {
+    ...consent,
+    agreed: consent.agreed && agreedTo === consentSignature,
+  };
+  // An API with no legal library takes the application without consent
+  // fields; anything else waits until the documents are on screen.
+  const legacyLegal = libraryStatus === "unsupported";
+  const consentProblem = signupConsentProblem(
+    shownConsent,
+    legacyLegal || consentDocuments != null,
+  );
 
   function patch(next: Partial<SignupFields>) {
     setFields((current) => ({ ...current, ...next }));
@@ -164,12 +203,24 @@ export default function SignupScreen() {
       setLocalError("GRIDGO could not confirm your sign-in. Wait a moment and try again.");
       return false;
     }
-    return enrollRider(toEnrollRequest(fields), enrollKey);
+    const legalConsent = consentDocuments
+      ? enrollmentConsentBody(
+          consentDocuments.map((doc) => doc.id),
+          shownConsent,
+          await legalContext(),
+        )
+      : undefined;
+    const filed = await enrollRider({ ...toEnrollRequest(fields), legalConsent }, enrollKey);
+    // A refused agreement is usually a version that changed while the form
+    // was open; read the library again so the box asks about the new one.
+    if (!filed) void useLegalLibrary.getState().load({ force: true });
+    return filed;
   }
 
   async function submit() {
     if (loading || busy) return;
-    const problem = firstSignupProblem(fields, { identityExists: Boolean(isSignedIn) });
+    const problem =
+      firstSignupProblem(fields, { identityExists: Boolean(isSignedIn) }) ?? consentProblem;
     if (problem) {
       setLocalError(problem);
       return;
@@ -266,7 +317,7 @@ export default function SignupScreen() {
   */
   const identityExists = Boolean(isSignedIn);
   const signedInEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
-  const ready = canSubmitSignup(fields, { identityExists });
+  const ready = canSubmitSignup(fields, { identityExists }) && consentProblem === null;
   const sending = busy;
 
   /*
@@ -296,6 +347,7 @@ export default function SignupScreen() {
             : passwordField.current?.focus()
         }
       />
+      <WhyWeAsk>Operations use this number to reach you about your application and your jobs.</WhyWeAsk>
     </View>
   );
 
@@ -551,6 +603,20 @@ export default function SignupScreen() {
           </View>
         </View>
 
+        <SignupConsentFields
+          consent={shownConsent}
+          onChange={(next) => {
+            setConsent(next);
+            setAgreedTo(next.agreed ? consentSignature : null);
+            setLocalError(null);
+            clearError();
+          }}
+          documents={consentDocuments}
+          status={libraryStatus}
+          onRetry={() => void useLegalLibrary.getState().load({ force: true })}
+          disabled={sending}
+        />
+
         {error ? (
           <InlineNotice tone="error" icon="circle-x" title="Application not sent" body={error} />
         ) : null}
@@ -562,7 +628,6 @@ export default function SignupScreen() {
           size="large"
         />
 
-      <PrivacyPolicyLink />
         <Pressable
           onPress={() => {
             leaveApplication();

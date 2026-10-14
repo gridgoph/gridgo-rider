@@ -2,7 +2,9 @@ import { useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 
 import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
-import { canGateNavigate, resolveAuthRedirect } from "@/lib/authGate";
+import { accountHold } from "@/lib/accountHold";
+import { canGateNavigate, LEGAL_REVIEW_ROUTE, resolveAuthRedirect } from "@/lib/authGate";
+import { legalGateFor, useLegalConsent } from "@/store/legalConsent";
 import { useSession } from "@/store/session";
 
 /**
@@ -23,6 +25,9 @@ export function useAuthGate(): void {
   const showErrorOnLogin = useSession((s) => s.showErrorOnLogin);
   const needsApplication = useSession((s) => s.needsApplication);
   const sessionWait = useSession((s) => s.sessionWait);
+  // A held account never reads its terms (`useLegalGate`): the hold replaces
+  // the whole stack, so there is nothing for the legal gate to close.
+  const legal = useLegalConsent((s) => (accountHold(user) ? "clear" : legalGateFor(s, user?.id)));
   const hold = useRiderAuthHold();
   const segments = useSegments();
   const router = useRouter();
@@ -38,8 +43,13 @@ export function useAuthGate(): void {
       showErrorOnLogin,
       needsApplication,
       sessionWait ?? hold,
+      legal,
     );
-    if (target) {
+    if (target === LEGAL_REVIEW_ROUTE) {
+      // Close what is stacked above, so Back cannot walk around the agreement.
+      if (router.canDismiss()) router.dismissAll();
+      router.replace(target);
+    } else if (target) {
       router.replace(target);
     }
   }, [
@@ -49,6 +59,7 @@ export function useAuthGate(): void {
     needsApplication,
     sessionWait,
     hold,
+    legal,
     rootNavigatorKey,
     segments,
     router,

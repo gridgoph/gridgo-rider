@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { InlineNotice } from "@/components/InlineNotice";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SignaturePad, type SignaturePadHandle } from "@/components/SignaturePad";
 import { StatusChip } from "@/components/StatusChip";
@@ -19,6 +20,8 @@ type Props = {
   /** What the evidence is of, in the rider's words. */
   title: string;
   instruction: string;
+  /** Why GRIDGO asks for it, in one line (`WhyWeAsk`). */
+  purpose?: string;
   evidence: ProofEvidence | null;
   upload: EvidenceUpload;
   captureError: string | null;
@@ -45,6 +48,7 @@ type Props = {
 export function EvidenceCapture({
   title,
   instruction,
+  purpose,
   evidence,
   upload,
   captureError,
@@ -84,6 +88,11 @@ export function EvidenceCapture({
       <View className="gap-1">
         <Text className="text-overline text-text-muted">{title.toUpperCase()}</Text>
         <Text className="text-body text-text-secondary">{instruction}</Text>
+        {purpose ? (
+          <View className="pt-1">
+            <WhyWeAsk>{purpose}</WhyWeAsk>
+          </View>
+        ) : null}
       </View>
 
       {evidence ? (

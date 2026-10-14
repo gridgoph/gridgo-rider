@@ -18,6 +18,7 @@ import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { NavigateButton } from "@/components/NavigateButton";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -255,6 +256,9 @@ export default function ActiveScreen() {
         />
 
         {!approval.canWork ? <ApprovalNotice /> : null}
+
+        {/* An editorial policy change: said once, on the landing screen, never blocking. */}
+        <LegalNoticeBanner />
 
         <PushEnableCard />
 

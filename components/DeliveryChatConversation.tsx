@@ -21,6 +21,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { addChatPhotos, pickChatImages, uploadChatImage, type ChatPhotoDraft } from "@/lib/chatImages";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
 import {
@@ -321,6 +322,13 @@ export function DeliveryChatConversation({
               <Text className="mb-2 text-caption text-error" accessibilityLiveRegion="polite">
                 {sendError}
               </Text>
+            ) : null}
+            {pending.length ? (
+              <View className="mb-2">
+                <WhyWeAsk>
+                  {`${pending.length === 1 ? "This photo goes" : "These photos go"} to the ${party === "shop" ? "shop" : "client"} with your message, to help with this job.`}
+                </WhyWeAsk>
+              </View>
             ) : null}
             {pending.length ? (
               <View className="mb-2 flex-row items-center gap-2">
