@@ -3,7 +3,13 @@ import { FileText, X } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
-import { noticeBody, noticeHeading, unseenNotices } from "@/lib/legal";
+import {
+  changeNote,
+  legalDocumentHref,
+  noticeBody,
+  noticeHeading,
+  unseenNotices,
+} from "@/lib/legal";
 import { legalGateFor, useLegalConsent } from "@/store/legalConsent";
 import { useLegalNotices } from "@/store/legalNotices";
 import { useSession } from "@/store/session";
@@ -32,6 +38,12 @@ export function LegalNoticeBanner() {
   const fresh = hydrated ? unseenNotices(notices, seen) : [];
   if (!userId || fresh.length === 0) return null;
 
+  // One notice opens that document and says what changed; several open the library.
+  const only = fresh.length === 1 ? fresh[0] : null;
+  const change = only ? changeNote(only) : null;
+  const target = only ? legalDocumentHref(only) : LIBRARY;
+  const readLabel = only ? "Read it" : "Read them";
+
   const done = () =>
     useLegalNotices.getState().markSeen(
       userId,
@@ -46,17 +58,18 @@ export function LegalNoticeBanner() {
 
       <View className="min-w-0 flex-1 gap-1 pt-0.5">
         <Text className="text-body-lg font-bold text-text-primary">{noticeHeading(fresh)}</Text>
+        {change ? <Text className="text-body text-text-primary">{change}</Text> : null}
         <Text className="text-body text-text-secondary">{noticeBody(fresh)}</Text>
         <Pressable
           onPress={() => {
             done();
-            router.push(LIBRARY);
+            router.push(target);
           }}
           accessibilityRole="link"
-          accessibilityLabel="Read them in Legal & Privacy"
+          accessibilityLabel={only ? `Read the ${only.title}` : "Read them in Legal & Privacy"}
           className="gg-touch justify-center self-start"
         >
-          <Text className="text-button text-text-primary underline">Read them</Text>
+          <Text className="text-button text-text-primary underline">{readLabel}</Text>
         </Pressable>
       </View>
 

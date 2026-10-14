@@ -253,6 +253,16 @@ export function gateBody(pending: readonly Pick<LegalVersion, "version">[]): str
     : "Read them, then agree to start riding with GRIDGO. A job you are carrying stays yours while you read.";
 }
 
+/**
+ * Over the agreement screen's second list. On first use these are the other
+ * policies in effect; after a change they are the ones edited alongside it.
+ */
+export function gateNoticesHeading(notices: readonly Pick<LegalVersion, "version">[]): string {
+  return notices.some((doc) => doc.version > 1)
+    ? "ALSO UPDATED, NOTHING TO AGREE TO"
+    : "ALSO IN EFFECT, NOTHING TO AGREE TO";
+}
+
 /** Notices this phone has not shown yet. */
 export function unseenNotices(
   notices: readonly LegalVersion[],

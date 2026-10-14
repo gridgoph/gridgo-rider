@@ -12,10 +12,19 @@ import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useConfirmedSignOut } from "@/hooks/useConfirmedSignOut";
 import { useThemeColors } from "@/hooks/useTheme";
-import { gateBody, gateHeading, joinTitles } from "@/lib/legal";
+import {
+  gateBody,
+  gateHeading,
+  gateNoticesHeading,
+  joinTitles,
+  libraryOrder,
+  unseenNotices,
+} from "@/lib/legal";
 import { useLegalConsent } from "@/store/legalConsent";
 import { useLegalNotices } from "@/store/legalNotices";
 import { useSession } from "@/store/session";
+
+const NO_SEEN: string[] = [];
 
 /**
  * Terms to agree to, before anything else in the app opens.
@@ -37,8 +46,11 @@ export default function LegalReviewScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const userId = useSession((state) => state.user?.id ?? null);
-  const pending = useLegalConsent((state) => state.pending);
-  const notices = useLegalConsent((state) => state.notices);
+  const pending = libraryOrder(useLegalConsent((state) => state.pending));
+  // Policies this phone already showed (here or on Active) are not listed again.
+  const allNotices = useLegalConsent((state) => state.notices);
+  const seen = useLegalNotices((state) => (userId ? state.seen[userId] : undefined) ?? NO_SEEN);
+  const notices = libraryOrder(unseenNotices(allNotices, seen));
   const accepting = useLegalConsent((state) => state.accepting);
   const error = useLegalConsent((state) => state.error);
   const signOut = useConfirmedSignOut();
@@ -53,10 +65,7 @@ export default function LegalReviewScreen() {
     const done = await useLegalConsent.getState().accept();
     // Editorial notices were on this screen too; they need no second showing.
     if (done && userId) {
-      useLegalNotices.getState().markSeen(
-        userId,
-        useLegalConsent.getState().notices.map((doc) => doc.id),
-      );
+      useLegalNotices.getState().markSeen(userId, notices.map((doc) => doc.id));
     }
   }
 
@@ -91,17 +100,6 @@ export default function LegalReviewScreen() {
           </View>
         </View>
 
-        {notices.length ? (
-          <View className="gap-2">
-            <Text className="text-overline text-text-muted">ALSO UPDATED, NOTHING TO AGREE TO</Text>
-            <View className="gg-card-flush">
-              {notices.map((doc, index) => (
-                <LegalDocumentRow key={doc.id} doc={doc} divided={index > 0} />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
         <View className="gap-4">
           <CheckboxRow
             checked={agreed}
@@ -121,6 +119,17 @@ export default function LegalReviewScreen() {
             size="large"
           />
         </View>
+
+        {notices.length ? (
+          <View className="gap-2">
+            <Text className="text-overline text-text-muted">{gateNoticesHeading(notices)}</Text>
+            <View className="gg-card-flush">
+              {notices.map((doc, index) => (
+                <LegalDocumentRow key={doc.id} doc={doc} divided={index > 0} />
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         <View className="gap-3">
           <View className="gg-card-flush">

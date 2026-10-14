@@ -5,6 +5,7 @@ import {
   EMPTY_SIGNUP_CONSENT,
   enrollmentConsentBody,
   gateHeading,
+  gateNoticesHeading,
   isLegalRefusal,
   isLegalUnsupported,
   isLegalVersionChanged,
@@ -152,6 +153,11 @@ describe("the agreement gate's words", () => {
   it("says first use and a change differently", () => {
     expect(gateHeading([{ version: 1 }])).toBe("Agree to GRIDGO's terms");
     expect(gateHeading([{ version: 1 }, { version: 2 }])).toBe("GRIDGO's terms have changed");
+    // First use lists the other policies in effect; they were never "updated".
+    expect(gateNoticesHeading([{ version: 1 }])).toBe("ALSO IN EFFECT, NOTHING TO AGREE TO");
+    expect(gateNoticesHeading([{ version: 1 }, { version: 2 }])).toBe(
+      "ALSO UPDATED, NOTHING TO AGREE TO",
+    );
   });
 
   it("names an editorial notice and asks nothing", () => {
