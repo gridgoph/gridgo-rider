@@ -19,8 +19,8 @@ type Props = {
 /** The line that tells the rider who is watching, while it is true. */
 export function audienceLine(audience: "shop" | "client"): string {
   return audience === "shop"
-    ? "The shop sees you on the way to collect this job and stops seeing you once you pick it up. Keep GRIDGO open; positions are not saved on this phone."
-    : "Keep GRIDGO open to share your position during this trip. Positions are not saved on this phone.";
+    ? "The shop sees you on the way to collect this job and stops seeing you once you pick it up. Sharing carries on if you switch to Maps or lock your phone; positions are not saved on this phone."
+    : "Sharing carries on if you switch to Maps or lock your phone, until delivery. Closing GRIDGO stops it. Positions are not saved on this phone.";
 }
 
 /**

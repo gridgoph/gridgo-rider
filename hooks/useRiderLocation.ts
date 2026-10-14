@@ -111,7 +111,10 @@ export function useRiderLocation({ enabled = true }: Args = {}): RiderLocationSt
           {
             accuracy: Location.Accuracy.Balanced,
             timeInterval: 8_000,
-            distanceInterval: 15,
+            // Zero, not a displacement: a rider standing at the counter or
+            // stopped in traffic still needs a fresh fix, or the position
+            // goes stale after 45 s and the pings stop (gridgo-api#217).
+            distanceInterval: 0,
           },
           (pos) => {
             if (cancelled) return;

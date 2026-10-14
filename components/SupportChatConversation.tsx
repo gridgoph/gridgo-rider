@@ -20,9 +20,11 @@ import { ChatPhoto } from "@/components/ChatPhoto";
 import { ConversationDetails } from "@/components/ConversationDetails";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
+import { CHAT_LIST_ROUTE } from "@/lib/chatThreads";
 import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { addChatPhotos, pickChatImages, uploadChatImage } from "@/lib/chatImages";
 import { openSupportChatStream } from "@/lib/supportChatStream";
@@ -47,6 +49,12 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
   const [messages, setMessages] = useState<api.SupportChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * A named thread this rider cannot open — removed, or not theirs. A tapped
+   * support push lands here when its conversation is gone, so it says so and
+   * leads to chat history instead of a composer posting into nothing.
+   */
+  const [gone, setGone] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -78,6 +86,7 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
 
   const load = useCallback(async () => {
     setError(null);
+    setGone(false);
     try {
       if (threadId) {
         const detail = await api.getSupportChatThread(threadId);
@@ -101,7 +110,8 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
         setUnreadCount(me.unreadCount ?? 0);
       }
     } catch (err) {
-      setError(api.apiErrorMessage(err, "Could not open Operations."));
+      if (threadId && err instanceof api.ApiError && [403, 404, 410].includes(err.status)) setGone(true);
+      else setError(api.apiErrorMessage(err, "Could not open Operations."));
     } finally {
       setLoading(false);
     }
@@ -299,7 +309,19 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
               }}
             />
           ) : null}
-          {!loading && messages.length === 0 ? (
+          {gone ? (
+            <View className="gg-panel items-center gap-2 py-8">
+              <Text className="text-center text-body-lg font-medium text-text-primary">
+                This conversation is no longer available
+              </Text>
+              <Text className="text-center text-body text-text-secondary">
+                It was closed or removed. Your other conversations with Operations are in chat history.
+              </Text>
+              <View className="mt-2 w-full max-w-xs">
+                <SecondaryButton label="Open chat history" onPress={() => router.replace(CHAT_LIST_ROUTE)} />
+              </View>
+            </View>
+          ) : !loading && messages.length === 0 ? (
             <View className="gg-panel items-center py-8">
               <Text className="text-body-lg font-medium text-text-primary">No messages yet</Text>
               <Text className="mt-2 text-center text-body text-text-secondary">
@@ -345,6 +367,7 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
             })
           )}
         </ScrollView>
+        {gone ? null : (
         <View className="border-t border-outline bg-surface px-4 pb-3 pt-3">
           {pending.length ? (
             <View className="mb-2 gap-1">
@@ -399,6 +422,7 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
             </Pressable>
           </View>
         </View>
+        )}
           </>
         )}
       </KeyboardAvoidingView>

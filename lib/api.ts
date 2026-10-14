@@ -325,6 +325,8 @@ export type Notification = {
   type?: string;
   /** Present when the alert is about one job, which most rider alerts are. */
   orderId?: string;
+  /** The support conversation a `support_message` is about. Never in push data. */
+  threadId?: string | null;
 };
 
 /**
@@ -1287,6 +1289,20 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
   await Promise.all(ids.map((id) => request(`/notifications/${encodeURIComponent(id)}`, {
     method: "PATCH", body: JSON.stringify({ read: true }),
   })));
+}
+
+/**
+ * Mark one notification read and return it as its owner sees it.
+ *
+ * A tapped support push resolves its conversation this way: the push carries
+ * no thread ID, and the returned row's `threadId` is only ever the owner's.
+ * A deleted or foreign notification is `404`.
+ */
+export async function readNotification(id: string): Promise<Notification> {
+  const result = await request<{ notification: Notification }>(`/notifications/${encodeURIComponent(id)}`, {
+    method: "PATCH", body: JSON.stringify({ read: true }),
+  });
+  return result.notification;
 }
 
 /**

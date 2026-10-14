@@ -195,6 +195,25 @@ describe("registerIfGranted", () => {
     expect(channelOrder).toBeLessThan(permissionOrder);
   });
 
+  it("reads the installed channel back, because a rider's Silent outlives a re-create", async () => {
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    (mocked.getNotificationChannelAsync as jest.Mock).mockResolvedValueOnce({ importance: 6, sound: null });
+
+    await usePush.getState().syncPermission();
+
+    expect(mocked.setNotificationChannelAsync).toHaveBeenCalledWith(
+      PUSH_CHANNEL_ID,
+      expect.not.objectContaining({ sound: null }),
+    );
+    expect(usePush.getState().channel).toBe("silent");
+    expect(pushOffer({ supported: true, signedIn: true, permission: "granted", channel: usePush.getState().channel })).toBe("silent");
+
+    (mocked.getNotificationChannelAsync as jest.Mock).mockResolvedValueOnce({ importance: 6, sound: "default" });
+    await usePush.getState().resume();
+    expect(usePush.getState().channel).toBe("audible");
+  });
+
   it("survives a native module that throws — Expo Go has no remote push at all", async () => {
     // Android push was removed from Expo Go in SDK 53 and the module throws
     // rather than warns. That must cost push and nothing else.
