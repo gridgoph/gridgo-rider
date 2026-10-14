@@ -36,6 +36,9 @@ const ROOTS = new Set([
   "(auth)/welcome",
   "onboarding",
   "(tabs)",
+  // The agreement gate: the auth gate has closed everything behind it, and its
+  // way out is Sign out on the screen itself (asserted below).
+  "legal/review",
 ]);
 
 function routeFiles(dir: string, prefix = ""): string[] {
@@ -118,6 +121,11 @@ describe("every route is reachable and escapable", () => {
     const source = readFileSync(join(APP, "call.tsx"), "utf8");
     expect(source).toMatch(/accessibilityLabel=\{[^}]*"Close[^"]*"/);
     expect(source).toMatch(/router\.back\(\)/);
+  });
+
+  it("lets a rider leave the agreement gate by signing out", () => {
+    const source = readFileSync(join(APP, "legal/review.tsx"), "utf8");
+    expect(source).toMatch(/label="Sign out"/);
   });
 
   it("titles the tab shell so iOS can never label a back control '(tabs)'", () => {

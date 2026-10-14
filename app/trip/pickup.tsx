@@ -319,6 +319,7 @@ export default function PickupChecklistScreen() {
                   key={id}
                   title="Photo of the problem"
                   instruction="Photograph the fault itself — the misprint, the tear, the short count on the counter."
+                  purpose="Operations and the shop see this photo, so the fault can be fixed before the job travels."
                   evidence={evidence.evidence}
                   upload={evidence.upload}
                   captureError={evidence.captureError}

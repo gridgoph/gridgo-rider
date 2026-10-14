@@ -1,12 +1,22 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+// Account and the agreement screen share one sign-out confirmation.
+const signOutSource = () =>
+  readFileSync(join(__dirname, "../hooks/useConfirmedSignOut.ts"), "utf8");
+
 describe("Sign out confirmation", () => {
+  it("is the shared confirmation on Account and on the agreement screen", () => {
+    for (const screen of ["../app/(tabs)/account.tsx", "../app/legal/review.tsx"]) {
+      const source = readFileSync(join(__dirname, screen), "utf8");
+      expect(source).toContain("useConfirmedSignOut");
+      expect(source).not.toContain("ConfirmModal");
+      expect(source).not.toContain('router.push("/sign-out")');
+    }
+  });
+
   it("asks through the platform sheet, not a Modal drawn on Account", () => {
-    const source = readFileSync(
-      join(__dirname, "../app/(tabs)/account.tsx"),
-      "utf8",
-    );
+    const source = signOutSource();
     expect(source).toContain("askConfirm");
     expect(source).toContain("Sign out of GRIDGO on this phone?");
     expect(source).not.toContain("ConfirmModal");
@@ -14,10 +24,7 @@ describe("Sign out confirmation", () => {
   });
 
   it("names the consequence of signing out while a job is still with the rider", () => {
-    const source = readFileSync(
-      join(__dirname, "../app/(tabs)/account.tsx"),
-      "utf8",
-    );
+    const source = signOutSource();
     expect(source).toMatch(/stop sharing your position/);
     expect(source).toMatch(/Offers stop arriving/);
     expect(source).not.toMatch(/Are you sure/i);

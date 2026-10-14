@@ -9,6 +9,7 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { PassedChecksSummary } from "@/components/PassedChecksSummary";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { SignaturePad, type SignaturePadHandle } from "@/components/SignaturePad";
 import { HandoffSkeleton } from "@/components/SkeletonScreens";
 import { StatusChip } from "@/components/StatusChip";
@@ -266,6 +267,10 @@ export default function HandoffSignatureScreen() {
               <Text className="text-body-lg text-text-secondary">
                 {shopDisplayName(order)} hands this job to {rider?.name?.trim() || "the GRIDGO rider"}.
               </Text>
+              <WhyWeAsk>
+                The name and signature are GRIDGO&apos;s record that the shop handed this job over
+                after the six checks.
+              </WhyWeAsk>
             </View>
 
             <View className="gap-2">

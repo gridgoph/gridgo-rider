@@ -732,6 +732,12 @@ export type RiderEnrollment = {
     plateNumber: string;
     licenseNumber?: string;
   };
+  /**
+   * What the rider agreed to on the form, sent as `legalConsentVersion: 1` +
+   * `legalConsent` (gridgo-api `docs/LEGAL_API.md`). Omitted only against an
+   * API that has no legal library, where the fields would mean nothing.
+   */
+  legalConsent?: EnrollmentConsentBody;
 };
 
 /**
@@ -745,10 +751,14 @@ export async function enrollRider(
   input: RiderEnrollment,
   idempotencyKey: string,
 ): Promise<User> {
+  const { legalConsent, ...rest } = input;
   await request("/auth/clerk/enroll/rider", {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...rest,
+      ...(legalConsent ? { legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsent } : {}),
+    }),
   });
   return me({ ignoreUnauthorized: true });
 }
@@ -1614,6 +1624,130 @@ export async function markSupportChatRead(threadId?: string): Promise<{
   return request("/support-chat/me/read", { method: "PATCH", body: JSON.stringify({}) });
 }
 
-export function requestAccountDeletion(): Promise<{ ok: true; message: string }> {
-  return request('/me/account-deletion-request', { method: 'POST', body: JSON.stringify({ confirmed: true }) });
+// ---------------------------------------------------------------------------
+// Legal documents, consent and privacy requests
+//
+// gridgo-api `docs/LEGAL_API.md` is the contract. The library is public: the
+// apply form reads it before an account exists. Every acceptance carries the
+// exact version IDs read here, never a hard-coded "version 1".
+// ---------------------------------------------------------------------------
+
+/** The consent protocol this build speaks. Any other value is refused. */
+export const LEGAL_CONSENT_VERSION = 1;
+
+export type LegalAudience = "all" | "client" | "supplier" | "rider" | "staff";
+
+export type LegalVersion = {
+  /** Opaque version ID — what an acceptance names. */
+  id: string;
+  /** The stable slot, e.g. `rider-agreement`. */
+  documentId: string;
+  version: number;
+  title: string;
+  audience: LegalAudience | string;
+  /** Plain text. Never rendered as HTML. */
+  text: string;
+  pdfFileId?: string | null;
+  pdfUrl?: string | null;
+  effectiveAt: string;
+  publishedAt?: string | null;
+  placeholder: boolean;
+  material: boolean;
+  penalties?: boolean;
+  changeSummary?: string | null;
+  status: "placeholder" | "live" | string;
+};
+
+export type LegalPending = {
+  blocking: boolean;
+  pending: LegalVersion[];
+  notices: LegalVersion[];
+};
+
+/** Who is agreeing from where: caller-reported, never a hardware identity. */
+export type LegalAcceptanceContext = { app: string; device: string };
+
+export type EnrollmentConsentBody = LegalAcceptanceContext & {
+  accepted: true;
+  versionIds: string[];
+  method: "checkbox";
+  junior: boolean;
+  guardian?: boolean;
+  marketing: boolean;
+};
+
+export async function listLegalDocuments(
+  audience: LegalAudience = "rider",
+): Promise<LegalVersion[]> {
+  const result = await request<{ documents: LegalVersion[] }>(
+    `/legal/documents?audience=${encodeURIComponent(audience)}`,
+  );
+  return result.documents ?? [];
+}
+
+export async function getLegalVersion(versionId: string): Promise<LegalVersion> {
+  const result = await request<{ document: LegalVersion }>(
+    `/legal/versions/${encodeURIComponent(versionId)}`,
+  );
+  return result.document;
+}
+
+export function getLegalVersionPdf(
+  versionId: string,
+): Promise<{ url: string; expiresAt: string; expiresInSeconds: number }> {
+  return request(`/legal/versions/${encodeURIComponent(versionId)}/pdf`);
+}
+
+export function getLegalPending(): Promise<LegalPending> {
+  return request<LegalPending>("/me/legal/pending");
+}
+
+export function acceptLegalVersions(
+  versionIds: string[],
+  context: LegalAcceptanceContext,
+): Promise<LegalPending & { recorded: number }> {
+  return request("/me/legal/accept", {
+    method: "POST",
+    body: JSON.stringify({
+      accepted: true,
+      versionIds,
+      method: "blocking_screen",
+      ...context,
+    }),
+  });
+}
+
+export type PrivacyRequestKind = "access" | "correction" | "deletion";
+
+export type PrivacyRequest = {
+  id: string;
+  kind: PrivacyRequestKind | string;
+  status: "pending" | "in_progress" | "completed" | "rejected" | string;
+  details?: string | null;
+  resolution?: string | null;
+  requestedAt: string;
+  dueAt: string;
+  updatedAt?: string | null;
+};
+
+/**
+ * See my data, Correct my data and Delete my account all land here: a manual
+ * queue Operations answer by hand. Nothing is exported, edited or deleted by
+ * the request itself.
+ */
+export async function createPrivacyRequest(
+  kind: PrivacyRequestKind,
+  details?: string,
+): Promise<PrivacyRequest> {
+  const trimmed = details?.trim();
+  const result = await request<{ request: PrivacyRequest }>("/me/privacy-requests", {
+    method: "POST",
+    body: JSON.stringify({ kind, confirmed: true, ...(trimmed ? { details: trimmed } : {}) }),
+  });
+  return result.request;
+}
+
+export async function listPrivacyRequests(): Promise<PrivacyRequest[]> {
+  const result = await request<{ requests: PrivacyRequest[] }>("/me/privacy-requests");
+  return result.requests ?? [];
 }

@@ -303,6 +303,7 @@ export default function DeliveryProofScreen() {
             <EvidenceCapture
               key={id}
               title={toOffice ? "Evidence at the office" : "Evidence at the door"}
+              purpose="GRIDGO keeps this with the job as the record that the package was handed over."
               instruction={
                 toOffice
                   ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."

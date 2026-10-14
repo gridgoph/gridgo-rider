@@ -37,6 +37,7 @@ import { useArrivalAlert } from "@/hooks/useArrivalAlert";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
+import { useLegalGate } from "@/hooks/useLegalGate";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { usePushPrompt } from "@/hooks/usePushPrompt";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
@@ -106,6 +107,9 @@ function AppShell() {
   usePushNotifications();
   useAlertStream();
   useSupportChatUnread();
+  // Whether GRIDGO has terms waiting for this rider, on every sign-in and
+  // every return to the app. The launch and the auth gate read the answer.
+  useLegalGate();
   // Same seat as push: arrival is about where the phone is, not which screen
   // is open, so the geofence lives here rather than on the Active tab.
   useTripTracking();
@@ -322,9 +326,39 @@ function RootStack() {
         }}
       />
       {/*
-        Reached only from Danger zone on Your details. It asks for the
-        password (or an emailed code) before anything is sent.
+        Reached from Your data and from Danger zone on Your details. It asks
+        for the password (or an emailed code) before anything is sent.
       */}
+      {/*
+        Legal & Privacy (report 879B25FC). A document is public: the apply
+        form links it before there is an account. The rest is signed in, and
+        open even while terms wait to be agreed — see `LEGAL_OPEN_ROOTS`.
+      */}
+      <Stack.Screen
+        name="legal/index"
+        options={{ title: "Legal & Privacy", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="legal/[versionId]"
+        options={{ title: "Legal", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="privacy/index"
+        options={{ title: "Your data", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="privacy/request"
+        options={{ title: "Your data", ...multiOriginPushedScreenOptions }}
+      />
+      {/*
+        Terms waiting to be agreed. While they are, the auth gate closes every
+        ordinary screen behind this one, so it has nothing to go back to: no
+        header, no swipe, and Sign out on the screen itself.
+      */}
+      <Stack.Screen
+        name="legal/review"
+        options={{ headerShown: false, title: "Terms", gestureEnabled: false }}
+      />
       <Stack.Screen
         name="delete-account"
         options={{

@@ -23,6 +23,7 @@ import { Screen } from "@/components/Screen";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { addChatPhotos, pickChatImages, uploadChatImage } from "@/lib/chatImages";
 import { openSupportChatStream } from "@/lib/supportChatStream";
 import { useSupportChatStore } from "@/store/supportChat";
@@ -346,9 +347,14 @@ export function SupportChatConversation({ threadId }: { threadId?: string }) {
         </ScrollView>
         <View className="border-t border-outline bg-surface px-4 pb-3 pt-3">
           {pending.length ? (
-            <Text className="mb-2 text-caption text-text-muted">
-              {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
-            </Text>
+            <View className="mb-2 gap-1">
+              <Text className="text-caption text-text-muted">
+                {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
+              </Text>
+              <WhyWeAsk>
+                {`${pending.length === 1 ? "This photo goes" : "These photos go"} to GRIDGO Operations with your message, so they can sort it out.`}
+              </WhyWeAsk>
+            </View>
           ) : null}
           <View className="flex-row items-end gap-2">
             <Pressable
