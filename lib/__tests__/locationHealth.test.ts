@@ -65,8 +65,8 @@ describe("locationIssues", () => {
     expect(denied.steps[0]).toMatch(/browser/);
   });
 
-  it("names whoever is watching", () => {
-    expect(locationIssues({ ...healthy, foreground: "denied" }, "shop")[0].body).toMatch(/shop cannot see you/);
+  it("names whoever is watching where the cost is a person", () => {
+    expect(locationIssues({ ...healthy, precise: false }, "shop")[0].body).toMatch(/the shop sees you in the wrong place/);
   });
 });
 

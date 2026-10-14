@@ -65,7 +65,8 @@ export function LocationHealthCard({ issues, watcher, onFix }: Props) {
               accessibilityRole={collapsible ? "button" : "text"}
               accessibilityState={collapsible ? { expanded: open } : undefined}
               accessibilityLabel={issue.title}
-              className="min-h-11 flex-row items-center gap-2"
+              // A row that toggles is a 44 pt target; a lone title is just text.
+              className={collapsible ? "min-h-11 flex-row items-center gap-2" : "flex-row items-center gap-2"}
             >
               <IssueIcon size={16} color={tint} strokeWidth={2} />
               <Text className="min-w-0 flex-1 text-body font-bold text-text-primary">{issue.title}</Text>

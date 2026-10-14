@@ -92,7 +92,7 @@ export function locationIssues(input: LocationHealthInput, watcher: Watcher = "c
       key: "location_off",
       severity: "blocking",
       title: "Location is off on this phone",
-      body: `GRIDGO cannot find you, so the ${watcher} cannot see you coming.`,
+      body: "Location is switched off for every app on this phone, GRIDGO included.",
       steps:
         platform === "ios"
           ? ["Open Settings, then Privacy & Security.", "Tap Location Services and turn it on."]
@@ -108,7 +108,7 @@ export function locationIssues(input: LocationHealthInput, watcher: Watcher = "c
       key: "permission_off",
       severity: "blocking",
       title: "GRIDGO cannot use your location",
-      body: `The ${watcher} cannot see you coming while location is not allowed for GRIDGO.`,
+      body: "This phone does not let GRIDGO read where you are.",
       steps: canAsk
         ? [
             "Tap Allow location.",
