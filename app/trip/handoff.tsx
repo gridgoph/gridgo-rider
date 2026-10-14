@@ -13,7 +13,7 @@ import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { SignaturePad, type SignaturePadHandle } from "@/components/SignaturePad";
 import { HandoffSkeleton } from "@/components/SkeletonScreens";
 import { StatusChip } from "@/components/StatusChip";
-import { StickyActionBar } from "@/components/StickyActionBar";
+import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TextField } from "@/components/TextField";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -228,7 +228,7 @@ export default function HandoffSignatureScreen() {
   const ready = Boolean(order && answers && allPassed(answers));
 
   return (
-    <Screen edges={["bottom"]}>
+    <Screen edges={[]}>
       <FormScroll contentClassName="gg-page gap-6 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
         {loading ? <HandoffSkeleton /> : null}
 
@@ -238,8 +238,6 @@ export default function HandoffSignatureScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the trip"
-            onAction={() => router.back()}
           />
         ) : null}
 
@@ -249,10 +247,6 @@ export default function HandoffSignatureScreen() {
             icon="triangle-alert"
             title="The six checks come first"
             body="The supplier signs for checks that passed. Run all six together at the counter, then come back here."
-            actionLabel="Open the pickup checks"
-            onAction={() =>
-              router.replace({ pathname: "/trip/pickup", params: { orderId: order.id } })
-            }
           />
         ) : null}
 
@@ -350,23 +344,34 @@ export default function HandoffSignatureScreen() {
         ) : null}
       </FormScroll>
 
-      {order && ready ? (
-        <StickyActionBar onHeight={setActionBarHeight}>
+      <StickyActionBar
+        onHeight={setActionBarHeight}
+        note={
+          order && ready
+            ? (blocked ??
+              "GRIDGO records the count, the six checks and the signature together. The package becomes yours to carry.")
+            : null
+        }
+      >
+        {order && ready ? (
           <PrimaryButton
             label={handoffActionLabel({ busy, signed: signed || Boolean(storedFileId) })}
             onPress={() => void submit()}
             disabled={busy || Boolean(blocked)}
             size="large"
           />
-          {blocked ? (
-            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-          ) : (
-            <Text className="text-center text-body text-text-secondary">
-              GRIDGO records the count, the six checks and the signature together. The package becomes yours to carry.
-            </Text>
-          )}
-        </StickyActionBar>
-      ) : null}
+        ) : order && restored ? (
+          <PrimaryButton
+            label="Open the pickup checks"
+            onPress={() =>
+              router.replace({ pathname: "/trip/pickup", params: { orderId: order.id } })
+            }
+            size="large"
+          />
+        ) : (
+          <StickyActionFallback loading={loading || Boolean(order)} onBack={() => router.back()} />
+        )}
+      </StickyActionBar>
 
       <BlockingOverlay visible={busy} label="Recording the handoff…" />
     </Screen>

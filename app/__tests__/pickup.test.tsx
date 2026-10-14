@@ -357,3 +357,40 @@ describe("the count and six checks at the counter", () => {
     await waitFor(() => expect(api.getOrder).toHaveBeenCalled());
   });
 });
+
+describe("the step's action stays at the bottom in every state (gridgo-rider#117)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useTripProof.setState({ hydrated: true, checklists: {} });
+  });
+
+  it("holds the slot while the job loads, without a button to tap", async () => {
+    api.getOrder.mockReturnValue(new Promise(() => undefined));
+    await render(<PickupChecklistScreen />);
+    expect(screen.getByLabelText("Loading the pickup checks")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("offers one way back, in the bar, when the job does not load", async () => {
+    const { ApiError } = jest.requireActual<typeof import("@/lib/api")>("@/lib/api");
+    api.getOrder.mockRejectedValue(new ApiError(404, { error: "not_found" }));
+    await render(<PickupChecklistScreen />);
+    await screen.findByText("This job did not load");
+
+    expect(screen.getAllByRole("button", { name: "Back to the trip" })).toHaveLength(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Back to the trip" }));
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("says what the button still needs above it, not below", async () => {
+    api.getOrder.mockResolvedValue(atShop);
+    await render(<PickupChecklistScreen />);
+    await screen.findByText("Business cards");
+
+    const bar = actionButton().parent!;
+    const order = (bar.children as { props: { children?: unknown } }[]).map((child) =>
+      child === actionButton() ? "button" : child.props.children,
+    );
+    expect(order).toEqual(["2 lines left to count.", "button"]);
+  });
+});
