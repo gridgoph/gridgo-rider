@@ -15,7 +15,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { PickupChecklistSkeleton } from "@/components/SkeletonScreens";
-import { StickyActionBar } from "@/components/StickyActionBar";
+import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -217,7 +217,7 @@ export default function PickupChecklistScreen() {
   }
 
   return (
-    <Screen edges={["bottom"]}>
+    <Screen edges={[]}>
       <FormScroll
         contentClassName="gg-page gap-6 pb-8 pt-6"
         stickyActionHeight={actionBarHeight}
@@ -230,8 +230,6 @@ export default function PickupChecklistScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the trip"
-            onAction={() => router.back()}
           />
         ) : null}
 
@@ -372,19 +370,19 @@ export default function PickupChecklistScreen() {
       ) : null}
 
       {order && !escalated ? (
-        <StickyActionBar onHeight={setActionBarHeight}>
-          {blocked ? null : consequence ? (
-            <Text className="text-body text-text-secondary">{consequence}</Text>
-          ) : null}
+        <StickyActionBar onHeight={setActionBarHeight} note={blocked || consequence}>
           <PrimaryButton
             label={busy ? "Recording…" : checklistActionLabel(effective)}
             onPress={() => void submit()}
             disabled={busy || Boolean(blocked)}
             size="large"
           />
-          {blocked ? (
-            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-          ) : null}
+        </StickyActionBar>
+      ) : null}
+
+      {!order ? (
+        <StickyActionBar onHeight={setActionBarHeight}>
+          <StickyActionFallback loading={loading} onBack={() => router.back()} />
         </StickyActionBar>
       ) : null}
 

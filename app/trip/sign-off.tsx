@@ -5,7 +5,7 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SignOffSkeleton } from "@/components/SkeletonScreens";
-import { StickyActionBar } from "@/components/StickyActionBar";
+import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import { pickupLabel } from "@/lib/riderOrder";
@@ -33,7 +33,7 @@ export default function SignOffScreen() {
   const prompt = order?.pickupChecklist?.signOffPrompt?.trim();
 
   return (
-    <Screen edges={["bottom"]}>
+    <Screen edges={[]}>
       <ScrollView className="flex-1" contentContainerClassName="gg-page gap-6 pb-8 pt-6">
         {loading ? <SignOffSkeleton /> : null}
 
@@ -43,8 +43,6 @@ export default function SignOffScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the trip"
-            onAction={() => router.back()}
           />
         ) : null}
 
@@ -81,11 +79,13 @@ export default function SignOffScreen() {
         ) : null}
       </ScrollView>
 
-      {order ? (
-        <StickyActionBar>
+      <StickyActionBar>
+        {order ? (
           <PrimaryButton label="Said it — on my way" onPress={() => router.back()} size="large" />
-        </StickyActionBar>
-      ) : null}
+        ) : (
+          <StickyActionFallback loading={loading} onBack={() => router.back()} />
+        )}
+      </StickyActionBar>
     </Screen>
   );
 }

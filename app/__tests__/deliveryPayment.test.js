@@ -34,7 +34,7 @@ jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptRemi
 jest.mock("@/components/Screen", () => ({ Screen: "Screen" }));
 jest.mock("@/components/SkeletonScreens", () => ({ ProofStepSkeleton: "ProofStepSkeleton" }));
 jest.mock("@/components/FormScroll", () => ({ FormScroll: "FormScroll" }));
-jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar" }));
+jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar", StickyActionFallback: "StickyActionFallback" }));
 jest.mock("@/components/TripStepHeader", () => ({ TripStepHeader: "TripStepHeader" }));
 
 function order(status) {
