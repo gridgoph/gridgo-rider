@@ -111,7 +111,7 @@ const UNPACKED_WORDING: Partial<
     failure: "there are visible defects",
   },
   packaging_integrity: {
-    label: "Packing materials ready",
+    label: "Box and wrap ready",
     verify: "The box, wrap or bag the shop will use is ready and strong enough for a motorcycle ride. Nothing is packed yet.",
     failure: "the packing materials will not survive the ride",
   },

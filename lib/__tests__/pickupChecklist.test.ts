@@ -220,7 +220,7 @@ describe("a rider_packs counter checks the items unpacked", () => {
   });
 
   it("checks the packing materials, not a packed parcel, and the joint check, not the signature", () => {
-    expect(checkDefinition("packaging_integrity", "rider_packs").label).toBe("Packing materials ready");
+    expect(checkDefinition("packaging_integrity", "rider_packs").label).toBe("Box and wrap ready");
     expect(checkDefinition("packaging_integrity", "rider_packs").verify).toMatch(/nothing is packed yet/i);
     expect(checkDefinition("supplier_sign_off", "rider_packs").label).toBe("Checked together");
     expect(checkDefinition("visible_defects", "rider_packs").verify).toMatch(/unpacked/);

@@ -416,7 +416,7 @@ describe("a rider_packs job: the items are checked unpacked", () => {
     await render(<PickupChecklistScreen />);
     await screen.findByText("Business cards");
 
-    expect(screen.getByText("Packing materials ready")).toBeTruthy();
+    expect(screen.getByText("Box and wrap ready")).toBeTruthy();
     expect(screen.getByText("Checked together")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "The shop packed it already" }));
     expect(mockRouter.push).toHaveBeenCalledWith({

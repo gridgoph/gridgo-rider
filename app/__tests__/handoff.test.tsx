@@ -486,7 +486,7 @@ describe("a rider_packs job: the shop signs after the unpacked check and the pac
     await render(<HandoffSignatureScreen />);
     await screen.findByText("Supplier signs here");
 
-    expect(screen.getByLabelText("Packing materials ready: passed")).toBeTruthy();
+    expect(screen.getByLabelText("Box and wrap ready: passed")).toBeTruthy();
     expect(screen.getByLabelText("Tarpaulin: counted 12 of 12")).toBeTruthy();
     expect(screen.getByText(/were packed in front of GRIDGO rider Mark Prado/)).toBeTruthy();
   });
