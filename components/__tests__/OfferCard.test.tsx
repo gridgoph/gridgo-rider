@@ -95,3 +95,60 @@ describe("OfferCard earnings", () => {
     expect(screen.queryByText(/delivery fee/)).toBeNull();
   });
 });
+
+describe("OfferCard delivery pin", () => {
+  const point = { lat: 7.0907, lng: 125.6146, label: "Lanang, blue gate" };
+
+  it("shows the confirmed pin, the receiver by name and the client's note", async () => {
+    await render(
+      <OfferCard
+        offer={{
+          ...offer,
+          dropoff: point,
+          deliveryPin: {
+            version: 3, status: "confirmed", requestedAt: "2026-10-15T05:00:00Z",
+            confirmedAt: "2026-10-15T06:14:00Z", point, notes: "Blue gate beside the pharmacy",
+            receiverName: "Alex", changeUsed: true,
+          },
+        }}
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Lanang, blue gate").length).toBeGreaterThan(0);
+    expect(screen.getByText("Client confirmed this pin")).toBeTruthy();
+    expect(screen.getByText("Alex")).toBeTruthy();
+    expect(screen.getByText("Blue gate beside the pharmacy")).toBeTruthy();
+    expect(screen.getByText(/moved this pin before dispatch/)).toBeTruthy();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("says an older order was never asked", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("No pin confirmation on this order")).toBeTruthy();
+    expect(screen.queryByText("Hand it to")).toBeNull();
+  });
+});
+
+describe("OfferCard unanswered pin", () => {
+  it("does not claim who receives it before the client answers", async () => {
+    const point = { lat: 7.06, lng: 125.6, label: "Matina Pangi Road" };
+    await render(
+      <OfferCard
+        offer={{
+          ...offer,
+          dropoff: point,
+          deliveryPin: {
+            version: 1, status: "pending", requestedAt: "2026-10-15T05:00:00Z", confirmedAt: null,
+            point, notes: "", receiverName: "", changeUsed: false,
+          },
+        }}
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Client has not confirmed this pin yet")).toBeTruthy();
+    expect(screen.queryByText("Hand it to")).toBeNull();
+  });
+});

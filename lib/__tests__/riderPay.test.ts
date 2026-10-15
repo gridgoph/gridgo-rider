@@ -1,6 +1,25 @@
 import { riderPay, riderPayA11y, riderPayDetail, shareLabel } from "@/lib/riderPay";
 
 describe("what the rider earns from one job", () => {
+  it("reads the gross from the effective fee after a delivery-pin change", () => {
+    // A pin moved to a dearer band: ₱25 → ₱35, the rider's 85% of the ₱10 folded in.
+    const pay = riderPay({
+      deliveryFeeMinor: 2500,
+      effectiveDeliveryFeeMinor: 3500,
+      riderCommissionBps: 8500,
+      riderPayoutMinor: 2975,
+    });
+
+    expect(pay).toEqual({ earnedMinor: 2975, deliveryFeeMinor: 3500, shareBps: 8500, split: true });
+    expect(riderPayDetail(pay)).toBe("85% of the ₱35.00 delivery fee");
+  });
+
+  it("keeps a whole-fee rider whole after a dearer pin", () => {
+    const pay = riderPay({ deliveryFeeMinor: 2500, effectiveDeliveryFeeMinor: 3500, riderPayoutMinor: 3500 });
+
+    expect(pay).toEqual({ earnedMinor: 3500, deliveryFeeMinor: 3500, shareBps: null, split: false });
+  });
+
   it("leads with the API's payout and keeps the gross beside it", () => {
     const pay = riderPay({ deliveryFeeMinor: 2500, riderCommissionBps: 8500, riderPayoutMinor: 2125 });
 

@@ -10,6 +10,7 @@ import { ChatButton } from "@/components/ChatButton";
 import { MissedCallCard } from "@/components/MissedCallCard";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
+import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EmptyState } from "@/components/EmptyState";
 import { ForcedByGridgo } from "@/components/ForcedByGridgo";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -343,6 +344,12 @@ export default function ActiveScreen() {
                 }
                 zone={zoneLabel(trip.zone)}
               >
+                {/* On the way to the door: who meets the rider and what the client said. */}
+                {heading.kind === "client" ? (
+                  <View className="border-t border-outline-subtle pt-3">
+                    <DeliveryPinDetails order={trip} />
+                  </View>
+                ) : null}
                 {/* Held at the counter, the rider is already where Maps would send them. */}
                 {phase !== "pickup_blocked" ? (
                   <NavigateButton order={trip} stopKind={heading.cardKind} />
@@ -433,6 +440,14 @@ export default function ActiveScreen() {
             ) : null}
 
             <TripContacts trip={trip} onCall={call} />
+
+            {/* Still at the shop: the drop-off details wait here until that leg. */}
+            {heading?.kind !== "client" && destination?.kind === "client" ? (
+              <View className="gg-card gap-3">
+                <Text className="text-overline text-text-muted">AT THE DROP-OFF</Text>
+                <DeliveryPinDetails order={trip} />
+              </View>
+            ) : null}
 
             {/*
               A picture of the trip with one control on it. A map inside a

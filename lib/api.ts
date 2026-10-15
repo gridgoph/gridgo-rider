@@ -212,6 +212,27 @@ export type DropoffConfirmation =
   | { status: "confirmed"; requestedAt: string; answeredAt: string; point: OrderStop }
   | { status: "needs_review"; requestedAt: string; answeredAt: string };
 
+/**
+ * The client's answer to "Will you be at this pin?" (gridgo-api
+ * `docs/DELIVERY_PIN_API.md`), as the rider is allowed to see it: the final
+ * pin only — never the original or a proposed one, never money or proofs — and
+ * the receiver's name, never a phone number. Read it through
+ * `deliveryPinView` in `lib/deliveryPin.ts`.
+ */
+export type DeliveryPin = {
+  version: number;
+  /** `pending` is an unanswered prompt; the pin still stands as given. */
+  status: "pending" | "confirmed";
+  requestedAt: string;
+  confirmedAt: string | null;
+  point: OrderStop;
+  notes: string;
+  /** Empty means the client receives it themselves. */
+  receiverName: string;
+  /** The client used their one change before dispatch; `point` is the result. */
+  changeUsed: boolean;
+};
+
 export type Order = {
   id: string;
   clientId: string;
@@ -247,6 +268,11 @@ export type Order = {
   platformDeliveryShareMinor?: number | null;
   /** Straight-line metres the fee band was derived from. */
   deliveryDistanceMeters?: number | null;
+  /**
+   * The delivery fee after a delivery-pin change moved it; `deliveryFeeMinor`
+   * stays the checkout's original. Absent when the order has no pin record.
+   */
+  effectiveDeliveryFeeMinor?: number | null;
   subtotalMinor: number;
   totalMinor: number;
   downpaymentMinor: number;
@@ -305,6 +331,8 @@ export type Order = {
   /** Client drop-off stop with lat/lng from the API. */
   dropoff?: OrderStop | null;
   dropoffConfirmation?: DropoffConfirmation | null;
+  /** Absent on older orders and on an API older than report 6C8DE953. */
+  deliveryPin?: DeliveryPin | null;
   /**
    * How the client receives the job. `"pickup"` means the rider's second
    * stop is GRIDGO Office, not a client door.

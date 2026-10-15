@@ -170,3 +170,29 @@ it("replaces an open trip destination when live reconciliation reads a confirmed
     useActiveTrip.getState().clear();
   }
 });
+
+// docs/DELIVERY_PIN_API.md: the rider sees only the final pin; it is the stop.
+describe("client delivery pin", () => {
+  const pinPoint = { lat: 7.0907, lng: 125.6146, label: "Lanang, blue gate" };
+  const pin = {
+    version: 3, status: "confirmed" as const, requestedAt: "2026-10-15T05:00:00Z",
+    confirmedAt: "2026-10-15T06:00:00Z", point: pinPoint, notes: "", receiverName: "Alex", changeUsed: true,
+  };
+
+  it("navigates to the final pin and names the receiver", () => {
+    const stop = nextStop(order({ state: "out_for_delivery", deliveryPin: pin }), "delivery_proof");
+    expect(stop?.point).toEqual({ lat: pinPoint.lat, lng: pinPoint.lng });
+    expect(stop?.label).toBe(pinPoint.label);
+    expect(stop?.overline).toBe("NEXT STOP · CONFIRMED DROP-OFF");
+    expect(stop?.heading).toBe("Hand the package to Alex");
+  });
+
+  it("still rides to an unconfirmed pin, without calling it confirmed", () => {
+    const stop = tripDestination(order({
+      dropoff: pinPoint, deliveryPin: { ...pin, status: "pending", confirmedAt: null, receiverName: "" },
+    }));
+    expect(stop.point).toEqual({ lat: pinPoint.lat, lng: pinPoint.lng });
+    expect(stop.overline).toBe("NEXT STOP · CLIENT");
+    expect(stop.heading).toBe("Hand the package to the client");
+  });
+});
