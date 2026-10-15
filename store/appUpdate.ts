@@ -57,6 +57,11 @@ type AppUpdateState = {
   offer: { installed: AppBuild; latest: AppBuild } | null;
   /** The sheet on screen, or `null`. Set before the route is pushed. */
   open: UpdateSheet | null;
+  /**
+   * False in a Google Play build (`offersSideloadUpdates`): nothing is read,
+   * offered or confirmed, because Play installs the updates. In memory.
+   */
+  offersUpdates: boolean;
 };
 
 export const useAppUpdate = create<AppUpdateState>(() => ({
@@ -64,6 +69,7 @@ export const useAppUpdate = create<AppUpdateState>(() => ({
   completed: null,
   offer: null,
   open: null,
+  offersUpdates: true,
 }));
 
 let hydration: Promise<void> | null = null;
@@ -91,11 +97,21 @@ function remember(patch: Partial<UpdateMemory>): void {
 /**
  * Launch: note whether this is the first run of a newer build, then read the
  * latest release. A cold launch always reads; the throttle is for foregrounds.
+ * A Google Play build (`offersUpdates: false`) does neither.
  */
 export async function startAppUpdate(
   installed: AppBuild,
-  deps: { now?: number; fetchImpl?: typeof fetch } = {},
+  {
+    offersUpdates = true,
+    ...deps
+  }: { now?: number; fetchImpl?: typeof fetch; offersUpdates?: boolean } = {},
 ): Promise<void> {
+  useAppUpdate.setState({ offersUpdates });
+  if (!offersUpdates) {
+    useAppUpdate.setState({ completed: null, offer: null });
+    logUpdateCheck("off: a Google Play build, and Play installs its own updates");
+    return;
+  }
   await hydrate();
   const { lastSeenVersionCode } = useAppUpdate.getState().memory;
 
@@ -125,6 +141,7 @@ export async function checkForAppUpdate(
   }: { now?: number; fetchImpl?: typeof fetch; force?: boolean } = {},
 ): Promise<void> {
   await hydrate();
+  if (!useAppUpdate.getState().offersUpdates) return;
   if (checking) {
     logUpdateCheck("skipped: a release read is already in flight");
     return;
@@ -162,6 +179,7 @@ export async function checkForAppUpdate(
 
 /** The finding the sheet should show next, if any. */
 export function nextUpdateSheet(state: AppUpdateState): UpdateSheet | null {
+  if (!state.offersUpdates) return null;
   if (state.completed) return { kind: "completed", installed: state.completed };
   if (state.offer) return { kind: "available", ...state.offer };
   return null;
@@ -222,5 +240,6 @@ export function resetAppUpdateForTests(): void {
     completed: null,
     offer: null,
     open: null,
+    offersUpdates: true,
   });
 }

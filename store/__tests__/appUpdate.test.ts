@@ -212,3 +212,40 @@ describe("Update completed", () => {
     expect(useAppUpdate.getState().memory.dismissed).toBeNull();
   });
 });
+
+describe("a Google Play build", () => {
+  it("never reads GitHub, at launch or on return to the foreground", async () => {
+    const fetchImpl = latest(97);
+    await startAppUpdate(build(96), {
+      now: NOW,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      offersUpdates: false,
+    });
+    await checkForAppUpdate(build(96), {
+      now: NOW + APP_UPDATE_CHECK_INTERVAL_MS,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(openUpdateSheet()).toBeNull();
+  });
+
+  it("offers and confirms nothing, even on the first launch of a newer build", async () => {
+    await AsyncStorage.setItem(
+      APP_UPDATE_STORAGE_KEY,
+      JSON.stringify({ lastSeenVersionCode: 95 }),
+    );
+    useAppUpdate.setState({ offer: { installed: build(96), latest: build(97) } });
+    await startAppUpdate(build(96), {
+      now: NOW,
+      fetchImpl: latest(97) as unknown as typeof fetch,
+      offersUpdates: false,
+    });
+    expect(useAppUpdate.getState()).toMatchObject({ completed: null, offer: null });
+    expect(openUpdateSheet()).toBeNull();
+  });
+
+  it("is still a side-load build when nothing says otherwise", async () => {
+    await startAppUpdate(build(96), { now: NOW, fetchImpl: latest(97) as unknown as typeof fetch });
+    expect(openUpdateSheet()?.kind).toBe("available");
+  });
+});
