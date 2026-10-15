@@ -394,3 +394,91 @@ describe("the step's action stays at the bottom in every state (gridgo-rider#117
     expect(order).toEqual(["2 lines left to count.", "button"]);
   });
 });
+
+describe("a rider_packs job: the items are checked unpacked", () => {
+  const packsJob: Order = {
+    ...atShop,
+    handoverFlow: "rider_packs",
+    riderAssignedAt: "2026-09-27T06:00:00.000Z",
+    shopHandover: {},
+  };
+  const packButton = () => screen.getByRole("button", { name: /shop packs next|confirm all six/i });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEvidence.stored = {};
+    api.getOrder.mockResolvedValue(packsJob);
+    useActiveTrip.setState({ order: packsJob, loaded: true, loading: false, error: null });
+    useTripProof.setState({ hydrated: true, checklists: {} });
+  });
+
+  it("words the checks for unpacked items and offers to record a packed arrival", async () => {
+    await render(<PickupChecklistScreen />);
+    await screen.findByText("Business cards");
+
+    expect(screen.getByText("Box and wrap ready")).toBeTruthy();
+    expect(screen.getByText("Checked together")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "The shop packed it already" }));
+    expect(mockRouter.push).toHaveBeenCalledWith({
+      pathname: "/trip/arrived-packed",
+      params: { orderId: "ord_1" },
+    });
+  });
+
+  it("records the inspection with the counts and no signature, then opens the packing step", async () => {
+    const inspected: Order = {
+      ...packsJob,
+      pickupChecklist: {
+        status: "inspected",
+        inspectionId: "inspection_1",
+        checks: [],
+        counts: [],
+        evidenceFileIds: [],
+        failureNote: null,
+        completedAt: "2026-09-27T07:00:00.000Z",
+        completedBy: "user_rider",
+        escalationId: null,
+        signOffPrompt: null,
+        handoffSignature: null,
+      },
+    };
+    api.submitPickupChecklist.mockResolvedValue({ order: inspected });
+    await render(<PickupChecklistScreen />);
+    await screen.findByText("Business cards");
+
+    await fireEvent.changeText(cardsField(), "200");
+    await fireEvent.changeText(flyersField(), "50");
+    await answerOthers();
+    expect(packButton().props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(packButton());
+
+    await waitFor(() => expect(api.submitPickupChecklist).toHaveBeenCalledTimes(1));
+    const [orderId, checks, counts, outcome] = api.submitPickupChecklist.mock.calls[0];
+    expect(orderId).toBe("ord_1");
+    expect(checks).toHaveLength(6);
+    expect(counts).toEqual([
+      { lineItemId: "cline_cards", countedQuantity: 200 },
+      { lineItemId: "cline_flyers", countedQuantity: 50 },
+    ]);
+    expect(outcome).toBeUndefined();
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: "/trip/pack",
+      params: { orderId: "ord_1" },
+    });
+    expect(useTripProof.getState().getChecklist("ord_1")).toBeNull();
+  });
+
+  it("says when the packed arrival is already recorded, and stops offering it", async () => {
+    api.getOrder.mockResolvedValue({
+      ...packsJob,
+      shopHandover: {
+        arrivedPacked: [
+          { at: "2026-09-27T06:30:00.000Z", riderId: "user_rider", supplierId: "user_supplier", assignedAt: "2026-09-27T06:00:00.000Z" },
+        ],
+      },
+    });
+    await render(<PickupChecklistScreen />);
+    await screen.findByText("Recorded: packed before your check");
+    expect(screen.queryByRole("button", { name: "The shop packed it already" })).toBeNull();
+  });
+});

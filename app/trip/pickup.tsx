@@ -1,12 +1,13 @@
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
+import { HandoverSteps } from "@/components/HandoverSteps";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PickupBlockedPanel } from "@/components/PickupBlockedPanel";
 import { PickupCheckRow } from "@/components/PickupCheckRow";
@@ -30,7 +31,7 @@ import {
   checklistBlockReason,
   checklistConsequence,
   EMPTY_ANSWERS,
-  PICKUP_CHECKS,
+  pickupChecksFor,
   toChecklistPayload,
   type ChecklistAnswers,
 } from "@/lib/pickupChecklist";
@@ -43,7 +44,14 @@ import {
   toCountPayload,
   type CountDraft,
 } from "@/lib/pickupCount";
+import { formatCheckedAt } from "@/lib/handoffSignature";
 import { pickupLabel } from "@/lib/riderOrder";
+import {
+  arrivedPackedAt,
+  canMarkArrivedPacked,
+  currentInspectionId,
+  ridersPack,
+} from "@/lib/shopHandover";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useTripProof } from "@/store/tripProof";
 
@@ -57,6 +65,12 @@ import { useTripProof } from "@/store/tripProof";
  * stays at the shop, GRIDGO logs the fault against the supplier who caused it,
  * and Operations is alerted. Six passes go on to the supplier's signature
  * (`app/trip/handoff.tsx`), which is what sends them with the counts.
+ *
+ * On a `rider_packs` job (gridgo-api `docs/SHOP_HANDOVER_API.md`) the same six
+ * are run on the items *unpacked*, and six passes are sent from here: the
+ * server records the inspection and nothing moves. The shop then packs in
+ * front of the rider (`app/trip/pack.tsx`) before anyone signs. If the shop
+ * had packed it already, the rider records that first (`arrived-packed`).
  *
  * A failure is a `200` that leaves the order at the shop, so the screen reads
  * the order it gets back and becomes the blocked receipt
@@ -102,6 +116,16 @@ export default function PickupChecklistScreen() {
     void hydrate();
   }, [hydrate]);
 
+  // Back from the "already packed" sheet, read the job again so the mark it
+  // recorded shows here. The first focus is the load itself.
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) void reload("refresh");
+      focusedOnce.current = true;
+    }, [reload]),
+  );
+
   // Six answers half-given survive the app being killed at the counter.
   // Restored on render, once per job, so the first frame after hydration
   // already shows them rather than a blank list that fills in a beat later.
@@ -123,6 +147,11 @@ export default function PickupChecklistScreen() {
   });
 
   const mode = order ? countMode(order) : ({ kind: "legacy" } as const);
+  const flow = order?.handoverFlow ?? null;
+  const packs = order ? ridersPack(order) : false;
+  const checks = pickupChecksFor(flow);
+  const inspectedId = order ? currentInspectionId(order) : null;
+  const packedBeforeCheck = order ? arrivedPackedAt(order) : null;
   // What will be sent: in count mode the quantity check is read off the numbers.
   const effective = effectiveAnswers(answers, mode, counts);
   const answered = allAnswered(effective);
@@ -138,17 +167,19 @@ export default function PickupChecklistScreen() {
       : !restored
         ? "Restoring your pickup checks…"
         : (countBlockReason(mode, counts) ??
-          checklistBlockReason(effective, {
-            note: failureNote,
-            evidenceStored: Boolean(evidenceFileId),
-          }));
+          checklistBlockReason(
+            effective,
+            { note: failureNote, evidenceStored: Boolean(evidenceFileId) },
+            flow,
+          ));
 
   const consequence = checklistConsequence(
     effective,
     mode.kind === "count" ? draftCountProblem(mode.items, counts) : null,
+    flow,
   );
 
-  function answer(code: (typeof PICKUP_CHECKS)[number]["code"], passed: boolean) {
+  function answer(code: (typeof checks)[number]["code"], passed: boolean) {
     setAnswers((current) => ({ ...current, [code]: passed }));
     if (id) answerCheck(id, code, passed);
   }
@@ -160,7 +191,7 @@ export default function PickupChecklistScreen() {
 
   async function submit() {
     if (!order || blocked || submitting.current) return;
-    if (passing) {
+    if (passing && !packs) {
       markChecked(order.id);
       /*
         Six passes are not sent from here. The supplier still has to sign on
@@ -176,16 +207,24 @@ export default function PickupChecklistScreen() {
     setBusy(true);
     setSubmitError(null);
     try {
+      // Six passes on a `rider_packs` job go with no outcome: the server
+      // records the unpacked inspection, and the signature comes after packing.
       const result = await api.submitPickupChecklist(
         order.id,
         toChecklistPayload(effective),
         toCountPayload(mode, counts),
-        evidenceFileId
+        !passing && evidenceFileId
           ? { failure: { failureNote: failureNote.trim(), evidenceFileIds: [evidenceFileId] } }
           : undefined,
       );
       setActiveOrder(result.order);
       clearChecklist(order.id);
+      if (passing && result.order.pickupChecklist?.status === "inspected") {
+        // Recorded, and still at the shop. Packing is the next step, not a
+        // confirmation of this one, so it replaces this screen.
+        router.replace({ pathname: "/trip/pack", params: { orderId: order.id } });
+        return;
+      }
       // The escalation is a 200 that leaves the package at the shop: stay, and
       // let the returned order turn this screen into the blocked receipt.
       if (result.order.pickupChecklist?.status === "failed_escalated") {
@@ -244,11 +283,60 @@ export default function PickupChecklistScreen() {
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} navigate />
 
-            <Text className="text-body-lg text-text-secondary">
-              At the shop, count the pieces and run all six checks together with the supplier
-              before the package leaves the counter. If anything is off, leave the package at
-              the shop and send a photo and a note for Operations to resolve.
-            </Text>
+            {packs ? <HandoverSteps current="check" /> : null}
+
+            {packs ? (
+              <Text className="text-body-lg text-text-secondary">
+                Check the items before anything is packed. Count the pieces and run all six
+                checks together with the shop. Then the shop packs them in front of you. If
+                anything is off, leave it at the shop and send a photo and a note for Operations.
+              </Text>
+            ) : (
+              <Text className="text-body-lg text-text-secondary">
+                At the shop, count the pieces and run all six checks together with the supplier
+                before the package leaves the counter. If anything is off, leave the package at
+                the shop and send a photo and a note for Operations to resolve.
+              </Text>
+            )}
+
+            {canMarkArrivedPacked(order) ? (
+              <View className="gg-card gap-3">
+                <View className="gap-1">
+                  <Text className="text-body-lg font-bold text-text-primary">
+                    Already packed when you arrived?
+                  </Text>
+                  <Text className="text-body text-text-secondary">
+                    Record it before you check, then ask the shop to unpack every piece. It goes
+                    on the shop&apos;s record.
+                  </Text>
+                </View>
+                <SecondaryButton
+                  label="The shop packed it already"
+                  onPress={() =>
+                    router.push({ pathname: "/trip/arrived-packed", params: { orderId: order.id } })
+                  }
+                  disabled={busy}
+                />
+              </View>
+            ) : null}
+
+            {packs && packedBeforeCheck && !inspectedId ? (
+              <InlineNotice
+                tone="warning"
+                icon="triangle-alert"
+                title="Recorded: packed before your check"
+                body={`Recorded at ${formatCheckedAt(packedBeforeCheck) ?? "the counter"}. Ask the shop to unpack every piece, then check them below.`}
+              />
+            ) : null}
+
+            {inspectedId ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="You already checked these items"
+                body={`Recorded at ${formatCheckedAt(order.pickupChecklist?.completedAt ?? null) ?? "the counter"}. Checking again replaces it, and the packed photo and the shop's signature are taken again after it.`}
+              />
+            ) : null}
 
             <ProductionSpecifications order={order} />
             <ArtworkPanel order={order} />
@@ -263,13 +351,13 @@ export default function PickupChecklistScreen() {
             ) : null}
 
             <View className="gg-card-flush">
-              {PICKUP_CHECKS.map((check, index) => (
+              {checks.map((check, index) => (
                 <PickupCheckRow
                   key={check.code}
                   index={index}
                   check={
                     check.code === "quantity_match" && mode.kind !== "legacy"
-                      ? { ...check, label: "Count the pieces", verify: COUNT_VERIFY }
+                      ? { ...check, label: "Count the pieces", verify: packs ? COUNT_VERIFY_UNPACKED : COUNT_VERIFY }
                       : check
                   }
                   answer={effective[check.code]}
@@ -372,7 +460,7 @@ export default function PickupChecklistScreen() {
       {order && !escalated ? (
         <StickyActionBar onHeight={setActionBarHeight} note={blocked || consequence}>
           <PrimaryButton
-            label={busy ? "Recording…" : checklistActionLabel(effective)}
+            label={busy ? "Recording…" : checklistActionLabel(effective, flow)}
             onPress={() => void submit()}
             disabled={busy || Boolean(blocked)}
             size="large"
@@ -386,10 +474,16 @@ export default function PickupChecklistScreen() {
         </StickyActionBar>
       ) : null}
 
-      <BlockingOverlay visible={busy} label="Escalating this pickup…" />
+      <BlockingOverlay
+        visible={busy}
+        label={passing ? "Recording the check…" : "Escalating this pickup…"}
+      />
     </Screen>
   );
 }
 
 const COUNT_VERIFY =
   "Count every piece together with the supplier and type what you counted for each line — not what the ticket says.";
+
+const COUNT_VERIFY_UNPACKED =
+  "Count every piece unpacked, together with the shop, and type what you counted for each line — not what the ticket says.";

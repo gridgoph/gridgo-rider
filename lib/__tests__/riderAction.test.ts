@@ -5,6 +5,8 @@ const ORDER = "ord_1";
 
 const ALL_PHASES: TripPhase[] = [
   "pickup_checks",
+  "pickup_pack",
+  "pickup_sign",
   "pickup_blocked",
   "start_delivery",
   "delivery_proof",
@@ -27,6 +29,11 @@ function actionFor(phase: TripPhase, orderId: string | null = ORDER): RiderActio
 }
 
 describe("the raised centre disc is an action, not a destination", () => {
+  it("walks a rider_packs counter: packed photo, then the shop's signature", () => {
+    expect(actionFor("pickup_pack")).toMatchObject({ route: "/trip/pack", needsOrderId: true });
+    expect(actionFor("pickup_sign")).toMatchObject({ route: "/trip/handoff", needsOrderId: true });
+  });
+
   it("names the next step of the job with a verb, and routes to it", () => {
     expect(riderAction("pickup_checks", ORDER)).toMatchObject({
       label: "Check it",

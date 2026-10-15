@@ -16,6 +16,8 @@ import type { TripPhase } from "@/lib/riderOrder";
  */
 export type RiderActionKind =
   | "pickup-checks"
+  | "packed-photo"
+  | "shop-signs"
   | "on-hold"
   | "start-delivery"
   | "delivery-proof"
@@ -37,6 +39,8 @@ export type RiderAction = {
     | "/(tabs)/offers"
     | "/alerts"
     | "/trip/pickup"
+    | "/trip/pack"
+    | "/trip/handoff"
     | "/trip/start"
     | "/trip/delivery";
   /** True when the route needs the order id appended. */
@@ -88,6 +92,24 @@ export function riderAction(
         label: "Check it",
         spoken: "At the shop, run the six pickup checks together with the supplier before carrying the package.",
         route: "/trip/pickup",
+        needsOrderId: true,
+      };
+    case "pickup_pack":
+      return {
+        kind: "packed-photo",
+        glyph: "camera",
+        label: "Pack it",
+        spoken: "Watch the shop pack the items you checked, then photograph the packed job.",
+        route: "/trip/pack",
+        needsOrderId: true,
+      };
+    case "pickup_sign":
+      return {
+        kind: "shop-signs",
+        glyph: "checklist",
+        label: "Sign",
+        spoken: "The shop signs the handoff on your phone, and the package becomes yours to carry.",
+        route: "/trip/handoff",
         needsOrderId: true,
       };
     case "pickup_blocked":
