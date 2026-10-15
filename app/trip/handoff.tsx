@@ -5,6 +5,7 @@ import { Pressable, Text, useWindowDimensions, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { FormScroll } from "@/components/FormScroll";
+import { HandoverSteps } from "@/components/HandoverSteps";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PassedChecksSummary } from "@/components/PassedChecksSummary";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -28,16 +29,23 @@ import {
   handoffBlockReason,
   shopDisplayName,
 } from "@/lib/handoffSignature";
-import { allPassed, canRunPickupChecks, toChecklistPayload } from "@/lib/pickupChecklist";
+import {
+  allPassed,
+  answersFromChecks,
+  canRunPickupChecks,
+  toChecklistPayload,
+} from "@/lib/pickupChecklist";
 import {
   countMode,
   draftCountLines,
   effectiveAnswers,
+  recordedCountLines,
   toCountPayload,
 } from "@/lib/pickupCount";
 import { type EvidenceUpload, UPLOAD_IDLE, uploadStatusLine } from "@/lib/proofEvidence";
 import { handoffSignatureEvidence } from "@/lib/proofPhoto";
 import { pickupLabel } from "@/lib/riderOrder";
+import { currentInspectionId, packedPhotoStored, ridersPack } from "@/lib/shopHandover";
 import type { SignatureStroke } from "@/lib/signature";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
@@ -57,6 +65,13 @@ import { useTripProof } from "@/store/tripProof";
  * signer's: their name, the paper, and the sentence they are agreeing to with
  * the numbers in it, so the signature is over a claim rather than a blank.
  *
+ * On a `rider_packs` job the signature comes last of three (gridgo-api
+ * `docs/SHOP_HANDOVER_API.md`): the server already holds the unpacked
+ * inspection and the packed photo, so this screen reads the checks and counts
+ * from the order rather than the draft, and `POST /dispatch/:id/pickup-confirm`
+ * sends only the signature. A legacy job still sends checks, counts and
+ * signature together.
+ *
  * The strokes and the name are kept in the proof draft as they are made, so a
  * killed app comes back to the same paper. The upload is not: only a file id
  * the server has confirmed is remembered, and it is used again rather than
@@ -69,7 +84,7 @@ export default function HandoffSignatureScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
-  const { order, loading, error: loadError } = useTripOrder(id);
+  const { order, loading, error: loadError, reload } = useTripOrder(id);
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
   const rider = useSession((s) => s.user);
 
@@ -113,11 +128,30 @@ export default function HandoffSignatureScreen() {
   }
 
   const mode = order ? countMode(order) : ({ kind: "legacy" } as const);
-  // The count answers the quantity check, read against the order as it is now.
-  const answers = draft ? effectiveAnswers(draft.answers, mode, draft.counts) : null;
-  const countLines = mode.kind === "count" ? draftCountLines(mode.items, draft?.counts) : null;
+  const packs = order ? ridersPack(order) : false;
+  const inspected = order ? Boolean(currentInspectionId(order)) : false;
+  const packed = order ? packedPhotoStored(order) : false;
+  // `rider_packs`: the server's inspection is what is signed for. Legacy: the
+  // draft, with the count answering the quantity check against the order now.
+  const answers = packs
+    ? inspected
+      ? answersFromChecks(order?.pickupChecklist?.checks)
+      : null
+    : draft
+      ? effectiveAnswers(draft.answers, mode, draft.counts)
+      : null;
+  const countLines = packs
+    ? order
+      ? recordedCountLines(order)
+      : null
+    : mode.kind === "count"
+      ? draftCountLines(mode.items, draft?.counts)
+      : null;
   const storedFileId = draft?.signature?.storedFileId ?? null;
-  const checkedAt = formatCheckedAt(draft?.completedAt ?? null, openedAtMs);
+  const checkedAtIso = packs
+    ? (order?.pickupChecklist?.completedAt ?? null)
+    : (draft?.completedAt ?? null);
+  const checkedAt = formatCheckedAt(checkedAtIso, openedAtMs);
   const status = uploadStatusLine(upload, "signature");
 
   // A wide strip of paper, like the line on a form: full width, about two to
@@ -181,12 +215,15 @@ export default function HandoffSignatureScreen() {
     setSubmitError(null);
     try {
       const fileId = await storeSignature(order.id);
-      const result = await api.submitPickupChecklist(
-        order.id,
-        toChecklistPayload(answers),
-        toCountPayload(mode, draft?.counts),
-        { signature: { fileId, signerName: signerName.trim() } },
-      );
+      const signature = { fileId, signerName: signerName.trim() };
+      const result = packs
+        ? await api.confirmPickup(order.id, signature)
+        : await api.submitPickupChecklist(
+            order.id,
+            toChecklistPayload(answers),
+            toCountPayload(mode, draft?.counts),
+            { signature },
+          );
       setActiveOrder(result.order);
       if (result.order.state !== "picked_up") {
         // A 200 is not custody. If the server recorded a failure instead, the
@@ -209,8 +246,14 @@ export default function HandoffSignatureScreen() {
       // The upload reports its own failure through the status line; only a
       // refusal of the checks needs a sentence here.
       if (uploadRef.current.phase !== "failed") {
-        if (api.apiErrorCode(e) === "invalid_handoff_signature" && order) {
+        const code = api.apiErrorCode(e);
+        if (code === "invalid_handoff_signature" && order) {
           saveSignature(order.id, { storedFileId: null });
+        }
+        // A step the server says is missing: read the job again so the screen
+        // shows which one, with the way back to it in the bar.
+        if (code === "unpacked_inspection_required" || code === "packing_photo_required") {
+          void reload("refresh");
         }
         setSubmitError(
           api.apiErrorMessage(
@@ -225,7 +268,11 @@ export default function HandoffSignatureScreen() {
     }
   }
 
-  const ready = Boolean(order && answers && allPassed(answers));
+  const ready = packs
+    ? Boolean(order && inspected && packed && answers && allPassed(answers))
+    : Boolean(order && answers && allPassed(answers));
+  // What a `rider_packs` job still needs before the shop can sign.
+  const missingStep = packs && !ready ? (inspected ? "pack" : "check") : null;
 
   return (
     <Screen edges={[]}>
@@ -241,7 +288,21 @@ export default function HandoffSignatureScreen() {
           />
         ) : null}
 
-        {order && restored && !ready ? (
+        {order && restored && !ready && missingStep === "pack" ? (
+          <InlineNotice
+            tone="warning"
+            icon="triangle-alert"
+            title="Photograph the packed job first"
+            body="The shop signs once the job is packed in front of you and the photo is saved. Take the packed photo, then come back here."
+          />
+        ) : order && restored && !ready && missingStep === "check" ? (
+          <InlineNotice
+            tone="warning"
+            icon="triangle-alert"
+            title="Check the items unpacked first"
+            body="The shop signs for items you checked unpacked and watched being packed. Run all six checks together at the counter first."
+          />
+        ) : order && restored && !ready ? (
           <InlineNotice
             tone="warning"
             icon="triangle-alert"
@@ -254,7 +315,13 @@ export default function HandoffSignatureScreen() {
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
-            <PassedChecksSummary checkedAt={checkedAt} counts={countLines} />
+            {packs ? <HandoverSteps current="sign" /> : null}
+
+            <PassedChecksSummary
+              checkedAt={checkedAt}
+              counts={countLines}
+              flow={packs ? "rider_packs" : null}
+            />
 
             <View className="gap-1">
               <Text className="text-h2 text-text-primary">Supplier signs here</Text>
@@ -262,8 +329,9 @@ export default function HandoffSignatureScreen() {
                 {shopDisplayName(order)} hands this job to {rider?.name?.trim() || "the GRIDGO rider"}.
               </Text>
               <WhyWeAsk>
-                The name and signature are GRIDGO&apos;s record that the shop handed this job over
-                after the six checks.
+                {packs
+                  ? "The name and signature are GRIDGO's record that the shop handed this job over after the unpacked check and the packing you watched."
+                  : "The name and signature are GRIDGO's record that the shop handed this job over after the six checks."}
               </WhyWeAsk>
             </View>
 
@@ -327,7 +395,8 @@ export default function HandoffSignatureScreen() {
                 order,
                 counts: countLines,
                 riderName: rider?.name ?? null,
-                checkedAt: draft?.completedAt ?? null,
+                checkedAt: checkedAtIso,
+                packedInFront: packs,
                 nowMs: openedAtMs,
               })}
             </Text>
@@ -349,7 +418,9 @@ export default function HandoffSignatureScreen() {
         note={
           order && ready
             ? (blocked ??
-              "GRIDGO records the count, the six checks and the signature together. The package becomes yours to carry.")
+              (packs
+                ? "GRIDGO records the signature with your check and the packed photo. The package becomes yours to carry."
+                : "GRIDGO records the count, the six checks and the signature together. The package becomes yours to carry."))
             : null
         }
       >
@@ -358,6 +429,12 @@ export default function HandoffSignatureScreen() {
             label={handoffActionLabel({ busy, signed: signed || Boolean(storedFileId) })}
             onPress={() => void submit()}
             disabled={busy || Boolean(blocked)}
+            size="large"
+          />
+        ) : order && restored && missingStep === "pack" ? (
+          <PrimaryButton
+            label="Take the packed photo"
+            onPress={() => router.replace({ pathname: "/trip/pack", params: { orderId: order.id } })}
             size="large"
           />
         ) : order && restored ? (

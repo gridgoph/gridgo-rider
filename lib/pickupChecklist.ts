@@ -1,4 +1,4 @@
-import type { Order, PickupCheckCode, PickupCheckResult } from "@/lib/api";
+import type { HandoverFlow, Order, PickupCheckCode, PickupCheckResult } from "@/lib/api";
 import { countProblemPhrase, recordedCountLines } from "@/lib/pickupCount";
 
 /**
@@ -83,6 +83,53 @@ export const PICKUP_CHECKS: readonly PickupCheckDefinition[] = [
   },
 ] as const;
 
+/**
+ * The same six on a `rider_packs` job, where nothing is packed yet.
+ *
+ * The codes and their order are the server's, so only the words change: the
+ * count, the specification and the defects are checked on the pieces out of
+ * their wrapping; `packaging_integrity` is the box or wrap the shop has ready;
+ * `supplier_sign_off` is the shop agreeing to the joint check. The signature
+ * itself comes after the packing, at the hand-over.
+ */
+const UNPACKED_WORDING: Partial<
+  Record<PickupCheckCode, Pick<PickupCheckDefinition, "label" | "verify" | "failure">>
+> = {
+  quantity_match: {
+    label: "Quantity matches",
+    verify: "Count the pieces unpacked, together with the shop, against the order ticket.",
+    failure: "the count does not match the order",
+  },
+  specification_match: {
+    label: "Specification matches",
+    verify: "Size, colour, material and design are what the order describes. Look at the pieces, not the wrapping.",
+    failure: "the item is not what the order describes",
+  },
+  visible_defects: {
+    label: "No visible defects",
+    verify: "Look over every piece unpacked: no tears, misprints, colour shifts, cracks or stains.",
+    failure: "there are visible defects",
+  },
+  packaging_integrity: {
+    label: "Packing materials ready",
+    verify: "The box, wrap or bag the shop will use is ready and strong enough for a motorcycle ride. Nothing is packed yet.",
+    failure: "the packing materials will not survive the ride",
+  },
+  supplier_sign_off: {
+    label: "Checked together",
+    verify: "The shop agrees these are the right pieces. They pack them in front of you next, then sign on your phone.",
+    failure: "the shop would not agree to the check",
+  },
+};
+
+/** The six as this job's counter words them. Legacy unless the server says otherwise. */
+export function pickupChecksFor(
+  flow: HandoverFlow | null | undefined,
+): readonly PickupCheckDefinition[] {
+  if (flow !== "rider_packs") return PICKUP_CHECKS;
+  return PICKUP_CHECKS.map((check) => ({ ...check, ...UNPACKED_WORDING[check.code] }));
+}
+
 /** What the rider answered for one check. `null` means not answered yet. */
 export type CheckAnswer = boolean | null;
 
@@ -97,8 +144,12 @@ export const EMPTY_ANSWERS: ChecklistAnswers = {
   supplier_sign_off: null,
 };
 
-export function checkDefinition(code: PickupCheckCode): PickupCheckDefinition {
-  return PICKUP_CHECKS.find((check) => check.code === code) ?? PICKUP_CHECKS[0];
+export function checkDefinition(
+  code: PickupCheckCode,
+  flow: HandoverFlow | null = null,
+): PickupCheckDefinition {
+  const checks = pickupChecksFor(flow);
+  return checks.find((check) => check.code === code) ?? checks[0];
 }
 
 /** Codes still unanswered, in checklist order. */
@@ -119,6 +170,15 @@ export function allPassed(answers: ChecklistAnswers): boolean {
   return PICKUP_CHECK_CODES.every((code) => answers[code] === true);
 }
 
+/** A recorded checklist's answers, for screens that sign over the server's record. */
+export function answersFromChecks(checks: readonly PickupCheckResult[] | null | undefined): ChecklistAnswers {
+  const answers: ChecklistAnswers = { ...EMPTY_ANSWERS };
+  for (const check of checks ?? []) {
+    if (PICKUP_CHECK_CODES.includes(check.code)) answers[check.code] = check.passed;
+  }
+  return answers;
+}
+
 /** The request body shape, once every check has an answer. */
 export function toChecklistPayload(answers: ChecklistAnswers): PickupCheckResult[] {
   return PICKUP_CHECK_CODES.map((code) => ({ code, passed: answers[code] === true }));
@@ -135,10 +195,11 @@ export function toChecklistPayload(answers: ChecklistAnswers): PickupCheckResult
 export function checklistBlockReason(
   answers: ChecklistAnswers,
   failure: { note: string; evidenceStored: boolean },
+  flow: HandoverFlow | null = null,
 ): string | null {
   const unanswered = unansweredCodes(answers);
   if (unanswered.length === 1) {
-    return `One check left: ${checkDefinition(unanswered[0]).label.toLowerCase()}.`;
+    return `One check left: ${checkDefinition(unanswered[0], flow).label.toLowerCase()}.`;
   }
   if (unanswered.length > 1) {
     return `${unanswered.length} checks left to answer.`;
@@ -155,9 +216,13 @@ export function checklistBlockReason(
 }
 
 /** What the confirm button says, given where the checklist has landed. */
-export function checklistActionLabel(answers: ChecklistAnswers): string {
+export function checklistActionLabel(
+  answers: ChecklistAnswers,
+  flow: HandoverFlow | null = null,
+): string {
   if (!allAnswered(answers)) return "Confirm all six checks";
-  return allPassed(answers) ? "All six pass — supplier signs next" : "Do not transport — escalate this";
+  if (!allPassed(answers)) return "Do not transport — escalate this";
+  return flow === "rider_packs" ? "All six pass — shop packs next" : "All six pass — supplier signs next";
 }
 
 /**
@@ -174,31 +239,37 @@ export function checklistActionLabel(answers: ChecklistAnswers): string {
 export function checklistConsequence(
   answers: ChecklistAnswers,
   countProblem: string | null = null,
+  flow: HandoverFlow | null = null,
 ): string | null {
   if (!allAnswered(answers)) return null;
   if (allPassed(answers)) {
-    return "Nothing is recorded yet. Next, the supplier signs on your phone — that is what makes the package yours to carry.";
+    return flow === "rider_packs"
+      ? "GRIDGO records the check. Nothing moves yet: the shop packs it in front of you, you photograph it, then they sign."
+      : "Nothing is recorded yet. Next, the supplier signs on your phone — that is what makes the package yours to carry.";
   }
   const failed = failedCodes(answers);
   const which =
     failed.length === 1
       ? failed[0] === "quantity_match" && countProblem
         ? countProblem
-        : checkDefinition(failed[0]).failure
+        : checkDefinition(failed[0], flow).failure
       : `${failed.length} problems you found`;
   return `The package stays at the shop. GRIDGO logs that ${which}, alerts Operations and the founder, and tells you when to move.`;
 }
 
 /** Plain-language summary of a recorded checklist, for the trip screen. */
 export function checklistSummary(
-  order: Pick<Order, "pickupChecklist"> & Partial<Pick<Order, "pickupCountItems">>,
+  order: Pick<Order, "pickupChecklist"> & Partial<Pick<Order, "pickupCountItems" | "handoverFlow">>,
 ): string | null {
   const record = order.pickupChecklist;
   if (!record) return null;
+  const flow = order.handoverFlow ?? null;
   switch (record.status) {
     case "passed":
     case "legacy_passed":
       return "All six pickup checks passed.";
+    case "inspected":
+      return "All six checks passed on the unpacked items.";
     case "failed_escalated": {
       const failed = record.checks.filter((check) => !check.passed);
       if (!failed.length) return "A pickup check failed and transport is on hold.";
@@ -209,7 +280,7 @@ export function checklistSummary(
       const names = failed.map((check) =>
         check.code === "quantity_match" && countPhrase
           ? countPhrase
-          : checkDefinition(check.code).failure,
+          : checkDefinition(check.code, flow).failure,
       );
       const list =
         names.length === 1

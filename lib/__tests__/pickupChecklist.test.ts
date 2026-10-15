@@ -3,6 +3,7 @@ import {
   canRunPickupChecks,
   allAnswered,
   allPassed,
+  answersFromChecks,
   checkDefinition,
   checklistActionLabel,
   checklistBlockReason,
@@ -12,6 +13,7 @@ import {
   failedCodes,
   PICKUP_CHECK_CODES,
   PICKUP_CHECKS,
+  pickupChecksFor,
   toChecklistPayload,
   unansweredCodes,
   type ChecklistAnswers,
@@ -206,5 +208,55 @@ describe("joint pickup eligibility", () => {
     const record = { status: "failed_escalated" } as NonNullable<import("@/lib/api").Order["pickupChecklist"]>;
     expect(canRunPickupChecks({ state: "rider_assigned", pickupChecklist: record })).toBe(false);
     expect(canRunPickupChecks({ state: "rider_assigned", pickupChecklist: { ...record, status: "escalation_resolved" } })).toBe(true);
+  });
+});
+
+describe("a rider_packs counter checks the items unpacked", () => {
+  it("keeps the server's six codes in order, and only rewords them", () => {
+    const unpacked = pickupChecksFor("rider_packs");
+    expect(unpacked.map((check) => check.code)).toEqual(CONTRACT_CODES);
+    expect(pickupChecksFor("legacy")).toBe(PICKUP_CHECKS);
+    expect(pickupChecksFor(null)).toBe(PICKUP_CHECKS);
+  });
+
+  it("checks the packing materials, not a packed parcel, and the joint check, not the signature", () => {
+    expect(checkDefinition("packaging_integrity", "rider_packs").label).toBe("Packing materials ready");
+    expect(checkDefinition("packaging_integrity", "rider_packs").verify).toMatch(/nothing is packed yet/i);
+    expect(checkDefinition("supplier_sign_off", "rider_packs").label).toBe("Checked together");
+    expect(checkDefinition("visible_defects", "rider_packs").verify).toMatch(/unpacked/);
+  });
+
+  it("names the packing as the next step, and moves nothing", () => {
+    expect(checklistActionLabel(allPass(), "rider_packs")).toBe("All six pass — shop packs next");
+    expect(checklistConsequence(allPass(), null, "rider_packs")).toMatch(/nothing moves yet/i);
+    expect(checklistActionLabel(allPass())).toBe("All six pass — supplier signs next");
+  });
+
+  it("words a failure with the unpacked wording", () => {
+    expect(
+      checklistConsequence(answers({ ...allPass(), packaging_integrity: false }), null, "rider_packs"),
+    ).toContain("the packing materials will not survive the ride");
+  });
+
+  it("reads an inspection as passed on the unpacked items", () => {
+    expect(
+      checklistSummary({
+        pickupChecklist: {
+          status: "inspected",
+          checks: PICKUP_CHECK_CODES.map((code) => ({ code, passed: true })),
+          evidenceFileIds: [],
+          failureNote: null,
+          completedAt: null,
+          completedBy: null,
+          escalationId: null,
+          signOffPrompt: null,
+        },
+      }),
+    ).toBe("All six checks passed on the unpacked items.");
+  });
+
+  it("rebuilds answers from a recorded checklist", () => {
+    expect(answersFromChecks(PICKUP_CHECK_CODES.map((code) => ({ code, passed: true })))).toEqual(allPass());
+    expect(answersFromChecks(null)).toEqual(EMPTY_ANSWERS);
   });
 });

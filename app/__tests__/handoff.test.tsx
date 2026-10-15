@@ -19,6 +19,7 @@ jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   getOrder: jest.fn(),
   submitPickupChecklist: jest.fn(),
+  confirmPickup: jest.fn(),
 }));
 
 /** The upload pipeline, answering with a stored id the way the server would. */
@@ -105,6 +106,7 @@ import HandoffSignatureScreen from "@/app/trip/handoff";
 const api = jest.requireMock("@/lib/api") as {
   getOrder: jest.Mock;
   submitPickupChecklist: jest.Mock;
+  confirmPickup: jest.Mock;
 };
 const attachments = jest.requireMock("@/lib/attachments") as { uploadEvidence: jest.Mock };
 
@@ -442,5 +444,79 @@ describe("the supplier signs on the rider's phone", () => {
       pathname: "/trip/pickup",
       params: { orderId: "ord_1" },
     });
+  });
+});
+
+describe("a rider_packs job: the shop signs after the unpacked check and the packed photo", () => {
+  const inspection = {
+    status: "inspected" as const,
+    inspectionId: "inspection_1",
+    checks: Object.keys(allSix).map((code) => ({ code: code as keyof typeof allSix, passed: true })),
+    counts: [{ lineItemId: "cline_tarp", expectedQuantity: 12, countedQuantity: 12 }],
+    evidenceFileIds: [],
+    failureNote: null,
+    completedAt: "2026-09-19T07:24:00.000Z",
+    completedBy: "user_rider",
+    escalationId: null,
+    signOffPrompt: null,
+    handoffSignature: null,
+  };
+  const packedJob: Order = {
+    ...atShop,
+    handoverFlow: "rider_packs",
+    pickupCountItems: [{ lineItemId: "cline_tarp", itemName: "Tarpaulin", expectedQuantity: 12 }],
+    pickupChecklist: inspection,
+    shopHandover: {
+      packingPhotos: [
+        { at: "2026-09-19T07:30:00.000Z", by: "user_rider", fileId: "fil_pack", inspectionId: "inspection_1" },
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    api.getOrder.mockResolvedValue(packedJob);
+    useActiveTrip.setState({ order: packedJob, loaded: true, loading: false, error: null });
+    // No draft: the server's inspection is what is signed for.
+    useTripProof.setState({ hydrated: true, checklists: {} });
+    storedUpload();
+  });
+
+  it("signs over the server's inspection, words it as packed in front of the rider", async () => {
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+
+    expect(screen.getByLabelText("Packing materials ready: passed")).toBeTruthy();
+    expect(screen.getByLabelText("Tarpaulin: counted 12 of 12")).toBeTruthy();
+    expect(screen.getByText(/were packed in front of GRIDGO rider Mark Prado/)).toBeTruthy();
+  });
+
+  it("confirms the pickup with the signature only", async () => {
+    api.confirmPickup.mockResolvedValue({ order: { ...packedJob, state: "picked_up" } });
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    await fireEvent.press(doneButton());
+
+    await waitFor(() => expect(api.confirmPickup).toHaveBeenCalledTimes(1));
+    expect(api.confirmPickup).toHaveBeenCalledWith("ord_1", { fileId: "fil_sig", signerName: "Ana Reyes" });
+    expect(api.submitPickupChecklist).not.toHaveBeenCalled();
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it("sends the rider back to the packed photo when the server has none for this check", async () => {
+    api.getOrder.mockResolvedValue({ ...packedJob, shopHandover: { packingPhotos: [] } });
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Photograph the packed job first");
+    expect(screen.queryByText("Supplier signs here")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Take the packed photo" }));
+    expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/trip/pack", params: { orderId: "ord_1" } });
+  });
+
+  it("sends the rider back to the checks when there is no inspection", async () => {
+    api.getOrder.mockResolvedValue({ ...packedJob, pickupChecklist: null, shopHandover: {} });
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Check the items unpacked first");
+    expect(screen.getByRole("button", { name: "Open the pickup checks" })).toBeTruthy();
   });
 });

@@ -30,7 +30,13 @@ function bars(source: string): string[] {
 describe("every delivery step pins its action to the bottom", () => {
   it("finds the steps", () => {
     // If this drops, the rest of the file passes vacuously.
-    expect(steps.sort()).toEqual(["delivery.tsx", "handoff.tsx", "pickup.tsx", "sign-off.tsx"]);
+    expect(steps.sort()).toEqual([
+      "delivery.tsx",
+      "handoff.tsx",
+      "pack.tsx",
+      "pickup.tsx",
+      "sign-off.tsx",
+    ]);
   });
 
   it.each(steps)("%s renders every primary action inside the bar", (file) => {

@@ -108,6 +108,8 @@ export function attestationLine(input: {
   counts?: RecordedCountLine[] | null;
   riderName: string | null;
   checkedAt: string | null;
+  /** `rider_packs`: checked unpacked, then packed in front of the rider. */
+  packedInFront?: boolean;
   nowMs?: number;
 }): string {
   const who = signerNameValid(input.signerName) ? input.signerName.trim() : "The signer";
@@ -118,6 +120,9 @@ export function attestationLine(input: {
       : input.order.title;
   const when = formatCheckedAt(input.checkedAt, input.nowMs);
   const rider = input.riderName?.trim() ? `GRIDGO rider ${input.riderName.trim()}` : "the GRIDGO rider";
+  if (input.packedInFront) {
+    return `By signing, ${who} confirms that ${count} were counted and checked unpacked together at the counter, passed all six checks${when ? ` at ${when}` : ""}, were packed in front of ${rider}, and are handed to them.`;
+  }
   return `By signing, ${who} confirms that ${count} were counted and checked together at the counter, passed all six checks${when ? ` at ${when}` : ""}, and are handed to ${rider}.`;
 }
 

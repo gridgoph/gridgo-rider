@@ -114,6 +114,18 @@ describe("what the supplier is agreeing to", () => {
     expect(line).toContain("the GRIDGO rider");
   });
 
+  it("says the job was checked unpacked and packed in front of the rider on a rider_packs job", () => {
+    const line = attestationLine({
+      signerName: "Ana Reyes",
+      order,
+      riderName: "Mark Prado",
+      checkedAt: null,
+      packedInFront: true,
+    });
+    expect(line).toContain("checked unpacked together");
+    expect(line).toContain("were packed in front of GRIDGO rider Mark Prado");
+  });
+
   it("says one piece as one piece", () => {
     expect(attestationLine({ signerName: "Jo", order: { ...order, quantity: 1 }, riderName: null, checkedAt: null }))
       .toContain("1 piece of");

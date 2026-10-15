@@ -383,6 +383,10 @@ function RootStack() {
         options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
+        name="trip/pack"
+        options={{ title: "Packed photo", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
         name="trip/handoff"
         options={{ title: "Supplier signature", ...multiOriginPushedScreenOptions }}
       />
@@ -424,6 +428,7 @@ function RootStack() {
       */}
       <Stack.Screen name="call" options={callScreenOptions} />
       <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+      <Stack.Screen name="trip/arrived-packed" options={confirmSheetScreenOptions} />
       <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
       <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
       <Stack.Screen name="push-permission" options={confirmSheetScreenOptions} />

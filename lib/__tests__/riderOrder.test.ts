@@ -171,6 +171,45 @@ describe("tripPhase ladder", () => {
     expect(tripPhase(resolved)).toBe("pickup_checks");
   });
 
+  it("adds the packed photo and the signature on a rider_packs job", () => {
+    const base = { id: "a", state: "rider_assigned", riderId: "r1", handoverFlow: "rider_packs" as const };
+    expect(tripPhase(order(base))).toBe("pickup_checks");
+    const inspected = {
+      ...checklist("inspected"),
+      inspectionId: "inspection_1",
+      completedBy: "r1",
+    };
+    expect(tripPhase(order({ ...base, pickupChecklist: inspected }))).toBe("pickup_pack");
+    expect(orderStateChip(order({ ...base, pickupChecklist: inspected })).label).toBe(
+      "Checked, pack next",
+    );
+    const packed = order({
+      ...base,
+      pickupChecklist: inspected,
+      shopHandover: {
+        packingPhotos: [{ at: "t", by: "r1", fileId: "f", inspectionId: "inspection_1" }],
+      },
+    });
+    expect(tripPhase(packed)).toBe("pickup_sign");
+    expect(primaryActionLabel("pickup_pack")).toBe("Photograph the packed job");
+    expect(primaryActionLabel("pickup_sign")).toBe("Shop signs the handoff");
+    expect(activeStopKind("pickup_pack")).toBe("pickup");
+    expect(activeStopKind("pickup_sign")).toBe("pickup");
+    // Six passes on the unpacked items move nothing.
+    expect(isPickupCleared(packed)).toBe(false);
+  });
+
+  it("keeps a legacy job on the old ladder even with an inspected record", () => {
+    const legacy = order({
+      id: "a",
+      state: "rider_assigned",
+      riderId: "r1",
+      handoverFlow: "legacy",
+      pickupChecklist: { ...checklist("inspected"), inspectionId: "i", completedBy: "r1" },
+    });
+    expect(tripPhase(legacy)).toBe("pickup_checks");
+  });
+
   it("keeps the rider at the shop's end of the map until they set off", () => {
     expect(activeStopKind("pickup_checks")).toBe("pickup");
     expect(activeStopKind("pickup_blocked")).toBe("pickup");

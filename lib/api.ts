@@ -75,7 +75,13 @@ export type PickupChecklistStatus =
   | "passed"
   | "failed_escalated"
   | "escalation_resolved"
-  | "legacy_passed";
+  | "legacy_passed"
+  /**
+   * Six passes on the unpacked items, on a `rider_packs` handover. Nothing
+   * has moved: the shop packs next, the rider photographs it, then the shop
+   * signs (`POST /dispatch/:id/pickup-confirm`).
+   */
+  | "inspected";
 
 /**
  * The supplier's signature over the six passed checks, drawn on the rider's
@@ -123,6 +129,32 @@ export type PickupChecklistRecord = {
   signOffPrompt: string | null;
   /** Absent on checklists recorded before signing existed; null when escalated. */
   handoffSignature?: HandoffSignatureRecord | null;
+  /**
+   * The unpacked inspection this record is, or was confirmed from, on a
+   * `rider_packs` handover. A repeat inspection gets a new id, and the packed
+   * photo and signature taken for an older one no longer count.
+   */
+  inspectionId?: string | null;
+  /** When the unpacked inspection passed, once custody has moved. */
+  inspectedAt?: string | null;
+};
+
+/**
+ * Which shop-to-rider handover this job runs (gridgo-api `docs/SHOP_HANDOVER_API.md`).
+ *
+ * `rider_packs`: the rider checks the items unpacked, the shop packs them in
+ * front of the rider, the rider photographs the packed job, and the shop signs.
+ * `legacy`: the shop packed before the rider arrived; checks and signature go
+ * in one request. The server decides; the app never guesses from dates.
+ */
+export type HandoverFlow = "rider_packs" | "legacy";
+
+/** The shop-to-rider evidence the assigned rider can read. Ids and times only. */
+export type ShopHandover = {
+  /** "The shop had packed it before the check", one per rider assignment. */
+  arrivedPacked?: { at: string; riderId: string; supplierId: string | null; assignedAt: string | null }[];
+  /** Packed photos the rider attached, each bound to the inspection it followed. */
+  packingPhotos?: { at: string; by: string; fileId: string; inspectionId: string }[];
 };
 
 /** Who is at the shop counter, from the shop's profile. Prefills the signer. */
@@ -278,6 +310,17 @@ export type Order = {
    * stop is GRIDGO Office, not a client door.
    */
   fulfillmentMode?: "delivery" | "pickup" | null;
+  /** Absent on an API older than report 6C695C15: read as `legacy`. */
+  handoverFlow?: HandoverFlow | null;
+  shopHandover?: ShopHandover | null;
+  /** When this rider was assigned; arrived-packed marks are one per assignment. */
+  riderAssignedAt?: string | null;
+  /**
+   * GRIDGO moved the job past a shop step without its usual evidence. Every
+   * app shows "Forced by GRIDGO"; the reason is in `forcedSteps`.
+   */
+  forcedByGridgo?: boolean;
+  forcedSteps?: { at: string; from: string; to: string; reasonCode: string; note: string }[];
 };
 
 export type StoredFile = {
@@ -1065,6 +1108,38 @@ export async function submitPickupChecklist(
 }
 
 /**
+ * Hand custody over on a `rider_packs` job: the shop's signature, after the
+ * unpacked check and the packed photo.
+ *
+ * The server uses the checks and counts it stored at the inspection, so none
+ * are sent. It refuses with `409 unpacked_inspection_required` or
+ * `409 packing_photo_required` when a step is missing, and the signature must
+ * be a `handoff_signature` attached after the current inspection.
+ */
+export async function confirmPickup(
+  orderId: string,
+  signature: HandoffSignatureInput,
+): Promise<PickupChecklistResult> {
+  return request(`/dispatch/${orderId}/pickup-confirm`, {
+    method: "POST",
+    body: JSON.stringify({ signature }),
+  });
+}
+
+/**
+ * Record that the shop had already packed a `rider_packs` job when the rider
+ * arrived. Only before the inspection; idempotent per assignment, and it cannot
+ * be taken back. The rider still checks every piece unpacked.
+ */
+export async function markArrivedPacked(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(`/dispatch/${orderId}/arrived-packed`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return result.order;
+}
+
+/**
  * Record the delivery against evidence the server already holds.
  *
  * The file must be attached to the order first — see `lib/attachments.ts`.
@@ -1453,6 +1528,17 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
         return "This order has no count to check against. Do not take the package — call Operations to review the order.";
       case "checklist_evidence_required":
         return "Photograph the problem and describe it before the escalation can be filed.";
+      case "unpacked_inspection_required":
+        return "Check the items unpacked first. Open the pickup checks and run all six with the shop.";
+      case "packing_photo_required":
+        return "Photograph the packed job before the shop signs. Open the packing step and take the photo.";
+      case "pickup_held":
+      case "claim_hold_active":
+        return "Do not take the package. GRIDGO has put this job on hold — wait for Operations before you continue.";
+      case "arrived_packed_not_available":
+        return "This can only be recorded before you check the items. Pull down to refresh the job.";
+      case "handover_flow_not_available":
+        return "This job uses a different pickup. Pull down to refresh the trip and follow its steps.";
       case "invalid_checklist_evidence":
         return "The photo did not reach the job. Take it again and send it before escalating.";
       case "handoff_signature_required":

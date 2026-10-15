@@ -11,6 +11,7 @@ import { MissedCallCard } from "@/components/MissedCallCard";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EmptyState } from "@/components/EmptyState";
+import { ForcedByGridgo } from "@/components/ForcedByGridgo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
@@ -53,6 +54,7 @@ import {
   signOffPrompt,
   zoneLabel,
 } from "@/lib/riderOrder";
+import { ridersPack } from "@/lib/shopHandover";
 import { nextStop, tripDestination, tripShop } from "@/lib/tripNav";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useCall } from "@/store/call";
@@ -203,6 +205,12 @@ export default function ActiveScreen() {
       case "pickup_checks":
         router.push({ pathname: "/trip/pickup", params });
         return;
+      case "pickup_pack":
+        router.push({ pathname: "/trip/pack", params });
+        return;
+      case "pickup_sign":
+        router.push({ pathname: "/trip/handoff", params });
+        return;
       case "start_delivery":
         router.push({ pathname: "/trip/start", params });
         return;
@@ -347,12 +355,37 @@ export default function ActiveScreen() {
               button here would be the app offering a move the business has
               already stopped.
             */}
-            {phase === "pickup_checks" ? (
+            {phase === "pickup_checks" && ridersPack(trip) ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="Check it before it is packed"
+                body="At the shop, count and check every piece unpacked, together with the shop. Then they pack it in front of you, you photograph it, and they sign."
+              />
+            ) : phase === "pickup_checks" ? (
               <InlineNotice
                 tone="info"
                 icon="info"
                 title="Check together at the shop"
                 body="Travel to the supplier, then run all six pickup checks together at the counter. Keep the package there until every check passes."
+              />
+            ) : null}
+
+            {phase === "pickup_pack" ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="Watch them pack it"
+                body="Your check is recorded. Stay at the counter while the shop packs the pieces you checked, then photograph the packed job."
+              />
+            ) : null}
+
+            {phase === "pickup_sign" ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="The shop signs next"
+                body="The packed photo is saved. Hand your phone to the shop to sign — then the package is yours to carry."
               />
             ) : null}
 
@@ -466,6 +499,8 @@ export default function ActiveScreen() {
                 <Text className="min-w-0 flex-1 text-h3 text-text-primary">{trip.title}</Text>
                 {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>
+
+              <ForcedByGridgo order={trip} />
 
               <View className="gap-3">
                 <ProductionSpecifications order={trip} />
