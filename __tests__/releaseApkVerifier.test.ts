@@ -132,4 +132,91 @@ describe("release APK verifier", () => {
       rmSync(work, { recursive: true, force: true });
     }
   });
+
+  describe("a Google Play bundle (.aab)", () => {
+    const clerkValue = "pk_live_fakeVerifierValue123";
+    const cartoKey = "fakeCartoVerifierKey123";
+    const goodBundle = `https://api.gridgo.invalid/ ${clerkValue} https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${cartoKey}`;
+
+    /** Zips `content` at the AAB's base-module bundle path and runs the verifier on it. */
+    function verifyBundle(
+      content: string,
+      { name = "fake.aab", jarsigner = "jar verified." }: { name?: string; jarsigner?: string } = {},
+    ) {
+      const work = mkdtempSync(join(root, ".release-verifier-test-"));
+      try {
+        const bin = join(work, "bin");
+        const payload = join(work, "payload");
+        const dir = name.endsWith(".aab") ? join(payload, "base", "assets") : join(payload, "assets");
+        const artifact = join(work, name);
+        mkdirSync(bin);
+        mkdirSync(dir, { recursive: true });
+
+        const apksigner = join(bin, "apksigner");
+        writeFileSync(
+          apksigner,
+          '#!/bin/sh\ncase "$*" in *--print-certs*) echo "Signer certificate SHA-256 digest: aabb";; esac\n',
+        );
+        chmodSync(apksigner, 0o755);
+        const fakeJarsigner = join(bin, "jarsigner");
+        writeFileSync(fakeJarsigner, `#!/bin/sh\necho "${jarsigner}"\n`);
+        chmodSync(fakeJarsigner, 0o755);
+        const keytool = join(bin, "keytool");
+        writeFileSync(keytool, FAKE_KEYTOOL);
+        chmodSync(keytool, 0o755);
+
+        writeFileSync(join(dir, "index.android.bundle"), content);
+        const zipped = spawnSync("zip", ["-q", "-r", artifact, "."], { cwd: payload, encoding: "utf8" });
+        expect(zipped.status).toBe(0);
+
+        return spawnSync("bash", [join(root, "scripts/verify-release-apk.sh"), artifact], {
+          encoding: "utf8",
+          env: {
+            NODE_ENV: "test",
+            PATH: `${bin}:${process.env.PATH ?? ""}`,
+            ANDROID_HOME: "",
+            ANDROID_SDK_ROOT: "",
+            ANDROID_KEYSTORE_PATH: join(work, "fake.keystore"),
+            ANDROID_KEYSTORE_PASSWORD: "fake-password",
+            ANDROID_KEY_ALIAS: "release",
+            EXPO_PUBLIC_API_URL: "https://api.gridgo.invalid/",
+            EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: clerkValue,
+            EXPO_PUBLIC_CARTO_API_KEY: cartoKey,
+          },
+        });
+      } finally {
+        rmSync(work, { recursive: true, force: true });
+      }
+    }
+
+    it("passes a bundle signed by the keystore alias, read from the base module", () => {
+      const verified = verifyBundle(goodBundle);
+      expect(verified.stderr).toBe("");
+      expect(verified.status).toBe(0);
+      expect(verified.stdout).toContain("OK: signed by alias 'release'");
+      expect(verified.stdout).toContain("base/assets/index.android.bundle");
+      expect(verified.stdout).toContain("OK: fake.aab is a real signed release build");
+    });
+
+    it("fails an unsigned bundle, which jarsigner does not treat as an error", () => {
+      const verified = verifyBundle(goodBundle, { jarsigner: "jar is unsigned." });
+      expect(verified.status).toBe(1);
+      expect(verified.stderr).toContain("the AAB is not signed");
+    });
+
+    it("fails a build that read the distribution flag at runtime instead of inlining it", () => {
+      for (const name of ["fake.aab", "fake.apk"]) {
+        const verified = verifyBundle(`${goodBundle} process.env.EXPO_PUBLIC_APP_DISTRIBUTION`, { name });
+        expect(verified.status).toBe(1);
+        expect(verified.stderr).toContain("EXPO_PUBLIC_APP_DISTRIBUTION survives");
+      }
+    });
+
+    it("still passes the side-load APK the same way", () => {
+      const verified = verifyBundle(goodBundle, { name: "fake.apk" });
+      expect(verified.stderr).toBe("");
+      expect(verified.status).toBe(0);
+      expect(verified.stdout).toContain("OK: fake.apk is a real signed release build");
+    });
+  });
 });

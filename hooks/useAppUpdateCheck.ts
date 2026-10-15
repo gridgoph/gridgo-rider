@@ -6,9 +6,11 @@ import { AppState, Platform, type AppStateStatus } from "react-native";
 import {
   describeInstalledBuild,
   installedBuild,
+  offersSideloadUpdates,
   parseForcedVersionCode,
   type AppBuild,
 } from "@/lib/appUpdate";
+import { buildDistribution } from "@/lib/buildDistribution";
 import {
   checkForAppUpdate,
   logUpdateCheck,
@@ -85,6 +87,8 @@ export function updateSheetHold(input: {
  *
  * Development builds and Expo Go have no real `versionCode`, so this does
  * nothing there unless `EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE` is set.
+ * A Google Play build never reads, offers or confirms anything: Play installs
+ * its updates, and Play policy forbids offering the side-load APK.
  * A development build logs every decision as an `[update-check]` line.
  */
 export function useAppUpdateCheck({ ready }: { ready: boolean }): void {
@@ -99,7 +103,9 @@ export function useAppUpdateCheck({ ready }: { ready: boolean }): void {
 
   useEffect(() => {
     if (!installed) return;
-    void startAppUpdate(installed);
+    const offersUpdates = offersSideloadUpdates(buildDistribution());
+    void startAppUpdate(installed, { offersUpdates });
+    if (!offersUpdates) return;
     const sub = AppState.addEventListener("change", (next) => {
       setAppState(next);
       if (next === "active") void checkForAppUpdate(installed);
