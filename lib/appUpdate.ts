@@ -13,6 +13,9 @@
  * launch of the new build, by comparing the installed `versionCode` with the
  * last one this phone ran.
  *
+ * A Google Play build (`AppDistribution`) does none of this: Play owns its
+ * updates.
+ *
  * Nothing here imports React Native, Expo or a store, so the same file serves
  * gridgo-client and gridgo-supplier. **Only `APP_UPDATE_SOURCE` and the body
  * copy name this app.** `store/appUpdate.ts`, `hooks/useAppUpdateCheck.ts` and
@@ -33,6 +36,29 @@ export const APP_UPDATE_SOURCE = {
    */
   userAgent: "GRIDGO-rider",
 } as const;
+
+/**
+ * How this build reaches phones. `sideload` is the APK from the landing site,
+ * which updates itself through this module. `play` is a Google Play build:
+ * Play installs its updates, and Play policy forbids an app that offers to
+ * install an APK from anywhere else, so a Play build never prompts, never pins
+ * an update card and never opens the side-load download.
+ */
+export type AppDistribution = "sideload" | "play";
+
+/**
+ * The distribution named by `EXPO_PUBLIC_APP_DISTRIBUTION`. Only the exact
+ * word `play` makes a Play build; anything else, including unset, is today's
+ * side-load build. CI sets it on the Play bundle's Gradle step alone.
+ */
+export function parseAppDistribution(raw: string | null | undefined): AppDistribution {
+  return (raw ?? "").trim().toLowerCase() === "play" ? "play" : "sideload";
+}
+
+/** Whether this build may offer the side-load APK as an update. */
+export function offersSideloadUpdates(distribution: AppDistribution): boolean {
+  return distribution === "sideload";
+}
 
 /**
  * At most one release read per this long while the app keeps coming back to

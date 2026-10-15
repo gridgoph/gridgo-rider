@@ -32,6 +32,15 @@ describe("the update prompt", () => {
     );
   });
 
+  it("reads the distribution flag as the literal Expo inlines, wherever an APK is offered", () => {
+    // A Play build must never offer the side-load APK; a runtime read would.
+    expect(read("lib/buildDistribution.ts")).toContain("process.env.EXPO_PUBLIC_APP_DISTRIBUTION");
+    expect(read("hooks/useAppUpdateCheck.ts")).toContain("offersSideloadUpdates(buildDistribution())");
+    expect(read("hooks/usePushNotifications.ts")).toContain(
+      "releasePushDownloadUrl(data, title, buildDistribution())",
+    );
+  });
+
   it("waits for the launch redirect to land and never stacks on another sheet", () => {
     expect(canPresentUpdateSheet([])).toBe(false);
     expect(canPresentUpdateSheet(["sso-callback"])).toBe(false);
