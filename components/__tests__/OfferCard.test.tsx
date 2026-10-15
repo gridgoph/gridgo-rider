@@ -130,3 +130,25 @@ describe("OfferCard delivery pin", () => {
     expect(screen.queryByText("Hand it to")).toBeNull();
   });
 });
+
+describe("OfferCard unanswered pin", () => {
+  it("does not claim who receives it before the client answers", async () => {
+    const point = { lat: 7.06, lng: 125.6, label: "Matina Pangi Road" };
+    await render(
+      <OfferCard
+        offer={{
+          ...offer,
+          dropoff: point,
+          deliveryPin: {
+            version: 1, status: "pending", requestedAt: "2026-10-15T05:00:00Z", confirmedAt: null,
+            point, notes: "", receiverName: "", changeUsed: false,
+          },
+        }}
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Client has not confirmed this pin yet")).toBeTruthy();
+    expect(screen.queryByText("Hand it to")).toBeNull();
+  });
+});

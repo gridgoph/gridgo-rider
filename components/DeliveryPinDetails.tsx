@@ -31,7 +31,8 @@ export function DeliveryPinDetails({ order }: Props) {
   const view = deliveryPinView(order);
   if (!view) return null;
   const { icon: Icon, token } = STATUS[view.status];
-  const hasPin = view.status !== "none" && Boolean(order.deliveryPin);
+  // An empty receiver means the client, but only once the client has answered.
+  const showReceiver = Boolean(view.receiverName) || (view.status === "confirmed" && Boolean(order.deliveryPin));
 
   return (
     <View className="gap-3">
@@ -66,7 +67,7 @@ export function DeliveryPinDetails({ order }: Props) {
         </View>
       ) : null}
 
-      {hasPin ? (
+      {showReceiver ? (
         <View className="gap-0.5" accessibilityRole="text">
           <Text className="text-caption text-text-muted">Hand it to</Text>
           <Text className="text-body-lg font-medium text-text-primary">
