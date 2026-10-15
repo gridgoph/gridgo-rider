@@ -1,7 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
+import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -218,6 +220,12 @@ export default function DeliveryProofScreen() {
         {order ? (
           <>
             <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} navigate />
+
+            {tripDestination(order).kind === "client" ? (
+              <View className="gg-card">
+                <DeliveryPinDetails order={order} />
+              </View>
+            ) : null}
 
             {balanceHeld ? (
               <InlineNotice

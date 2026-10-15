@@ -5,7 +5,10 @@ import { formatPhp } from "@/lib/api";
 import { riderPay, shareLabel } from "@/lib/riderPay";
 
 type Props = {
-  order: Pick<Order, "deliveryFeeMinor" | "riderPayoutMinor" | "riderCommissionBps">;
+  order: Pick<
+    Order,
+    "deliveryFeeMinor" | "riderPayoutMinor" | "riderCommissionBps" | "effectiveDeliveryFeeMinor"
+  >;
   /** "You earn" on a live trip; past and cancelled jobs say it in their own tense. */
   label: string;
   /** Drop the hairline under the final row, as `SpecRow` does. */
