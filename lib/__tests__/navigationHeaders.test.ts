@@ -1,5 +1,6 @@
 import { radius } from "@/constants/theme";
 import {
+  confirmSheetContentStyle,
   confirmSheetScreenOptions,
   multiOriginPushedScreenOptions,
 } from "@/lib/navigationHeaders";
@@ -26,5 +27,17 @@ describe("confirmSheetScreenOptions", () => {
 
   it("sizes the sheet to its contents", () => {
     expect(confirmSheetScreenOptions.sheetAllowedDetents).toBe("fitToContents");
+  });
+});
+
+describe("confirmSheetContentStyle", () => {
+  it("paints an iOS sheet surface down to the screen edge, under the home indicator", () => {
+    // Unset, the strip below the content is the stack's canvas: a black band
+    // under the panel in Dark (the captain's iPhone, "Clear these notifications?").
+    expect(confirmSheetContentStyle("ios", "#141414")).toEqual({ backgroundColor: "#141414" });
+  });
+
+  it("leaves Android on the stack default", () => {
+    expect(confirmSheetContentStyle("android", "#141414")).toBeUndefined();
   });
 });

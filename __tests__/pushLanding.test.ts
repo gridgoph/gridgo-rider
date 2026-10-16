@@ -34,7 +34,7 @@ describe("the notifications recovery on the landing screen", () => {
   it("mounts the explainer from the root shell as the platform's sheet", () => {
     const layout = read("app/_layout.tsx");
     expect(layout).toMatch(/<PushPrompt ready=\{!introPlaying\} \/>/);
-    expect(layout).toMatch(/name="push-permission" options=\{confirmSheetScreenOptions\}/);
+    expect(layout).toMatch(/name="push-permission" options=\{\{ \.\.\.confirmSheetScreenOptions, contentStyle: sheetContent \}\}/);
     expect(read("app/push-permission.tsx")).not.toMatch(/<Modal\b/);
   });
 
