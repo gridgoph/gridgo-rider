@@ -13,6 +13,11 @@ jest.mock("@/lib/api", () => {
   };
 });
 
+jest.mock("@/lib/buildDistribution", () => ({
+  ...jest.requireActual("@/lib/buildDistribution"),
+  installChannel: jest.fn(() => "apk"),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api") as {
   listNotifications: jest.Mock;
@@ -69,6 +74,50 @@ describe("the unread count", () => {
     useNotifications.getState().markRead("a");
     useNotifications.getState().markRead("a");
     expect(useNotifications.getState().unread).toBe(0);
+  });
+});
+
+describe("release notices for another install", () => {
+  const release = (id: string, channel: "apk" | "ios", version: string) =>
+    alert({
+      id,
+      type: "announcement",
+      title: channel === "ios" ? `GRIDGO Rider ${version} is in TestFlight` : `GRIDGO Rider ${version} is ready`,
+      releaseChannel: channel,
+      storeTarget: channel === "ios" ? "testflight" : "apk_download",
+    });
+  const legacy = alert({ id: "legacy", type: "announcement", title: "GRIDGO Rider 1.0.182 is ready" });
+  const inbox = [release("apk185", "apk", "1.0.185"), release("ios5", "ios", "1.0.5"), legacy, release("ios4", "ios", "1.0.4"), alert({ id: "job" })];
+
+  beforeEach(() => {
+    (jest.requireMock("@/lib/buildDistribution").installChannel as jest.Mock).mockReturnValue("ios");
+  });
+
+  afterEach(() => {
+    (jest.requireMock("@/lib/buildDistribution").installChannel as jest.Mock).mockReturnValue("apk");
+  });
+
+  it("are left out of the list and the badge on an iPhone", async () => {
+    api.listNotifications.mockResolvedValue(inbox);
+    await useNotifications.getState().load();
+
+    expect(useNotifications.getState().items?.map((item) => item.id)).toEqual(["ios5", "ios4", "job"]);
+    expect(useNotifications.getState().unread).toBe(3);
+  });
+
+  it("are hidden, never deleted, when the rider clears the inbox", async () => {
+    api.listNotifications.mockResolvedValue(inbox);
+    await useNotifications.getState().load();
+    await useNotifications.getState().clear(useNotifications.getState().items ?? []);
+
+    expect(api.deleteNotification.mock.calls.map(([id]) => id)).toEqual(["ios5", "ios4", "job"]);
+  });
+
+  it("are the only ones an APK install drops", () => {
+    (jest.requireMock("@/lib/buildDistribution").installChannel as jest.Mock).mockReturnValue("apk");
+    useNotifications.getState().adopt(inbox);
+
+    expect(useNotifications.getState().items?.map((item) => item.id)).toEqual(["apk185", "legacy", "job"]);
   });
 });
 

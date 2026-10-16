@@ -80,6 +80,22 @@ describe("every route is reachable and escapable", () => {
     expect(undeclared).toEqual([]);
   });
 
+  it("pushes every screen onto the root stack, never a nested one", () => {
+    // A nested stack's first screen has nothing behind it in its own stack,
+    // so iOS draws an empty slot where the back chevron belongs — what the
+    // supplier app's job screens shipped with. The tab shell is the one
+    // nested navigator, and it is a root.
+    const layouts = (function find(dir: string, prefix: string): string[] {
+      return readdirSync(dir).flatMap((entry) => {
+        const path = join(dir, entry);
+        if (entry === "__tests__") return [];
+        if (statSync(path).isDirectory()) return find(path, `${prefix}${entry}/`);
+        return entry === "_layout.tsx" ? [`${prefix}${entry}`] : [];
+      });
+    })(APP, "");
+    expect(layouts.sort()).toEqual(["(tabs)/_layout.tsx", "_layout.tsx"]);
+  });
+
   it("gives every pushed screen a configured back control", () => {
     const missing = [...screens.entries()]
       .filter(([name]) => !ROOTS.has(name))

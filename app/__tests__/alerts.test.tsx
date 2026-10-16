@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { Linking } from "react-native";
 
 import AlertsScreen from "@/app/alerts";
 import type { Notification, Order } from "@/lib/api";
@@ -25,6 +26,12 @@ jest.mock("@/lib/api", () => ({
   listOrders: jest.fn(),
   deleteNotification: jest.fn(),
   markNotificationsRead: jest.fn(async () => undefined),
+}));
+
+// The captain's iPhone: a TestFlight install.
+jest.mock("@/lib/buildDistribution", () => ({
+  ...jest.requireActual("@/lib/buildDistribution"),
+  installChannel: () => "ios",
 }));
 
 const api = jest.requireMock("@/lib/api") as {
@@ -96,6 +103,31 @@ describe("AlertsScreen", () => {
     expect(await screen.findByText("Nothing from dispatch")).toBeTruthy();
     expect(screen.queryByText(dispatch.title)).toBeNull();
     expect(screen.queryByText("Clear notifications")).toBeNull();
+  });
+
+  it("shows an iPhone only its TestFlight release notices, and counts only those", async () => {
+    const release = (id: string, title: string, releaseChannel: string, storeTarget: string): Notification => ({
+      ...dispatch, id, title, body: "Update now.", type: "announcement", orderId: undefined, releaseChannel, storeTarget,
+    });
+    api.listNotifications.mockResolvedValue([
+      release("apk185", "GRIDGO Rider 1.0.185 is ready", "apk", "apk_download"),
+      release("ios5", "GRIDGO Rider 1.0.5 is in TestFlight", "ios", "testflight"),
+      { ...dispatch, id: "apk182", title: "GRIDGO Rider 1.0.182 is ready", type: "announcement", orderId: undefined },
+      release("ios4", "GRIDGO Rider 1.0.4 is in TestFlight", "ios", "testflight"),
+    ]);
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    await render(<AlertsScreen />);
+
+    expect(await screen.findByText("Mark all 2 read")).toBeTruthy();
+    expect(screen.getByText("GRIDGO Rider 1.0.5 is in TestFlight")).toBeTruthy();
+    expect(screen.getByText("GRIDGO Rider 1.0.4 is in TestFlight")).toBeTruthy();
+    expect(screen.queryByText("GRIDGO Rider 1.0.185 is ready")).toBeNull();
+    expect(screen.queryByText("GRIDGO Rider 1.0.182 is ready")).toBeNull();
+    expect(useNotifications.getState().unread).toBe(2);
+
+    await fireEvent.press(screen.getByText("GRIDGO Rider 1.0.5 is in TestFlight"));
+    expect(open).toHaveBeenCalledWith("itms-beta://");
+    open.mockRestore();
   });
 });
 
