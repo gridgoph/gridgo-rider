@@ -226,8 +226,8 @@ describe("GridgoTabBar", () => {
     // it. Android is edge-to-edge, so `navigationBars` reaches JS in both
     // navigation modes — a three-button phone reports ~48dp, not zero.
     it.each([
-      ["iPhone with a home indicator", "ios", 34, 83],
-      ["iPhone with a home button", "ios", 0, 57],
+      ["iPhone with a home indicator", "ios", 34, 91],
+      ["iPhone with a home button", "ios", 0, 65],
       ["Android, gesture navigation", "android", 24, 104],
       ["Android, three-button navigation", "android", 48, 128],
       ["Android or web, no inset", "android", 0, 88],
@@ -235,11 +235,11 @@ describe("GridgoTabBar", () => {
       expect(tabBarHeight(os, inset)).toBe(expected);
     });
 
-    it("puts a home-indicator iPhone on UIKit's own 83pt", () => {
-      // 49pt content row + the 34pt inset, which is the platform's own total —
-      // and the same number gridgo-client and gridgo-supplier land on.
-      expect(tabBarHeight("ios", 34)).toBe(49 + 34);
-      expect(tabBarMetrics("ios").columnHeight).toBe(49);
+    it("adds nothing under the labels on a home-indicator iPhone", () => {
+      // 57pt content row + the 34pt inset, with nothing added on top of it —
+      // the same number gridgo-client lands on.
+      expect(tabBarHeight("ios", 34)).toBe(57 + 34);
+      expect(tabBarMetrics("ios").columnHeight).toBe(57);
     });
 
     it("keeps Material's 80dp container above the system inset, not inside it", () => {
@@ -253,11 +253,13 @@ describe("GridgoTabBar", () => {
   });
 
   describe("tabBarMetrics", () => {
-    it("gives iOS the Human Interface Guidelines 49pt row", () => {
+    it("gives iOS a 57pt row: the HIG's 49 plus air above the glyph", () => {
       const m = tabBarMetrics("ios");
-      expect(m.columnHeight).toBe(49);
-      // 4 + 24 icon + 2 + 16 label + 3 = 49, the row exactly.
-      expect(m.itemPaddingTop + 24 + m.itemGap + TAB_LABEL_BOX + m.itemPaddingBottom).toBe(49);
+      expect(m.columnHeight).toBe(57);
+      // 12 + 24 icon + 2 + 16 label + 3 = 57, the row exactly.
+      expect(m.itemPaddingTop + 24 + m.itemGap + TAB_LABEL_BOX + m.itemPaddingBottom).toBe(57);
+      // A home-indicator iPhone is 91pt — nowhere near the 122pt "too high" bar.
+      expect(tabBarHeight("ios", 34)).toBe(91);
     });
 
     it("gives Android the Material 3 80dp container on the fleet's item padding", () => {
@@ -293,15 +295,15 @@ describe("GridgoTabBar", () => {
       expect(tabBarActionOverhang("android")).toBe(8);
     });
 
-    it("rises above iOS's 49pt row rather than shrinking or losing its label", () => {
-      // 44 + 16 + 3 = 63 against a 49pt row.
-      expect(tabBarActionOverhang("ios")).toBe(14);
+    it("rises above iOS's 57pt row rather than shrinking or losing its label", () => {
+      // 44 + 16 + 3 = 63 against a 57pt row.
+      expect(tabBarActionOverhang("ios")).toBe(6);
     });
 
     it("does not measure the overhang into the bar's height", () => {
       // The whole point: the disc is drawn above the row, never inside it, so
-      // iOS stays on UIKit's 83pt with the disc raised.
-      expect(tabBarHeight("ios", 34)).toBe(83);
+      // iOS stays on its 91pt with the disc raised.
+      expect(tabBarHeight("ios", 34)).toBe(91);
       expect(tabBarActionOverhang("ios")).toBeGreaterThan(0);
     });
 
@@ -323,12 +325,13 @@ describe("GridgoTabBar", () => {
 
   describe("the gap above the icon, measured from the painted edge", () => {
     // The captain's report: the items sat too close to the top edge against
-    // gridgo-supplier. These are the supplier's own numbers, and this bar must
-    // land on them exactly — the whole point of the fix.
+    // gridgo-supplier. Android keeps the supplier's 20dp; iOS's 4pt left a
+    // scrolled list touching the icons (16 Oct 2026), so it now has
+    // gridgo-client's 12pt.
     it.each([
-      ["iOS", "ios", 4],
+      ["iOS", "ios", 12],
       ["Android", "android", 20],
-    ])("matches gridgo-supplier on %s", (_platform, os, expected) => {
+    ])("leaves air above the glyph on %s", (_platform, os, expected) => {
       expect(tabBarTopGap(os)).toBe(expected);
     });
 
@@ -352,10 +355,10 @@ describe("GridgoTabBar", () => {
     });
 
     it("leaves the approved bar heights untouched", () => {
-      // Fixing the gap moved the painted edge and the bottom padding, never
-      // the totals — those are the captain's, and settled.
-      expect(tabBarHeight("ios", 34)).toBe(83);
-      expect(tabBarHeight("ios", 0)).toBe(57);
+      // Fixing the gap moved the painted edge and the bottom padding. Only the
+      // iOS row has moved since, for the 16 Oct 2026 report; Android is settled.
+      expect(tabBarHeight("ios", 34)).toBe(91);
+      expect(tabBarHeight("ios", 0)).toBe(65);
       expect(tabBarHeight("android", 24)).toBe(104);
       expect(tabBarHeight("android", 48)).toBe(128);
       expect(tabBarHeight("android", 0)).toBe(88);
