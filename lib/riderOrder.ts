@@ -1,6 +1,7 @@
 import type { Order, OrderStop } from "@/lib/api";
 import type { LatLng } from "@/lib/geo";
 import { isValidLatLng } from "@/lib/geo";
+import { handoverStep } from "@/lib/shopHandover";
 
 /** States where this rider is mid-job. */
 export const ACTIVE_TRIP_STATES = [
@@ -14,6 +15,10 @@ export type ActiveTripState = (typeof ACTIVE_TRIP_STATES)[number];
 /** Trip phases the Active screen drives, in order. */
 export type TripPhase =
   | "pickup_checks"
+  /** `rider_packs` only: checked unpacked, the packed photo is next. */
+  | "pickup_pack"
+  /** `rider_packs` only: packed and photographed, the shop signs next. */
+  | "pickup_sign"
   | "pickup_blocked"
   | "start_delivery"
   | "delivery_proof"
@@ -65,7 +70,10 @@ export function orderStateLabel(state: string): string {
  * pickup about to happen are the same server state and could not be more
  * different to the rider standing there.
  */
-export function orderStateChip(order: Pick<Order, "state" | "pickupChecklist">): {
+export function orderStateChip(
+  order: Pick<Order, "state" | "pickupChecklist"> &
+    Partial<Pick<Order, "riderId" | "handoverFlow" | "shopHandover" | "riderAssignedAt">>,
+): {
   label: string;
   tone: "success" | "warning" | "error" | "info" | "neutral";
   icon: "circle-check" | "triangle-alert" | "circle-x" | "clock" | "square-pen";
@@ -75,6 +83,11 @@ export function orderStateChip(order: Pick<Order, "state" | "pickupChecklist">):
   }
   if (order.state === "rider_assigned" && order.pickupChecklist?.status === "escalation_resolved") {
     return { label: "Check it again", tone: "warning", icon: "triangle-alert" };
+  }
+  if (order.state === "rider_assigned") {
+    const step = handoverStep({ riderId: null, ...order });
+    if (step === "pack") return { label: "Checked, pack next", tone: "info", icon: "clock" };
+    if (step === "sign") return { label: "Packed, shop signs next", tone: "info", icon: "clock" };
   }
 
   switch (order.state) {
@@ -140,11 +153,22 @@ export function isTransportBlocked(order: Pick<Order, "pickupChecklist">): boole
 }
 
 /**
- * Whether location sharing is required for this trip state.
- * Only while the package is in transit with the rider.
+ * Whether location sharing is required for this trip state: from the moment
+ * the rider accepts the pick-up until the job leaves their hands (C2BE8E7A).
+ *
+ * Who sees it is the API's rule, not this app's: the shop only on the way to
+ * the shop (`rider_assigned`), losing it at pick-up; the client only after
+ * pick-up, near the drop-off. `locationAudience` words that for the rider.
  */
 export function shouldShareLocation(state: string): boolean {
-  return state === "picked_up" || state === "out_for_delivery";
+  return state === "rider_assigned" || state === "picked_up" || state === "out_for_delivery";
+}
+
+/** Who the rider's position is shared with in this trip state. */
+export function locationAudience(state: string): "shop" | "client" | null {
+  if (state === "rider_assigned") return "shop";
+  if (state === "picked_up" || state === "out_for_delivery") return "client";
+  return null;
 }
 
 export function isActiveTripState(state: string): state is ActiveTripState {
@@ -187,8 +211,12 @@ export function tripPhase(order: Order | null): TripPhase {
   if (!order) return "idle";
 
   switch (order.state) {
-    case "rider_assigned":
-      return isTransportBlocked(order) ? "pickup_blocked" : "pickup_checks";
+    case "rider_assigned": {
+      if (isTransportBlocked(order)) return "pickup_blocked";
+      // A `rider_packs` counter has two more recorded steps after the check.
+      const step = handoverStep(order);
+      return step === "pack" ? "pickup_pack" : step === "sign" ? "pickup_sign" : "pickup_checks";
+    }
     case "picked_up":
       return "start_delivery";
     case "out_for_delivery":
@@ -210,6 +238,10 @@ export function primaryActionLabel(phase: TripPhase, toOffice = false): string |
   switch (phase) {
     case "pickup_checks":
       return "Check with the supplier";
+    case "pickup_pack":
+      return "Photograph the packed job";
+    case "pickup_sign":
+      return "Shop signs the handoff";
     case "pickup_blocked":
       return null;
     case "start_delivery":
@@ -225,6 +257,8 @@ export function primaryActionLabel(phase: TripPhase, toOffice = false): string |
 export function activeStopKind(phase: TripPhase): "pickup" | "dropoff" | null {
   switch (phase) {
     case "pickup_checks":
+    case "pickup_pack":
+    case "pickup_sign":
     case "pickup_blocked":
       return "pickup";
     case "start_delivery":

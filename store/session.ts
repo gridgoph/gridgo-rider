@@ -9,6 +9,12 @@ import { create } from "zustand";
 import { ApiError, type User, type RiderEnrollment } from "@/lib/api";
 import * as api from "@/lib/api";
 import { SESSION_READ_TIMEOUT_MS } from "@/lib/launchGate";
+import {
+  isLegalRefusal,
+  isLegalVersionChanged,
+  LEGAL_VERSION_CHANGED,
+  SIGNUP_CONSENT_REFUSED,
+} from "@/lib/legal";
 import { CLERK_JOIN_TIMEOUT_MS } from "@/lib/authGate";
 import {
   parseStoredSession,
@@ -429,7 +435,11 @@ export const useSession = create<SessionState>((set, get) => ({
       }
       set({
         loading: false,
-        error: signupErrorMessage(e),
+        error: isLegalRefusal(e)
+          ? isLegalVersionChanged(e)
+            ? LEGAL_VERSION_CHANGED
+            : SIGNUP_CONSENT_REFUSED
+          : signupErrorMessage(e),
       });
       return false;
     }

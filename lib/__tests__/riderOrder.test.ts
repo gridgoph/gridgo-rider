@@ -19,6 +19,7 @@ import {
   selectActiveTrip,
   selectOffers,
   shouldShareLocation,
+  locationAudience,
   signOffPrompt,
   sortTimelineNewestFirst,
   stopLatLng,
@@ -168,6 +169,45 @@ describe("tripPhase ladder", () => {
     });
     expect(isTransportBlocked(resolved)).toBe(false);
     expect(tripPhase(resolved)).toBe("pickup_checks");
+  });
+
+  it("adds the packed photo and the signature on a rider_packs job", () => {
+    const base = { id: "a", state: "rider_assigned", riderId: "r1", handoverFlow: "rider_packs" as const };
+    expect(tripPhase(order(base))).toBe("pickup_checks");
+    const inspected = {
+      ...checklist("inspected"),
+      inspectionId: "inspection_1",
+      completedBy: "r1",
+    };
+    expect(tripPhase(order({ ...base, pickupChecklist: inspected }))).toBe("pickup_pack");
+    expect(orderStateChip(order({ ...base, pickupChecklist: inspected })).label).toBe(
+      "Checked, pack next",
+    );
+    const packed = order({
+      ...base,
+      pickupChecklist: inspected,
+      shopHandover: {
+        packingPhotos: [{ at: "t", by: "r1", fileId: "f", inspectionId: "inspection_1" }],
+      },
+    });
+    expect(tripPhase(packed)).toBe("pickup_sign");
+    expect(primaryActionLabel("pickup_pack")).toBe("Photograph the packed job");
+    expect(primaryActionLabel("pickup_sign")).toBe("Shop signs the handoff");
+    expect(activeStopKind("pickup_pack")).toBe("pickup");
+    expect(activeStopKind("pickup_sign")).toBe("pickup");
+    // Six passes on the unpacked items move nothing.
+    expect(isPickupCleared(packed)).toBe(false);
+  });
+
+  it("keeps a legacy job on the old ladder even with an inspected record", () => {
+    const legacy = order({
+      id: "a",
+      state: "rider_assigned",
+      riderId: "r1",
+      handoverFlow: "legacy",
+      pickupChecklist: { ...checklist("inspected"), inspectionId: "i", completedBy: "r1" },
+    });
+    expect(tripPhase(legacy)).toBe("pickup_checks");
   });
 
   it("keeps the rider at the shop's end of the map until they set off", () => {
@@ -328,11 +368,21 @@ describe("selectOffers / selectActiveTrip", () => {
 });
 
 describe("location sharing window", () => {
-  it("shares only while the package is with the rider en route", () => {
-    expect(shouldShareLocation("rider_assigned")).toBe(false);
+  // C2BE8E7A: the shop watches the rider come to it, so sharing starts at acceptance.
+  it("shares from acceptance until the job leaves the rider's hands", () => {
+    expect(shouldShareLocation("ready_for_dispatch")).toBe(false);
+    expect(shouldShareLocation("rider_assigned")).toBe(true);
     expect(shouldShareLocation("picked_up")).toBe(true);
     expect(shouldShareLocation("out_for_delivery")).toBe(true);
+    expect(shouldShareLocation("awaiting_collection")).toBe(false);
     expect(shouldShareLocation("issue_window_open")).toBe(false);
+  });
+
+  it("names the shop as the watcher before pick-up and the client after", () => {
+    expect(locationAudience("rider_assigned")).toBe("shop");
+    expect(locationAudience("picked_up")).toBe("client");
+    expect(locationAudience("out_for_delivery")).toBe("client");
+    expect(locationAudience("delivered")).toBeNull();
   });
 });
 

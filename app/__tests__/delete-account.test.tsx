@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
-import { requestAccountDeletion } from "@/lib/api";
+import { createPrivacyRequest } from "@/lib/api";
 import DeleteAccountScreen from "@/app/delete-account";
 
 jest.mock("expo-router", () => ({ router: { push: jest.fn(), back: jest.fn() } }));
-jest.mock("@/lib/api", () => ({ requestAccountDeletion: jest.fn() }));
+jest.mock("@/lib/api", () => ({ createPrivacyRequest: jest.fn() }));
 
 const mockStart = jest.fn(async () => ({ status: "needs_first_factor", supportedFirstFactors: [{ strategy: "password" }] }));
 const mockAttempt = jest.fn(async () => ({ status: "complete" }));
@@ -24,14 +24,14 @@ jest.mock("@clerk/expo", () => ({
   }),
 }));
 
-const send = requestAccountDeletion as jest.Mock;
+const send = createPrivacyRequest as jest.Mock;
 
 /**
  * The whole point of the screen: the request goes out only after Clerk has
  * re-checked the password typed here. One test per file (see AGENTS.md).
  */
 it("checks the typed password with the sign-in, then sends one deletion request", async () => {
-  send.mockResolvedValue({ ok: true, message: "We will delete your account within 30 days" });
+  send.mockResolvedValue({ id: "pr_1", kind: "deletion", status: "pending", requestedAt: "2026-10-09T02:00:00.000Z", dueAt: "2026-10-24T02:00:00.000Z" });
   await render(<DeleteAccountScreen />);
 
   expect(screen.getByText("CONFIRM IT IS YOU")).toBeTruthy();
@@ -47,5 +47,5 @@ it("checks the typed password with the sign-in, then sends one deletion request"
   expect(mockAttempt).toHaveBeenCalledWith({ strategy: "password", password: "secret-pass" });
   expect(send).toHaveBeenCalledTimes(1);
   expect(mockAttempt.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
-  expect(screen.getByText("We will delete your account within 30 days")).toBeTruthy();
+  expect(screen.getByText("GRIDGO will answer by 24 Oct 2026.")).toBeTruthy();
 });

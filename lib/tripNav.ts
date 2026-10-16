@@ -39,9 +39,16 @@ export function isGridgoOfficePoint(point: LatLng | null | undefined): boolean {
 
 /**
  * After the shop: the client door, or GRIDGO's counter for a collect job.
+ *
+ * The API projects `dropoff` as the effective destination, and a delivery
+ * pin's `point` is that same final pin (`docs/DELIVERY_PIN_API.md`). The pin
+ * wins when both are present, so navigation can never follow a stale stop.
  */
 export function tripDestination(
-  order: Pick<Order, "dropoff" | "address" | "fulfillmentMode" | "dropoffConfirmation">,
+  order: Pick<
+    Order,
+    "dropoff" | "address" | "fulfillmentMode" | "dropoffConfirmation" | "deliveryPin"
+  >,
 ): NextStop {
   if (order.fulfillmentMode === "pickup" || isGridgoOfficePoint(stopLatLng(order.dropoff))) {
     return {
@@ -54,16 +61,22 @@ export function tripDestination(
       navTitle: "TO GRIDGO OFFICE",
     };
   }
-  const point = stopLatLng(order.dropoff);
+  const pin = order.deliveryPin;
+  const pinPoint = stopLatLng(pin?.point);
+  const point = pinPoint ?? stopLatLng(order.dropoff);
+  const confirmed =
+    pin?.status === "confirmed" || (!pin && order.dropoffConfirmation?.status === "confirmed");
   return {
     kind: "client",
     cardKind: "dropoff",
     point,
-    label: dropoffLabel(order),
-    overline: order.dropoffConfirmation?.status === "confirmed"
+    label: (pinPoint && pin?.point.label?.trim()) || dropoffLabel(order),
+    overline: confirmed
       ? "NEXT STOP · CONFIRMED DROP-OFF"
       : "NEXT STOP · CLIENT",
-    heading: "Hand the package to the client",
+    heading: pin?.receiverName?.trim()
+      ? `Hand the package to ${pin.receiverName.trim()}`
+      : "Hand the package to the client",
     navTitle: "TO THE CLIENT",
   };
 }

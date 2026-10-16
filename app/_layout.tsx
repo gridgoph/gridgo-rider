@@ -1,5 +1,6 @@
 import { useTripTracking } from "@/hooks/useTripTracking";
 import { useAlertStream } from "@/hooks/useAlertStream";
+import { useIncomingCalls } from "@/hooks/useIncomingCalls";
 import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
 import "../global.css";
 
@@ -27,6 +28,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { BrandIntro } from "@/components/BrandIntro";
+import { OngoingCallBar } from "@/components/OngoingCallBar";
 import { SessionShell } from "@/components/SessionShell";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
@@ -35,10 +37,12 @@ import { useArrivalAlert } from "@/hooks/useArrivalAlert";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
+import { useLegalGate } from "@/hooks/useLegalGate";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { usePushPrompt } from "@/hooks/usePushPrompt";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
+  callScreenOptions,
   confirmSheetScreenOptions,
   fullBleedScreenOptions,
   multiOriginPushedScreenOptions,
@@ -103,6 +107,9 @@ function AppShell() {
   usePushNotifications();
   useAlertStream();
   useSupportChatUnread();
+  // Whether GRIDGO has terms waiting for this rider, on every sign-in and
+  // every return to the app. The launch and the auth gate read the answer.
+  useLegalGate();
   // Same seat as push: arrival is about where the phone is, not which screen
   // is open, so the geofence lives here rather than on the Active tab.
   useTripTracking();
@@ -170,6 +177,7 @@ function AppShell() {
         {launchReady ? (
         <AuthGate>
           <RootStack />
+          <CallWatcher />
           <AppUpdatePrompt ready={!introPlaying} />
           <PushPrompt ready={!introPlaying} />
         </AuthGate>
@@ -193,6 +201,15 @@ function AppShell() {
 function AppUpdatePrompt({ ready }: { ready: boolean }) {
   useAppUpdateCheck({ ready });
   return null;
+}
+
+/**
+ * Rings for incoming calls and, while a call is going on another screen, draws
+ * the bar back to it. Mounted with the navigator it pushes the call screen onto.
+ */
+function CallWatcher() {
+  useIncomingCalls();
+  return <OngoingCallBar />;
 }
 
 /**
@@ -309,9 +326,39 @@ function RootStack() {
         }}
       />
       {/*
-        Reached only from Danger zone on Your details. It asks for the
-        password (or an emailed code) before anything is sent.
+        Reached from Your data and from Danger zone on Your details. It asks
+        for the password (or an emailed code) before anything is sent.
       */}
+      {/*
+        Legal & Privacy (report 879B25FC). A document is public: the apply
+        form links it before there is an account. The rest is signed in, and
+        open even while terms wait to be agreed — see `LEGAL_OPEN_ROOTS`.
+      */}
+      <Stack.Screen
+        name="legal/index"
+        options={{ title: "Legal & Privacy", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="legal/[versionId]"
+        options={{ title: "Legal", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="privacy/index"
+        options={{ title: "Your data", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="privacy/request"
+        options={{ title: "Your data", ...multiOriginPushedScreenOptions }}
+      />
+      {/*
+        Terms waiting to be agreed. While they are, the auth gate closes every
+        ordinary screen behind this one, so it has nothing to go back to: no
+        header, no swipe, and Sign out on the screen itself.
+      */}
+      <Stack.Screen
+        name="legal/review"
+        options={{ headerShown: false, title: "Terms", gestureEnabled: false }}
+      />
       <Stack.Screen
         name="delete-account"
         options={{
@@ -336,6 +383,10 @@ function RootStack() {
         options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
+        name="trip/pack"
+        options={{ title: "Packed photo", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
         name="trip/handoff"
         options={{ title: "Supplier signature", ...multiOriginPushedScreenOptions }}
       />
@@ -347,10 +398,18 @@ function RootStack() {
         name="trip/delivery"
         options={{ title: "Delivery proof", ...multiOriginPushedScreenOptions }}
       />
-      {/* The rider and the client, during one delivery (gridgo-client#198). */}
+      {/*
+        The rider and the client, during one delivery (gridgo-client#198), and
+        the rider and the shop, from acceptance (C2BE8E7A). Two threads, so the
+        header names whose it is.
+      */}
       <Stack.Screen
         name="trip/messages"
-        options={{ title: "Messages", ...multiOriginPushedScreenOptions }}
+        options={{ title: "Client messages", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="trip/shop-messages"
+        options={{ title: "Shop messages", ...multiOriginPushedScreenOptions }}
       />
       {/*
         Confirmations are the platform's own sheet, not a drawn overlay —
@@ -363,7 +422,13 @@ function RootStack() {
         by dragging in the direction they are trying to pan.
       */}
       <Stack.Screen name="trip/map" options={fullBleedScreenOptions} />
+      {/*
+        A voice call with the client or the shop (16B159C0): full screen,
+        over everything, whether it was placed here or rang in.
+      */}
+      <Stack.Screen name="call" options={callScreenOptions} />
       <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
+      <Stack.Screen name="trip/arrived-packed" options={confirmSheetScreenOptions} />
       <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
       <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
       <Stack.Screen name="push-permission" options={confirmSheetScreenOptions} />

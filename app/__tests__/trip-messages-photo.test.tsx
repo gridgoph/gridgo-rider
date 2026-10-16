@@ -74,7 +74,7 @@ it("uploads a picked photo as a delivery chat image and sends it to the client",
 
   fireEvent.press(await screen.findByLabelText("Add photos"));
   expect(await screen.findByText("door.jpg")).toBeTruthy();
-  fireEvent.press(screen.getByLabelText("Send"));
+  fireEvent.press(screen.getByLabelText("Send to the client"));
 
   await waitFor(() => expect(mockSendDeliveryMessage).toHaveBeenCalledWith("order_1", "", { attachmentFileIds: ["file_door"] }));
   expect(mockUploadChatImage).toHaveBeenCalledWith(

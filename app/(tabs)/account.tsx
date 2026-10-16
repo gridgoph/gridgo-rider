@@ -1,6 +1,12 @@
-import { PrivacyPolicyButton } from "@/components/AccountPrivacy";
 import { useUser } from "@clerk/expo";
-import { Bell, ChevronRight, History, Settings2 } from "lucide-react-native";
+import {
+  Bell,
+  ChevronRight,
+  FileText,
+  History,
+  LockKeyhole,
+  Settings2,
+} from "lucide-react-native";
 import { useCallback } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -11,13 +17,12 @@ import { Screen } from "@/components/Screen";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
+import { useConfirmedSignOut } from "@/hooks/useConfirmedSignOut";
 import { useThemeColors } from "@/hooks/useTheme";
 import { clerkDisplayName } from "@/lib/clerkAuth";
 import { approvalPresentation } from "@/lib/riderApproval";
-import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
-import { askConfirm } from "@/store/sheets";
 
 /**
  * Who this phone is signed in as, and the way to everything that is not a
@@ -32,11 +37,10 @@ export default function AccountScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const user = useSession((s) => s.user);
-  const logout = useSession((s) => s.logout);
   const refreshUser = useSession((s) => s.refreshUser);
   const { user: clerkUser } = useUser();
   const unread = useNotifications((s) => s.unread);
-  const trip = useActiveTrip((s) => s.order);
+  const signOut = useConfirmedSignOut();
   const approval = approvalPresentation(user);
   const personName = clerkDisplayName(clerkUser) || user?.name || "Signed out";
 
@@ -45,19 +49,6 @@ export default function AccountScreen() {
       void refreshUser();
     }, [refreshUser]),
   );
-
-  async function signOut() {
-    const confirmed = await askConfirm({
-      question: "Sign out of GRIDGO on this phone?",
-      consequence: trip
-        ? "This phone will stop sharing your position. The job stays with Operations — signing out does not close it."
-        : "Offers stop arriving on this phone. You will need your email and password to get back in.",
-      confirmLabel: "Sign out",
-      cancelLabel: "Stay signed in",
-      destructive: true,
-    });
-    if (confirmed) void logout();
-  }
 
   return (
     <Screen edges={["top"]}>
@@ -145,13 +136,28 @@ export default function AccountScreen() {
         </View>
 
         {/*
-          The policy is a button of its own. Deleting the account is not
-          here: it lives under Danger zone on Your details, behind a check
-          that it is really the account holder asking.
+          The documents GRIDGO works by and what a rider can ask about their
+          own data — read from the API, so a newly published version is here
+          without an app update. Deleting the account is one of the asks on
+          Your data, still behind a check that it is really the account holder.
         */}
         <View className="gap-2">
           <Text className="text-overline text-text-muted">PRIVACY</Text>
-          <PrivacyPolicyButton />
+          <View className="gg-card-flush">
+            <DestinationRow
+              icon={FileText}
+              label="Legal & Privacy"
+              detail="Rider Agreement, Terms of Service, Privacy Notice and GRIDGO's policies"
+              onPress={() => router.push("/legal")}
+            />
+            <DestinationRow
+              icon={LockKeyhole}
+              label="Your data"
+              detail="See, correct or delete the personal data GRIDGO holds about you"
+              onPress={() => router.push("/privacy")}
+              last
+            />
+          </View>
         </View>
 
         <SecondaryButton label="Sign out" onPress={() => void signOut()} />

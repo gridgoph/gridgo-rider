@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { BadgeCheck, ClipboardCheck, Package, type LucideIcon } from "lucide-react-native";
+import { BadgeCheck, ClipboardCheck, MessageCircle, Package, type LucideIcon } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Linking, Text, View } from "react-native";
 
@@ -15,6 +15,7 @@ import { useSession } from "@/store/session";
 
 const REASON_ICONS: Record<PushPromptReason["icon"], LucideIcon> = {
   offer: Package,
+  message: MessageCircle,
   pickup: ClipboardCheck,
   approval: BadgeCheck,
 };

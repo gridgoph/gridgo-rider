@@ -2,7 +2,8 @@ import { Check } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
-import { PICKUP_CHECKS } from "@/lib/pickupChecklist";
+import type { HandoverFlow } from "@/lib/api";
+import { pickupChecksFor } from "@/lib/pickupChecklist";
 import type { RecordedCountLine } from "@/lib/pickupCount";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   checkedAt: string | null;
   /** The pieces counted per line. Null on an API without counts. */
   counts?: RecordedCountLine[] | null;
+  /** Words the six as this job's counter does: unpacked on `rider_packs`. */
+  flow?: HandoverFlow | null;
 };
 
 /**
@@ -25,7 +28,7 @@ type Props = {
  * number ordered, so the signer puts their name to the figures and not only
  * to a list of ticks.
  */
-export function PassedChecksSummary({ checkedAt, counts }: Props) {
+export function PassedChecksSummary({ checkedAt, counts, flow = null }: Props) {
   const colors = useThemeColors();
 
   return (
@@ -38,7 +41,7 @@ export function PassedChecksSummary({ checkedAt, counts }: Props) {
       </View>
 
       <View className="flex-row flex-wrap">
-        {PICKUP_CHECKS.map((check) => (
+        {pickupChecksFor(flow).map((check) => (
           <View
             key={check.code}
             className="w-1/2 flex-row items-center gap-2 py-1 pr-2"
@@ -59,7 +62,9 @@ export function PassedChecksSummary({ checkedAt, counts }: Props) {
 
       {counts?.length ? (
         <View className="gap-2 border-t border-outline-subtle pt-3">
-          <Text className="text-caption text-text-muted">Counted together</Text>
+          <Text className="text-caption text-text-muted">
+            {flow === "rider_packs" ? "Counted together, unpacked" : "Counted together"}
+          </Text>
           {counts.map((line) => {
             const counted = line.countedQuantity.toLocaleString("en-PH");
             const expected = line.expectedQuantity.toLocaleString("en-PH");

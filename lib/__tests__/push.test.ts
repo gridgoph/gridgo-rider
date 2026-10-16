@@ -1,4 +1,5 @@
 import {
+  channelAudibility,
   EMPTY_PUSH_PROMPT_MEMORY,
   PUSH_PROMPT_REOFFER_MS,
   devicePlatform,
@@ -106,6 +107,26 @@ describe("pushTargetRoute", () => {
     expect(
       pushTargetRoute(parsePushData({ type: "delivery_message", orderId: "ord demo/1" })),
     ).toBe("/trip/messages?orderId=ord%20demo%2F1");
+  });
+
+  // C2BE8E7A: the shop's thread and the client's are separate routes, so a tap
+  // can only open the conversation the message was written in.
+  it("opens the shop's conversation, never the client's, for a message from the shop", () => {
+    expect(
+      pushTargetRoute(parsePushData({ type: "pickup_chat_message", orderId: "ord demo/1" })),
+    ).toBe("/trip/shop-messages?orderId=ord%20demo%2F1");
+  });
+
+  it("opens the exact support conversation the owner's notification names", () => {
+    const thread = "0b9a1f2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c";
+    expect(pushTargetRoute(parsePushData({ type: "support_message" }), thread)).toBe(`/chat/${thread}`);
+  });
+
+  it("opens chat history, never a guessed thread, when a support reply has no usable thread", () => {
+    expect(pushTargetRoute(parsePushData({ type: "support_message" }))).toBe("/chat");
+    expect(pushTargetRoute(parsePushData({ type: "support_message" }), "not-a-thread")).toBe("/chat");
+    // An orderId on a support push must not send it to a trip.
+    expect(pushTargetRoute(parsePushData({ type: "support_message", orderId: "ord_1" }))).toBe("/chat");
   });
 
   it("opens Alerts when there is no job behind the alert", () => {
@@ -221,7 +242,10 @@ describe("pushOfferCopy", () => {
     expect(copy.body).toMatch(/job is offered to you/i);
     expect(copy.body).toMatch(/pickup check/i);
     expect(copy.body).toMatch(/approved/i);
-    expect(copy.body).not.toMatch(/shop/i);
+    expect(copy.body).toMatch(/sends you a message/i);
+    // The shop appears only as someone who messages the rider, never as the
+    // reader's own business.
+    expect(copy.body).not.toMatch(/your (print )?shop|production|orders? (in|to) your/i);
     expect(copy.body).not.toMatch(/payout/i);
     expect(copy.action).toMatch(/turn on/i);
   });
@@ -320,7 +344,56 @@ describe("the notifications explainer", () => {
   });
 
   it("promises the approval alert only while there is an approval to wait for", () => {
-    expect(pushPromptReasons(true).map((r) => r.icon)).toEqual(["offer", "pickup", "approval"]);
-    expect(pushPromptReasons(false).map((r) => r.icon)).toEqual(["offer", "pickup"]);
+    expect(pushPromptReasons(true).map((r) => r.icon)).toEqual(["offer", "message", "pickup", "approval"]);
+    expect(pushPromptReasons(false).map((r) => r.icon)).toEqual(["offer", "message", "pickup"]);
+  });
+});
+
+describe("channelAudibility", () => {
+  // The module's own enum values, as the store passes them.
+  const levels = { none: 2, default: 5 };
+
+  it("is audible at default importance or higher with a sound", () => {
+    expect(channelAudibility({ importance: 6, sound: "default" }, levels)).toBe("audible");
+    expect(channelAudibility({ importance: 5, sound: "custom" }, levels)).toBe("audible");
+  });
+
+  it("is silent when the rider removed the sound or lowered importance", () => {
+    expect(channelAudibility({ importance: 6, sound: null }, levels)).toBe("silent");
+    expect(channelAudibility({ importance: 4, sound: "default" }, levels)).toBe("silent");
+    expect(channelAudibility({ importance: 3, sound: "default" }, levels)).toBe("silent");
+  });
+
+  it("is off when the rider turned the channel off", () => {
+    expect(channelAudibility({ importance: 2, sound: "default" }, levels)).toBe("off");
+  });
+
+  it("says nothing it cannot read", () => {
+    expect(channelAudibility(null, levels)).toBe("unknown");
+    expect(channelAudibility({ importance: 0, sound: null }, levels)).toBe("unknown");
+    expect(channelAudibility({ importance: 1, sound: null }, levels)).toBe("unknown");
+  });
+});
+
+describe("a quiet channel on a phone that allowed notifications", () => {
+  const base = { supported: true, signedIn: true, permission: "granted" as const };
+
+  it("asks the rider to turn the sound on, or the channel back on", () => {
+    expect(pushOffer({ ...base, channel: "silent" })).toBe("silent");
+    expect(pushOffer({ ...base, channel: "off" })).toBe("muted");
+    expect(pushOffer({ ...base, channel: "audible" })).toBe("hidden");
+    expect(pushOffer({ ...base, channel: "unknown" })).toBe("hidden");
+  });
+
+  it("is not about anyone at the sign-in screen", () => {
+    expect(pushOffer({ ...base, signedIn: false, channel: "silent" })).toBe("hidden");
+  });
+
+  it("names the setting and the fix in words", () => {
+    expect(pushOfferCopy("silent")).toEqual(expect.objectContaining({
+      title: "GRIDGO alerts make no sound",
+      action: "Open alert settings",
+    }));
+    expect(pushOfferCopy("muted").body).toMatch(/turn Job and trip alerts on/);
   });
 });

@@ -44,8 +44,15 @@ import {
  *
  * The third is the supplier's signature at the shop counter: a PNG of the
  * pad, attached before the pickup checklist names it.
+ *
+ * The fourth is the packed job on a `rider_packs` handover: photographed by
+ * the rider after the unpacked check, and bound by the server to that check.
  */
-export type EvidencePurpose = "delivery_photo" | "fulfilment_proof" | "handoff_signature";
+export type EvidencePurpose =
+  | "delivery_photo"
+  | "fulfilment_proof"
+  | "handoff_signature"
+  | "packing_photo";
 
 export type EvidenceTarget = {
   purpose: EvidencePurpose;
@@ -67,6 +74,11 @@ export const PICKUP_FAILURE_TARGETS: readonly EvidenceTarget[] = [
 /** What the supplier's signature is stored as before the checklist can name it. */
 export const HANDOFF_SIGNATURE_TARGETS: readonly EvidenceTarget[] = [
   { purpose: "handoff_signature" },
+];
+
+/** What the packed job is stored as before the shop can sign (`rider_packs`). */
+export const PACKING_PHOTO_TARGETS: readonly EvidenceTarget[] = [
+  { purpose: "packing_photo" },
 ];
 
 /** Contract limit for `delivery_photo` — the smaller of the two, so it governs. */
@@ -133,6 +145,12 @@ export function storageErrorMessage(code: string | undefined, status: number): s
       return "This job is not at a stage that accepts evidence. Pull down on your trip to refresh it.";
     case "handoff_signature_upload_not_allowed":
       return "This job has already left the shop, so a signature cannot be added now. Pull down on your trip to refresh it.";
+    case "unpacked_inspection_required":
+      return "Check the items unpacked before you photograph the packed job. Go back to the pickup checks.";
+    case "packing_photo_required":
+      return "Photograph the packed job before the shop signs. Go back to the packing step.";
+    case "pickup_held":
+      return "GRIDGO has put this job on hold. Do not take the package — wait for Operations.";
     case "forbidden":
       return "This job is not assigned to you any more. Refresh your trip.";
     case "unauthorized":
@@ -175,6 +193,9 @@ function isRetryable(code: string | undefined, status: number): boolean {
     case "forbidden":
     case "order_not_found":
     case "delivery_photo_upload_not_allowed":
+    case "unpacked_inspection_required":
+    case "packing_photo_required":
+    case "pickup_held":
     case "invalid_milestone_code":
     case "milestone_not_found":
       return false;
@@ -400,7 +421,8 @@ export function uploadEvidence({
     settled = true;
     inFlight = null;
     // The first target is the id the step is filed against: the delivery photo
-    // for a delivery or a pickup escalation, the signature for a handoff.
+    // for a delivery or a pickup escalation, the signature for a handoff, the
+    // packed photo for packing.
     onPhase({ phase: "stored", fileId: stored[targets[0]!.purpose] ?? "" });
     return stored;
   })();

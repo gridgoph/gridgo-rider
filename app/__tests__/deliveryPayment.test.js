@@ -9,6 +9,7 @@ jest.mock("expo-router", () => ({ useLocalSearchParams: () => ({ orderId: "order
 jest.mock("react-native", () => ({
   ScrollView: "ScrollView",
   Text: "Text",
+  View: "View",
   // jest-expo's preset reads Platform during setup, so a bare mock must still provide it.
   Platform: { OS: "android", select: (options) => options.android ?? options.default },
 }));
@@ -26,6 +27,7 @@ jest.mock("@/hooks/useProofEvidence", () => ({ useProofEvidence: jest.fn(() => (
   takePhoto: jest.fn(), retry: jest.fn(), clear: jest.fn(), attachSignature: jest.fn(),
 })) }));
 jest.mock("@/components/BlockingOverlay", () => ({ BlockingOverlay: "BlockingOverlay" }));
+jest.mock("@/components/DeliveryPinDetails", () => ({ DeliveryPinDetails: "DeliveryPinDetails" }));
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: "EvidenceCapture" }));
 jest.mock("@/components/HandoverCodeCard", () => ({ HandoverCodeCard: "HandoverCodeCard" }));
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
@@ -34,7 +36,7 @@ jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptRemi
 jest.mock("@/components/Screen", () => ({ Screen: "Screen" }));
 jest.mock("@/components/SkeletonScreens", () => ({ ProofStepSkeleton: "ProofStepSkeleton" }));
 jest.mock("@/components/FormScroll", () => ({ FormScroll: "FormScroll" }));
-jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar" }));
+jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar", StickyActionFallback: "StickyActionFallback" }));
 jest.mock("@/components/TripStepHeader", () => ({ TripStepHeader: "TripStepHeader" }));
 
 function order(status) {

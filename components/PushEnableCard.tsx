@@ -1,4 +1,4 @@
-import { Bell } from "lucide-react-native";
+import { Bell, BellOff } from "lucide-react-native";
 import { Linking, Text, View } from "react-native";
 
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -47,9 +47,11 @@ export function PushEnableCard({ spacing }: Props) {
   const error = usePush((s) => s.error);
   const enable = usePush((s) => s.enable);
   const registerIfGranted = usePush((s) => s.registerIfGranted);
+  const channel = usePush((s) => s.channel);
+  const openChannelSettings = usePush((s) => s.openChannelSettings);
   const signedIn = isSignedIn(useSession((s) => s.user));
 
-  const offer = pushOffer({ supported, signedIn, permission, failed: Boolean(error) });
+  const offer = pushOffer({ supported, signedIn, permission, failed: Boolean(error), channel });
   if (offer === "hidden") return null;
 
   const copy = pushOfferCopy(offer, signedIn);
@@ -65,7 +67,11 @@ export function PushEnableCard({ spacing }: Props) {
       }
     >
       <View className="flex-row items-center gap-2">
-        <Bell size={18} color={colors.textSecondary} />
+        {offer === "silent" || offer === "muted" ? (
+          <BellOff size={18} color={colors.warning} />
+        ) : (
+          <Bell size={18} color={colors.textSecondary} />
+        )}
         <Text className="text-body-lg font-medium text-text-primary">{copy.title}</Text>
       </View>
       <Text className="text-body text-text-secondary">{copy.body}</Text>
@@ -73,6 +79,12 @@ export function PushEnableCard({ spacing }: Props) {
         label={busy ? "Asking…" : copy.action}
         disabled={busy}
         onPress={() => {
+          // Permission is on but the channel is quiet. Only its own settings
+          // screen can change that; coming back re-reads it on resume.
+          if (offer === "silent" || offer === "muted") {
+            void openChannelSettings();
+            return;
+          }
           if (offer === "settings") {
             // Only the OS can undo a blocked permission, so this is an honest
             // handover rather than a dialog the app cannot actually raise.

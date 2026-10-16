@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Text } from "react-native";
+import { View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
+import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -12,7 +13,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ReceiptReminder } from "@/components/ReceiptReminder";
 import { Screen } from "@/components/Screen";
 import { ProofStepSkeleton } from "@/components/SkeletonScreens";
-import { StickyActionBar } from "@/components/StickyActionBar";
+import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { tripDestination } from "@/lib/tripNav";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
@@ -203,7 +204,7 @@ export default function DeliveryProofScreen() {
   }
 
   return (
-    <Screen edges={["bottom"]}>
+    <Screen edges={[]}>
       <FormScroll contentClassName="gg-page gap-8 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
         {loading ? <ProofStepSkeleton /> : null}
 
@@ -213,14 +214,18 @@ export default function DeliveryProofScreen() {
             icon="circle-x"
             title="This job did not load"
             body={loadError}
-            actionLabel="Back to the trip"
-            onAction={() => router.back()}
           />
         ) : null}
 
         {order ? (
           <>
             <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} navigate />
+
+            {tripDestination(order).kind === "client" ? (
+              <View className="gg-card">
+                <DeliveryPinDetails order={order} />
+              </View>
+            ) : null}
 
             {balanceHeld ? (
               <InlineNotice
@@ -303,6 +308,7 @@ export default function DeliveryProofScreen() {
             <EvidenceCapture
               key={id}
               title={toOffice ? "Evidence at the office" : "Evidence at the door"}
+              purpose="GRIDGO keeps this with the job as the record that the package was handed over."
               instruction={
                 toOffice
                   ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."
@@ -341,8 +347,8 @@ export default function DeliveryProofScreen() {
         ) : null}
       </FormScroll>
 
-      {order ? (
-        <StickyActionBar onHeight={setActionBarHeight}>
+      <StickyActionBar onHeight={setActionBarHeight} note={order ? blocked : null}>
+        {order ? (
           <PrimaryButton
             label={
               busy ? "Recording…" : toOffice ? "Confirm drop-off" : "Confirm delivery"
@@ -351,11 +357,10 @@ export default function DeliveryProofScreen() {
             disabled={busy || escalating || Boolean(blocked)}
             size="large"
           />
-          {blocked ? (
-            <Text className="text-center text-body text-text-secondary">{blocked}</Text>
-          ) : null}
-        </StickyActionBar>
-      ) : null}
+        ) : (
+          <StickyActionFallback loading={loading} onBack={() => router.back()} />
+        )}
+      </StickyActionBar>
 
       <BlockingOverlay
         visible={busy || escalating}

@@ -74,7 +74,7 @@ export async function pickChatImages(): Promise<Array<{
   }));
 }
 
-/** Uploads one photo for a chat; `purpose` is `delivery_chat_image` for the client conversation. */
+/** Uploads one photo for a chat; `purpose` is `delivery_chat_image` for the client conversation, `pickup_chat_image` for the shop. */
 export async function uploadChatImage(
   asset: {
     uri: string;

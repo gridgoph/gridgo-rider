@@ -3,11 +3,14 @@ import { create } from "zustand";
 
 import * as api from "@/lib/api";
 import { loadExpoNotifications } from "@/lib/expoNotifications";
+import { openPhoneSettings } from "@/lib/phoneSettings";
 import {
+  channelAudibility,
   devicePlatform,
   PUSH_CHANNEL,
   PUSH_CHANNEL_ID,
   readPushPermission,
+  type ChannelAudibility,
   type PushPermission,
 } from "@/lib/push";
 
@@ -60,6 +63,11 @@ export function pushSupported(os: string = Platform.OS): boolean {
 type PushState = {
   supported: boolean;
   permission: PushPermission;
+  /**
+   * Whether the installed Android channel makes a sound. Read back after every
+   * create, because a rider's own channel settings outlive any re-create.
+   */
+  channel: ChannelAudibility;
   /** The FCM registration token this installation currently holds. */
   token: string | null;
   /**
@@ -91,6 +99,8 @@ type PushState = {
   resume: () => Promise<void>;
   /** Firebase reissued the token while the app was running. */
   adoptToken: (token: string) => Promise<void>;
+  /** The channel's own settings screen: sound, importance, on/off. */
+  openChannelSettings: () => Promise<void>;
   /**
    * Sign-out has already unregistered the token with the sign-out call. Forget
    * the claim, then put this phone back on the unclaimed list so GRIDGO can
@@ -122,16 +132,27 @@ function isUnclaimedRouteAbsent(error: unknown): boolean {
  * exists — so this runs before the first permission read, not before the first
  * notification.
  */
-async function ensureChannel(): Promise<void> {
-  if (!Notifications || Platform.OS !== "android") return;
-  await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
+async function ensureChannel(): Promise<ChannelAudibility> {
+  if (!Notifications || Platform.OS !== "android") return "unknown";
+  const levels = {
+    none: Notifications.AndroidImportance.NONE,
+    default: Notifications.AndroidImportance.DEFAULT,
+  };
+  const created = await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
     name: PUSH_CHANNEL.name,
     description: PUSH_CHANNEL.description,
-    // These are expiring job offers and a rider waiting at a counter: worth a
-    // sound and a heads-up banner, which is also what the server's
-    // `priority: high` asks for.
+    // These are expiring job offers, messages and a rider waiting at a
+    // counter: worth a sound and a heads-up banner, which is also what the
+    // server's `priority: high` asks for. `sound` is left out on purpose —
+    // the module reads an absent key as the phone's default notification
+    // sound, while `null` would mean silence.
     importance: Notifications.AndroidImportance.HIGH,
+    enableVibrate: true,
   });
+  // Android keeps the rider's own choices on an existing channel, so what was
+  // asked for above is not necessarily what is installed. Read it back.
+  const installed = (await Notifications.getNotificationChannelAsync?.(PUSH_CHANNEL_ID)) ?? created;
+  return channelAudibility(installed, levels);
 }
 
 /** The raw FCM token for this installation, or null if it cannot be had. */
@@ -158,6 +179,7 @@ export function serializeDeviceMutation(action: () => Promise<void>): Promise<vo
 export const usePush = create<PushState>((set, get) => ({
   supported: pushSupported(),
   permission: "unknown",
+  channel: "unknown",
   token: null,
   claimed: false,
   busy: false,
@@ -166,9 +188,9 @@ export const usePush = create<PushState>((set, get) => ({
   syncPermission: async () => {
     if (!Notifications || !get().supported) return "unknown";
     try {
-      await ensureChannel();
+      const channel = await ensureChannel();
       const permission = readPushPermission(await Notifications.getPermissionsAsync());
-      set({ permission });
+      set({ permission, channel });
       return permission;
     } catch {
       // Expo Go on Android, or a build with no Firebase config. Push is simply
@@ -182,7 +204,7 @@ export const usePush = create<PushState>((set, get) => ({
     if (!Notifications || !get().supported || get().busy) return false;
     set({ busy: true, error: null });
     try {
-      await ensureChannel();
+      set({ channel: await ensureChannel() });
       // The dialog. Android 13+ shows it twice at most and then a refusal is
       // permanent, which is why nothing calls this except an explicit tap on a
       // card or sheet that has already said what will arrive.
@@ -266,6 +288,10 @@ export const usePush = create<PushState>((set, get) => ({
     if (token === get().token) return;
     set({ token });
     await get().registerIfGranted(token);
+  },
+
+  openChannelSettings: async () => {
+    await openPhoneSettings("channel", { channelId: PUSH_CHANNEL_ID });
   },
 
   release: async () => {

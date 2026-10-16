@@ -1,30 +1,36 @@
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
 import { ChatButton } from "@/components/ChatButton";
-import { DeliveryChatRow } from "@/components/DeliveryChatRow";
+import { MissedCallCard } from "@/components/MissedCallCard";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
+import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EmptyState } from "@/components/EmptyState";
+import { ForcedByGridgo } from "@/components/ForcedByGridgo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
+import { LocationHealthCard } from "@/components/LocationHealthCard";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { NavigateButton } from "@/components/NavigateButton";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { RiderPayRows } from "@/components/RiderPayRows";
 import { StatusChip } from "@/components/StatusChip";
 import { TripMap } from "@/components/TripMap";
+import { TripContacts } from "@/components/TripContacts";
 import { TripTimeline } from "@/components/TripTimeline";
+import { useOrderCalls } from "@/hooks/useOrderCalls";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useTripLocation } from "@/store/tripLocation";
@@ -32,22 +38,27 @@ import { useRoute } from "@/hooks/useRoute";
 import { useSnappedOrigin } from "@/hooks/useSnappedOrigin";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { callWindow, latestMissedCall, pairOfParty, partyOfPair } from "@/lib/orderCalls";
+import type { TripChatParty } from "@/lib/tripChat";
 import { classifyLocation } from "@/lib/locationFreshness";
+import { useLocationHealth } from "@/hooks/useLocationHealth";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { checklistSummary } from "@/lib/pickupChecklist";
 import { approvalPresentation } from "@/lib/riderApproval";
 import {
   endsAtOffice,
   issueWindowLabel,
+  locationAudience,
   orderStateChip,
   owesSignOff,
   primaryActionLabel,
   signOffPrompt,
   zoneLabel,
 } from "@/lib/riderOrder";
+import { ridersPack } from "@/lib/shopHandover";
 import { nextStop, tripDestination, tripShop } from "@/lib/tripNav";
 import { useActiveTrip } from "@/store/activeTrip";
+import { useCall } from "@/store/call";
 import { useSession } from "@/store/session";
 
 /** How often the position age on screen is recomputed. */
@@ -112,6 +123,13 @@ export default function ActiveScreen() {
   });
 
   const sharing = riderLocation.sharing;
+  const audience = trip ? locationAudience(trip.state) : null;
+  // Read only while the job is tracked and this tab is in front of the rider.
+  const locationHealth = useLocationHealth({
+    enabled: focused && approval.canWork && audience != null,
+    watcher: audience ?? "client",
+  });
+  const locationBlocked = locationHealth.issues.some((issue) => issue.severity === "blocking");
 
   // A fix does not go stale because something re-rendered, so its age is on its
   // own clock.
@@ -144,9 +162,10 @@ export default function ActiveScreen() {
             nowMs: now,
             permission: riderLocation.permission,
             accuracyMetres: riderLocation.accuracy,
+            audience,
           })
         : null,
-    [needsGps, riderLocation.fixAtMs, riderLocation.permission, riderLocation.accuracy, now],
+    [needsGps, riderLocation.fixAtMs, riderLocation.permission, riderLocation.accuracy, now, audience],
   );
 
   const reload = useCallback(
@@ -187,6 +206,12 @@ export default function ActiveScreen() {
       case "pickup_checks":
         router.push({ pathname: "/trip/pickup", params });
         return;
+      case "pickup_pack":
+        router.push({ pathname: "/trip/pack", params });
+        return;
+      case "pickup_sign":
+        router.push({ pathname: "/trip/handoff", params });
+        return;
       case "start_delivery":
         router.push({ pathname: "/trip/start", params });
         return;
@@ -200,7 +225,21 @@ export default function ActiveScreen() {
   const chip = trip ? orderStateChip(trip) : null;
   const cta = primaryActionLabel(phase, trip ? endsAtOffice(trip) : false);
   const signOff = trip && owesSignOff(trip) ? signOffPrompt(trip) : null;
-  const deliveryChat = deliveryChatOf(trip);
+  // Calls ride beside the conversations: the same two people, a narrower window.
+  const clientCall = callWindow(trip, "client");
+  const shopCall = callWindow(trip, "shop");
+  const calls = useOrderCalls(trip?.id ?? null, approval.canWork && (clientCall.open || shopCall.open));
+  const dismissedMissed = useCall((s) => s.dismissedMissed);
+  const missed = latestMissedCall(calls, dismissedMissed);
+  const missedCall = missed && callWindow(trip, partyOfPair(missed.call.pair)).open ? missed : null;
+
+  function call(party: TripChatParty) {
+    if (!trip) return;
+    // An earlier call's ended screen is not this call.
+    useCall.getState().clear();
+    useCall.getState().arm(trip.id, pairOfParty(party));
+    router.push(`/call?orderId=${encodeURIComponent(trip.id)}&pair=${pairOfParty(party)}` as Href);
+  }
 
   return (
     <Screen edges={["top"]}>
@@ -235,6 +274,9 @@ export default function ActiveScreen() {
 
         {!approval.canWork ? <ApprovalNotice /> : null}
 
+        {/* An editorial policy change: said once, on the landing screen, never blocking. */}
+        <LegalNoticeBanner />
+
         <PushEnableCard />
 
         {approval.canWork ? (
@@ -266,6 +308,27 @@ export default function ActiveScreen() {
 
         {trip && approval.canWork ? (
           <>
+            {/* Time-sensitive, so above the route: they may still be waiting. */}
+            {missedCall ? (
+              <MissedCallCard
+                missed={missedCall}
+                onCallBack={() => {
+                  useCall.getState().dismissMissed(missedCall.call.id);
+                  call(partyOfPair(missedCall.call.pair));
+                }}
+                onDismiss={() => useCall.getState().dismissMissed(missedCall.call.id)}
+              />
+            ) : null}
+
+            {/* Above the route: until this is fixed, nobody sees the rider move. */}
+            {audience ? (
+              <LocationHealthCard
+                issues={locationHealth.issues}
+                watcher={audience}
+                onFix={(fix) => void locationHealth.fix(fix)}
+              />
+            ) : null}
+
             {heading ? (
               <NextStopCard
                 kind={heading.cardKind}
@@ -281,6 +344,12 @@ export default function ActiveScreen() {
                 }
                 zone={zoneLabel(trip.zone)}
               >
+                {/* On the way to the door: who meets the rider and what the client said. */}
+                {heading.kind === "client" ? (
+                  <View className="border-t border-outline-subtle pt-3">
+                    <DeliveryPinDetails order={trip} />
+                  </View>
+                ) : null}
                 {/* Held at the counter, the rider is already where Maps would send them. */}
                 {phase !== "pickup_blocked" ? (
                   <NavigateButton order={trip} stopKind={heading.cardKind} />
@@ -293,12 +362,37 @@ export default function ActiveScreen() {
               button here would be the app offering a move the business has
               already stopped.
             */}
-            {phase === "pickup_checks" ? (
+            {phase === "pickup_checks" && ridersPack(trip) ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="Check it before it is packed"
+                body="At the shop, count and check every piece unpacked, together with the shop. Then they pack it in front of you, you photograph it, and they sign."
+              />
+            ) : phase === "pickup_checks" ? (
               <InlineNotice
                 tone="info"
                 icon="info"
                 title="Check together at the shop"
                 body="Travel to the supplier, then run all six pickup checks together at the counter. Keep the package there until every check passes."
+              />
+            ) : null}
+
+            {phase === "pickup_pack" ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="Watch them pack it"
+                body="Your check is recorded. Stay at the counter while the shop packs the pieces you checked, then photograph the packed job."
+              />
+            ) : null}
+
+            {phase === "pickup_sign" ? (
+              <InlineNotice
+                tone="info"
+                icon="info"
+                title="The shop signs next"
+                body="The packed photo is saved. Hand your phone to the shop to sign — then the package is yours to carry."
               />
             ) : null}
 
@@ -345,12 +439,14 @@ export default function ActiveScreen() {
               </View>
             ) : null}
 
-            {/*
-              The client, a tap away while the job is this rider's and readable
-              for a day after delivery. Under the step, never instead of it.
-            */}
-            {deliveryChat ? (
-              <DeliveryChatRow chat={deliveryChat} onPress={() => router.push(deliveryChatRoute(trip.id))} />
+            <TripContacts trip={trip} onCall={call} />
+
+            {/* Still at the shop: the drop-off details wait here until that leg. */}
+            {heading?.kind !== "client" && destination?.kind === "client" ? (
+              <View className="gg-card gap-3">
+                <Text className="text-overline text-text-muted">AT THE DROP-OFF</Text>
+                <DeliveryPinDetails order={trip} />
+              </View>
             ) : null}
 
             {/*
@@ -394,7 +490,12 @@ export default function ActiveScreen() {
               </Text>
             ) : null}
 
-            <LocationSharingBanner sharing={sharing} freshness={freshness} />
+            <LocationSharingBanner
+              sharing={sharing}
+              // The card above already says location is off, with the fix.
+              freshness={locationBlocked && freshness?.level === "off" ? null : freshness}
+              audience={audience}
+            />
 
             {phase === "complete" ? (
               <InlineNotice
@@ -413,6 +514,8 @@ export default function ActiveScreen() {
                 <Text className="min-w-0 flex-1 text-h3 text-text-primary">{trip.title}</Text>
                 {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>
+
+              <ForcedByGridgo order={trip} />
 
               <View className="gap-3">
                 <ProductionSpecifications order={trip} />

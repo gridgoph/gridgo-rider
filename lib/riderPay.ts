@@ -10,7 +10,13 @@ import { formatPhp } from "@/lib/api";
  * it, because rounding is the server's call. An API that predates the split
  * sends neither field, and then the whole fee is the rider's, as it always was.
  *
- * Contract: gridgo-api `docs/OPERATIONAL_MODEL_V2_API.md#rider-delivery-split`.
+ * A delivery-pin change before dispatch can move the fee. The API then sends
+ * the moved fee as `effectiveDeliveryFeeMinor` and folds the rider's share of
+ * the difference into `riderPayoutMinor`; `deliveryFeeMinor` stays the
+ * checkout's original, so it is only the gross when nothing moved it.
+ *
+ * Contract: gridgo-api `docs/OPERATIONAL_MODEL_V2_API.md#rider-delivery-split`,
+ * `docs/DELIVERY_PIN_API.md`.
  */
 
 export type RiderPay = {
@@ -24,14 +30,19 @@ export type RiderPay = {
   split: boolean;
 };
 
-type PayFields = Pick<Order, "deliveryFeeMinor" | "riderPayoutMinor" | "riderCommissionBps">;
+type PayFields = Pick<
+  Order,
+  "deliveryFeeMinor" | "riderPayoutMinor" | "riderCommissionBps" | "effectiveDeliveryFeeMinor"
+>;
 
 function isMinorAmount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 export function riderPay(order: PayFields): RiderPay {
-  const deliveryFeeMinor = order.deliveryFeeMinor;
+  const deliveryFeeMinor = isMinorAmount(order.effectiveDeliveryFeeMinor)
+    ? order.effectiveDeliveryFeeMinor
+    : order.deliveryFeeMinor;
   const payout = order.riderPayoutMinor;
   const bps = order.riderCommissionBps;
   const shareBps = isMinorAmount(bps) && bps <= 10_000 ? bps : null;

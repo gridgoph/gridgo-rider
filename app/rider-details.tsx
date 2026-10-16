@@ -309,7 +309,7 @@ export default function RiderDetailsScreen() {
 
               <FieldShell
                 label="Mobile number"
-                hint="GRIDGO and Operations call this number."
+                hint="Operations use this number to reach you about your application and your jobs."
                 error={fieldError("phone")}
               >
                 <TextField

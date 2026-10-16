@@ -32,6 +32,10 @@
  * - **The account being approved.** An unapproved rider is signed in and
  *   cannot take any work at all — that wait is the whole screen until the
  *   decision lands.
+ * - **A message from the client, the shop or Operations.** A rider on the
+ *   road reads none of them with the app closed unless the phone says so
+ *   (gridgo-client#231). The server rings once per conversation per five
+ *   minutes, so a burst is one sound, not ten.
  *
  * Deliberately **not** on that list: ordinary trip movements the rider will
  * see the next time they open Active (they took the step themselves). A phone
@@ -39,6 +43,8 @@
  */
 
 import { Platform } from "react-native";
+
+import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
 
 /**
  * The Android channel the server names in every message.
@@ -58,8 +64,40 @@ export const PUSH_CHANNEL_ID = "gridgo_default";
 export const PUSH_CHANNEL = {
   name: "Job and trip alerts",
   description:
-    "Jobs offered to you, Operations answering a failed pickup check, and when your account is approved.",
+    "Jobs offered to you, messages from the client, the shop and Operations, Operations answering a failed pickup check, and when your account is approved.",
 } as const;
+
+/**
+ * Whether the channel on this phone actually makes a sound.
+ *
+ * The server asks for the default sound on every chat push, but on Android 8+
+ * the **channel** decides, and a channel's sound and importance belong to the
+ * person once it exists: re-creating it does not undo a rider who set it to
+ * Silent, and no payload can. So the app reads the installed channel back and
+ * says so when it is quiet or off, with the way to the one screen that can
+ * change it.
+ *
+ * - `audible` — default importance or higher, with a sound.
+ * - `silent` — it shows, but makes no sound (low importance, or sound removed).
+ * - `off` — the rider turned this channel off (importance none).
+ * - `unknown` — iOS, web, Expo Go, or an answer we cannot read.
+ *
+ * Importance is compared against the module's own enum values, passed in, so
+ * this stays pure and the numbering is never copied here.
+ */
+export type ChannelAudibility = "audible" | "silent" | "off" | "unknown";
+
+export function channelAudibility(
+  channel: { importance?: number | null; sound?: string | null } | null | undefined,
+  levels: { none: number; default: number },
+): ChannelAudibility {
+  if (!channel || typeof channel.importance !== "number") return "unknown";
+  if (channel.importance === levels.none) return "off";
+  // Below "none" is the enum's unknown/unspecified: nothing to say.
+  if (channel.importance < levels.none) return "unknown";
+  if (channel.importance < levels.default) return "silent";
+  return channel.sound == null ? "silent" : "audible";
+}
 
 /** The `platform` value `POST /devices` accepts. */
 export type DevicePlatform = "android" | "ios" | "web";
@@ -88,6 +126,10 @@ export function devicePlatform(os: string = Platform.OS): DevicePlatform | null 
  * only figure this app ever renders is the rider's own delivery fee, and it
  * is not in this payload. Nothing else in the payload is contractual, so
  * nothing else is read.
+ *
+ * A support reply carries no thread ID here on purpose: the tap reads it back
+ * from `PATCH /notifications/:id`, which only the notification's owner can do
+ * (`docs/REALTIME_EVENTS.md#chat-push-delivery-and-app-follow-up`).
  */
 export type PushData = {
   notificationId: string | null;
@@ -142,16 +184,34 @@ export const DISPATCH_OFFER_TYPES = new Set([
  *   contract's instruction for `type: "announcement"` and for an unknown
  *   type. Alerts is a pushed route here, not a tab.
  * - A **dispatch offer** opens that job in **Offers**, where Accept lives.
- * - A **message from the client** opens that delivery's conversation.
+ * - A **message from the client** opens that delivery's conversation, and a
+ *   **message from the shop** opens the shop's — two threads, two routes.
+ * - A **reply from Operations** opens that exact support conversation, read
+ *   from the authenticated notification (`threadId`). Without one — a
+ *   deleted notification, or an older API — it opens the chat history rather
+ *   than guessing the newest thread.
+ * - A **call ringing in** opens the call screen, which reads the order's calls
+ *   and rings only for one that is still ringing; a stale push lands on the
+ *   trip instead. A **missed call** opens the trip, where it waits with
+ *   Call back.
  * - Any other alert that names a job opens **Active**, which is the trip
  *   in hand (pickup checks, sign-off, delivery). The push carries no order
  *   state, so Active fetches the trip as it always does.
  */
-export function pushTargetRoute(data: PushData): string {
+export function pushTargetRoute(data: PushData, threadId: string | null = null): string {
+  if (data.type === "support_message") {
+    return isChatThreadId(threadId ?? undefined) ? `/chat/${encodeURIComponent(threadId as string)}` : CHAT_LIST_ROUTE;
+  }
   if (data.type === "announcement" || !data.orderId) return "/alerts";
   if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/offers?orderId=${encodeURIComponent(data.orderId)}`;
   // A message from the client opens the conversation itself (gridgo-client#198).
   if (data.type === "delivery_message") return `/trip/messages?orderId=${encodeURIComponent(data.orderId)}`;
+  // A message from the shop opens the shop's conversation, never the client's (C2BE8E7A).
+  if (data.type === "pickup_chat_message") return `/trip/shop-messages?orderId=${encodeURIComponent(data.orderId)}`;
+  // A call ringing in opens the call screen, which rings only if it still is (16B159C0).
+  if (data.type === "order_call_incoming") return `/call?orderId=${encodeURIComponent(data.orderId)}&incoming=1`;
+  // A missed call opens the trip, where the missed call waits with a Call back.
+  if (data.type === "order_call_missed") return "/(tabs)/active";
   return "/(tabs)/active";
 }
 
@@ -185,7 +245,7 @@ export function readPushPermission(response: {
 }
 
 /** What the enable card should do, if anything. */
-export type PushOffer = "hidden" | "ask" | "settings" | "retry";
+export type PushOffer = "hidden" | "ask" | "settings" | "retry" | "silent" | "muted";
 
 /**
  * Whether to offer phone notifications, and how.
@@ -218,10 +278,16 @@ export function pushOffer(input: {
   permission: PushPermission;
   /** A permission ask or a registration call failed. */
   failed?: boolean;
+  /** The installed Android channel, read back (`channelAudibility`). */
+  channel?: ChannelAudibility;
 }): PushOffer {
   if (!input.supported) return "hidden";
   if (!input.signedIn) return input.permission === "undetermined" ? "ask" : "hidden";
   if (input.failed) return input.permission === "blocked" ? "settings" : "retry";
+  // Permission on, channel quiet: the push arrives and nobody hears it. Only
+  // the channel's own settings screen can change that.
+  if (input.permission === "granted" && input.channel === "off") return "muted";
+  if (input.permission === "granted" && input.channel === "silent") return "silent";
   if (input.permission === "granted" || input.permission === "unknown") return "hidden";
   return input.permission === "blocked" ? "settings" : "ask";
 }
@@ -258,6 +324,20 @@ export function pushOfferCopy(
       action: "Try again",
     };
   }
+  if (offer === "silent") {
+    return {
+      title: "GRIDGO alerts make no sound",
+      body: "Messages from the client, the shop and Operations arrive silently, so you can miss them while you ride. In alert settings, turn Sound on.",
+      action: "Open alert settings",
+    };
+  }
+  if (offer === "muted") {
+    return {
+      title: "Job and trip alerts are turned off",
+      body: "This phone hides GRIDGO's job offers and messages. In alert settings, turn Job and trip alerts on and allow sound.",
+      action: "Open alert settings",
+    };
+  }
   if (offer === "settings") {
     return {
       title: "Alerts are off for GRIDGO",
@@ -267,7 +347,7 @@ export function pushOfferCopy(
   }
   return {
     title: "Get these on your phone",
-    body: "We will notify this phone when a job is offered to you, when Operations answers a failed pickup check, and when your account is approved — even with GRIDGO closed.",
+    body: "We will notify this phone when a job is offered to you, when the client, the shop or Operations sends you a message, when Operations answers a failed pickup check, and when your account is approved — even with GRIDGO closed.",
     action: "Turn on alerts",
   };
 }
@@ -350,7 +430,7 @@ export function shouldOfferPushPrompt(input: {
 
 /** One thing that will reach the phone. `icon` is named, the sheet draws it. */
 export type PushPromptReason = {
-  icon: "offer" | "pickup" | "approval";
+  icon: "offer" | "message" | "pickup" | "approval";
   title: string;
   detail: string;
 };
@@ -366,6 +446,11 @@ export function pushPromptReasons(awaitingApproval: boolean): PushPromptReason[]
       icon: "offer",
       title: "A job is offered to you",
       detail: "Offers go to the first rider who accepts.",
+    },
+    {
+      icon: "message",
+      title: "Someone sends you a message",
+      detail: "The client, the shop or Operations — with a sound, even with GRIDGO closed.",
     },
     {
       icon: "pickup",

@@ -7,12 +7,16 @@
  * the authenticated area.
  */
 
+import type { LegalGateStatus } from "@/lib/legal";
+
 /** Destinations the gate may emit. Always use replace, never push. */
 export type AuthRedirect =
+  | "/"
   | "/(auth)/welcome"
   | "/(auth)/login"
   | "/(auth)/signup"
   | "/(tabs)/active"
+  | "/legal/review"
   | null;
 
 /** Identity wait to paint instead of Welcome. */
@@ -70,7 +74,32 @@ export const PROTECTED_ROOTS = new Set([
   // as the tab shell, and a deep link is how someone would land on them.
   "alerts",
   "trip",
+  // A rider's own privacy requests.
+  "privacy",
 ]);
+
+/**
+ * Signed in, and open even while terms wait to be agreed (`docs/LEGAL_API.md`):
+ * the documents, the rider's privacy requests and account deletion never wait
+ * behind the agreement box. The confirmation sheet those screens ask through
+ * stays open with them. An update to the app and a call ringing in are not
+ * navigation the rider chose, so they are not closed either.
+ */
+export const LEGAL_OPEN_ROOTS = new Set([
+  "legal",
+  "privacy",
+  "delete-account",
+  "confirm",
+  "app-update",
+  "call",
+]);
+
+/** The agreement screen itself: only while terms wait to be agreed. */
+export const LEGAL_REVIEW_ROUTE = "/legal/review" as const;
+
+function onLegalReview(segments: readonly string[]): boolean {
+  return segments[0] === "legal" && segments[1] === "review";
+}
 
 /** Auth-only surfaces — a signed-in rider should not linger here. */
 export const AUTH_ROOTS = new Set(["(auth)"]);
@@ -106,6 +135,7 @@ export function canGateNavigate(input: {
  * @param segments - expo-router useSegments() result (e.g. ["(tabs)", "active"])
  * @param showErrorOnLogin - a stored Clerk failure the login screen must render
  * @param needsApplication - Clerk knows this person; GRIDGO has no rider record
+ * @param legal - this rider's terms, from `GET /me/legal/pending`
  */
 export function resolveAuthRedirect(
   isSignedIn: boolean,
@@ -113,6 +143,7 @@ export function resolveAuthRedirect(
   showErrorOnLogin = false,
   needsApplication = false,
   sessionWait: "in" | "out" | null = null,
+  legal: LegalGateStatus = "clear",
 ): AuthRedirect {
   const root = segments[0];
 
@@ -149,12 +180,25 @@ export function resolveAuthRedirect(
   const inProtected = PROTECTED_ROOTS.has(root);
   const inAuth = AUTH_ROOTS.has(root);
 
-  if (!isSignedIn && inProtected) {
+  if (!isSignedIn && (inProtected || onLegalReview(segments))) {
     return "/(auth)/welcome";
   }
 
-  if (isSignedIn && inAuth) {
-    return "/(tabs)/active";
+  if (isSignedIn) {
+    /*
+      Terms waiting to be agreed close everything but the agreement screen and
+      what a rider needs in order to decide — the documents, their own data,
+      and the way out. Sign-out is on the agreement screen itself.
+    */
+    if (legal === "blocked") {
+      return onLegalReview(segments) || LEGAL_OPEN_ROOTS.has(root) ? null : LEGAL_REVIEW_ROUTE;
+    }
+    // Agreed (or nothing was waiting): the agreement screen has done its job.
+    if (onLegalReview(segments)) return legal === "clear" ? "/(tabs)/active" : null;
+    // Not answered yet: wait on the launch screen rather than paint Active
+    // and snatch it away. A deep link elsewhere is left where it landed.
+    if (legal === "unknown" && (inAuth || root === "(tabs)")) return "/";
+    if (inAuth) return "/(tabs)/active";
   }
 
   // index is public: launch redirect stays in app/index.tsx.

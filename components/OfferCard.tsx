@@ -1,6 +1,7 @@
 import { Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
+import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EarningAmount } from "@/components/EarningAmount";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { OrderReference } from "@/components/OrderReference";
@@ -107,9 +108,20 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
 
+      {/* Who meets the rider, before they commit to the ride. */}
+      {destination.kind === "client" ? (
+        <View className="border-t border-outline-subtle pt-4">
+          <DeliveryPinDetails order={offer} />
+        </View>
+      ) : null}
+
       <Text className="text-body text-text-secondary">
         Accept, travel to the shop, then run all six pickup checks together with the supplier
         before carrying the package.
+      </Text>
+      {/* Said before the tap, because the tap is what starts it. */}
+      <Text className="text-caption text-text-muted">
+        Once you accept, the shop can see your position on the way there, until you collect the job.
       </Text>
 
       <PrimaryButton

@@ -13,7 +13,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "ph.gridgo.rider",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "GRIDGO shares your position only while a package is with you, so the client can track delivery. Sharing stops when the trip ends.",
+        "NSLocationWhenInUseUsageDescription": "GRIDGO shares your position only during a delivery job you accepted: with the shop until pick-up, then with the client until delivery. Sharing stops when the job ends.",
         "NSCameraUsageDescription": "GRIDGO uses the camera for pickup and delivery proof photos.",
         "NSPhotoLibraryUsageDescription": "GRIDGO needs your photos so you can set a profile picture and attach a proof photo when the camera is unavailable."
       }
@@ -32,7 +32,8 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CAMERA"
-      ]
+      ],
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"]
     },
     "web": {
       "output": "static",
@@ -81,7 +82,15 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "GRIDGO shares your position only while a package is with you, so the client can track delivery. Sharing stops when the trip ends."
+          "locationWhenInUsePermission": "GRIDGO shares your position only during a delivery job you accepted: with the shop until pick-up, then with the client until delivery. Sharing stops when the job ends.",
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "GRIDGO uses the microphone only during a call you place or answer with the client or the shop. Nothing is recorded."
         }
       ],
       [

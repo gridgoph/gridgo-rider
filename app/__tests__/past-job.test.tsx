@@ -113,6 +113,20 @@ describe("a past job", () => {
     expect(await screen.findByText("Messages with the client")).toBeTruthy();
     expect(screen.getByText(/^Delivered\. Readable until .+, then removed\.$/)).toBeTruthy();
   });
+
+  // C2BE8E7A: the shop's thread is its own row, never folded into the client's.
+  it("keeps the shop's and the client's conversations as two separate rows", async () => {
+    api.getOrder.mockResolvedValue({
+      ...completed,
+      deliveryChat: { status: "read_only", closesAt: "2026-09-02T00:40:00.000Z", retentionHours: 24 },
+      pickupChat: { status: "read_only", closesAt: "2026-09-02T00:40:00.000Z", retentionHours: 24, unread: 1 },
+    });
+    await render(<PastJobScreen />);
+    expect(await screen.findByText("Messages with the client")).toBeTruthy();
+    expect(screen.getByText("Messages with the shop")).toBeTruthy();
+    expect(screen.getByLabelText("1 new message from the shop. Read your messages with the shop")).toBeTruthy();
+    expect(screen.getByLabelText("Read your messages with the client")).toBeTruthy();
+  });
   it.each(["orders", "*"] as const)("keeps the job visible while %s refreshes it", async (resource) => {
     jest.useFakeTimers();
     let finish!: (order: Order) => void;

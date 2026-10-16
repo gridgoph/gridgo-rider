@@ -1,9 +1,10 @@
 /**
  * Confirming who is asking before an account deletion request is sent.
  *
- * Shared verbatim by the client, supplier and rider apps: the request is the
- * same `POST /me/account-deletion-request` in all three, and so is the step in
- * front of it. Keep the three copies identical.
+ * Shared by the client, supplier and rider apps: the step in front of the
+ * request is the same in all three. The request itself is now a `deletion` in
+ * the privacy queue (`POST /me/privacy-requests`, gridgo-api
+ * `docs/LEGAL_API.md`), sent by `store/accountDeletion.ts`.
  *
  * The check is Clerk's **session reverification**, read off the installed
  * types (`@clerk/shared/dist/types/session.d.ts`: `startVerification`,
@@ -95,7 +96,6 @@ export const DELETION_NO_SESSION =
   "GRIDGO could not reach your sign-in to confirm it is you. Go back, then open Delete account again.";
 export const DELETION_REQUEST_FAILED =
   "It is you, but the request did not reach GRIDGO. Check this phone's connection and try again.";
-export const DELETION_SENT = "We will delete your account within 30 days";
 
 /** Clerk's own name for what it refused, or null. */
 function clerkCode(error: unknown): string | null {

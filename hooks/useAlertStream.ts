@@ -63,7 +63,7 @@ export function useAlertStream(enabled = true): void {
           if (connected) invalidate("*");
         },
         onResumeUnavailable: () => { if (current()) invalidate("*"); },
-        onInvalidate: (event) => { if (current()) invalidate(event.resource); },
+        onInvalidate: (event) => { if (current()) invalidate(event.resource, event.id); },
         onNotification: (notification) => {
           if (!current() || (notification.userId && notification.userId !== userId)) return;
           invalidate("*");
