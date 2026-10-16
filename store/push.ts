@@ -3,6 +3,7 @@ import { create } from "zustand";
 
 import * as api from "@/lib/api";
 import { loadExpoNotifications } from "@/lib/expoNotifications";
+import { getFirebaseMessaging } from "@/lib/firebaseMessaging";
 import { openPhoneSettings } from "@/lib/phoneSettings";
 import {
   channelAudibility,
@@ -21,7 +22,7 @@ const Notifications = loadExpoNotifications();
  *
  * Every rule this store applies lives in `lib/push.ts` and is unit-tested
  * without a native runtime; what is here is the plumbing that cannot be — the
- * channel, the permission dialog, the FCM token, and keeping the server's idea
+ * channel, the permission dialog, the push token, and keeping the server's idea
  * of this phone in step with the phone's.
  *
  * Ported from `gridgo-supplier` unchanged apart from the error mapper, which is
@@ -155,11 +156,41 @@ async function ensureChannel(): Promise<ChannelAudibility> {
   return channelAudibility(installed, levels);
 }
 
-/** The raw FCM token for this installation, or null if it cannot be had. */
+/**
+ * This installation's FCM token, or null if it cannot be had.
+ *
+ * The API sends through FCM HTTP v1. On Android expo-notifications returns an
+ * FCM token. On iOS it returns the raw APNs token, which FCM cannot address,
+ * so an iPhone build with Firebase asks Firebase for an FCM token instead
+ * (`lib/firebaseMessaging.ios.ts`) and is registered exactly like Android.
+ */
 async function fetchToken(): Promise<string | null> {
+  const firebase = getFirebaseMessaging();
+  if (firebase) {
+    const token = await firebase.getToken();
+    return token || null;
+  }
   if (!Notifications) return null;
   const { data } = await Notifications.getDevicePushTokenAsync();
   return typeof data === "string" && data ? data : null;
+}
+
+/**
+ * Hear about a token the issuer replaced while the app was running.
+ *
+ * Firebase's own refresh on an iPhone build with Firebase. Otherwise
+ * expo-notifications' listener — and only there, because on such an iPhone
+ * that listener reports the APNs token, which is not what the API was given.
+ */
+export function subscribePushTokenRotation(onToken: (token: string) => void): () => void {
+  const adopt = (token: unknown) => {
+    if (typeof token === "string" && token) onToken(token);
+  };
+  const firebase = getFirebaseMessaging();
+  if (firebase) return firebase.onTokenRefresh(adopt);
+  if (!Notifications) return () => undefined;
+  const subscription = Notifications.addPushTokenListener((token) => adopt(token.data));
+  return () => subscription.remove();
 }
 
 let registrationQueue: Promise<void> = Promise.resolve();

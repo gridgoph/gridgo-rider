@@ -155,6 +155,37 @@ jest.mock("expo-notifications", () => ({
   addPushTokenListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
 
+// iPhone push asks Firebase for its token (lib/firebaseMessaging.ios.ts, which
+// Jest resolves because the preset runs as iOS). No configured Firebase app is
+// the default: a build without GoogleService-Info.plist, where push falls back
+// to expo-notifications. Tests of the Firebase path mock it themselves.
+jest.mock("@react-native-firebase/app", () => ({ getApps: jest.fn(() => []) }));
+
+// Sign in with Apple (components/AppleButton.ios.tsx). Apple's system button
+// is native, so it is a labelled Pressable here, and Clerk's flow answers
+// "closed the sheet" unless a test says otherwise.
+jest.mock("expo-apple-authentication", () => {
+  const React = require("react");
+  const { Pressable, Text } = require("react-native");
+  const AppleAuthenticationButton = ({ onPress }) =>
+    React.createElement(
+      Pressable,
+      { accessibilityRole: "button", accessibilityLabel: "Continue with Apple", onPress },
+      React.createElement(Text, null, "Continue with Apple"),
+    );
+  return {
+    __esModule: true,
+    AppleAuthenticationButton,
+    AppleAuthenticationButtonType: { SIGN_IN: 0, CONTINUE: 1, SIGN_UP: 2 },
+    AppleAuthenticationButtonStyle: { WHITE: 0, WHITE_OUTLINE: 1, BLACK: 2 },
+  };
+});
+jest.mock("@clerk/expo/apple", () => ({
+  useSignInWithApple: () => ({
+    startAppleAuthenticationFlow: jest.fn(async () => ({ createdSessionId: null })),
+  }),
+}));
+
 // AsyncStorage is native; theme preference persistence uses an in-memory map in tests.
 jest.mock("@react-native-async-storage/async-storage", () => {
   const store = new Map();
