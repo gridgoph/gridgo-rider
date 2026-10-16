@@ -31,6 +31,8 @@ type Props = {
   onClear: () => void;
   /** Signature is the delivery fallback; a failed pickup check is photo only. */
   onSignature?: (uri: string) => void;
+  /** After a refusal that names a missing step: the way to it. */
+  failureAction?: { label: string; onPress: () => void } | null;
   disabled?: boolean;
 };
 
@@ -57,6 +59,7 @@ export function EvidenceCapture({
   onRetry,
   onClear,
   onSignature,
+  failureAction,
   disabled = false,
 }: Props) {
   const colors = useThemeColors();
@@ -158,6 +161,9 @@ export function EvidenceCapture({
           <View className="gap-2">
             {upload.phase === "failed" && upload.retryable ? (
               <SecondaryButton label="Send it again" onPress={onRetry} disabled={disabled} />
+            ) : null}
+            {upload.phase === "failed" && failureAction ? (
+              <SecondaryButton label={failureAction.label} onPress={failureAction.onPress} />
             ) : null}
             <SecondaryButton
               label={evidence.kind === "photo" ? "Retake the photo" : "Capture it again"}

@@ -8,6 +8,7 @@ import { ConfirmSheetSkeleton } from "@/components/SkeletonScreens";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { shopDisplayName } from "@/lib/handoffSignature";
+import type { RiderRefusal } from "@/lib/riderRefusals";
 import { useActiveTrip } from "@/store/activeTrip";
 
 /**
@@ -27,7 +28,7 @@ export default function ArrivedPackedSheet() {
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
 
   const [busy, setBusy] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<RiderRefusal | null>(null);
 
   async function record() {
     if (!order) return;
@@ -38,7 +39,7 @@ export default function ArrivedPackedSheet() {
       router.back();
     } catch (e) {
       setSubmitError(
-        api.apiErrorMessage(e, "It was not recorded. Try again, or tell Operations in the shop chat."),
+        api.tripRefusal(e, "It was not recorded. Try again, or tell Operations in the shop chat."),
       );
     } finally {
       setBusy(false);
@@ -76,7 +77,13 @@ export default function ArrivedPackedSheet() {
       onCancel={() => router.back()}
     >
       {submitError ? (
-        <InlineNotice tone="error" icon="circle-x" title="Not recorded" body={submitError} />
+        <InlineNotice
+          tone="error"
+          icon="circle-x"
+          title="Not recorded"
+          body={submitError.message}
+          {...(submitError.step ? { actionLabel: "Go back", onAction: () => router.back() } : {})}
+        />
       ) : (
         <Text className="text-caption text-text-muted">
           You still check every piece. Ask the shop to unpack it, then run the six checks.

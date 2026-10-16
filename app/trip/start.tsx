@@ -8,6 +8,7 @@ import { ConfirmSheetSkeleton } from "@/components/SkeletonScreens";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { dropoffLabel } from "@/lib/riderOrder";
+import type { RiderRefusal } from "@/lib/riderRefusals";
 import { useActiveTrip } from "@/store/activeTrip";
 
 /**
@@ -26,7 +27,7 @@ export default function StartDeliverySheet() {
   const setOrder = useActiveTrip((s) => s.setOrder);
 
   const [busy, setBusy] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<RiderRefusal | null>(null);
 
   async function start() {
     if (!order) return;
@@ -37,7 +38,7 @@ export default function StartDeliverySheet() {
       router.back();
     } catch (e) {
       setSubmitError(
-        api.apiErrorMessage(
+        api.tripRefusal(
           e,
           "The trip did not start. Try again before you leave the shop.",
         ),
@@ -78,7 +79,13 @@ export default function StartDeliverySheet() {
       onCancel={() => router.back()}
     >
       {submitError ? (
-        <InlineNotice tone="error" icon="circle-x" title="Trip not started" body={submitError} />
+        <InlineNotice
+          tone="error"
+          icon="circle-x"
+          title="Trip not started"
+          body={submitError.message}
+          {...(submitError.step ? { actionLabel: "Back to the trip", onAction: () => router.back() } : {})}
+        />
       ) : (
         <Text className="text-caption text-text-muted">
           Sharing stops the moment the delivery is closed. Nothing is kept on this phone.

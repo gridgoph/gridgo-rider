@@ -5,7 +5,12 @@ import type { SignatureStroke } from "@/lib/signature";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useTripProof } from "@/store/tripProof";
 
-const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn() };
+const mockRouter = {
+  back: jest.fn(),
+  replace: jest.fn(),
+  push: jest.fn(),
+  canGoBack: jest.fn(() => true),
+};
 
 jest.mock("expo-router", () => ({
   useFocusEffect: (callback: () => void) => {
@@ -518,5 +523,42 @@ describe("a rider_packs job: the shop signs after the unpacked check and the pac
     await render(<HandoffSignatureScreen />);
     await screen.findByText("Check the items unpacked first");
     expect(screen.getByRole("button", { name: "Open the pickup checks" })).toBeTruthy();
+  });
+
+  it("says why the shop's signature was refused instead of a bare 'not recorded'", async () => {
+    // The production report: pickup-confirm refused for operating hours, and
+    // the rider read only "The handoff was not recorded … try again".
+    const { ApiError } = jest.requireActual<typeof import("@/lib/api")>("@/lib/api");
+    api.confirmPickup.mockRejectedValue(
+      new ApiError(409, {
+        error: "outside_operating_hours",
+        scheduledReviewAt: "2026-10-17T00:00:00.000Z",
+      }),
+    );
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    await fireEvent.press(doneButton());
+
+    await screen.findByText("Handoff not recorded");
+    expect(
+      screen.getByText(/GRIDGO is closed right now, so nothing was recorded\. It opens again on Saturday at 8:00/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/until it is — try again/)).toBeNull();
+    expect(screen.queryByText(/outside_operating_hours/)).toBeNull();
+    expect(useActiveTrip.getState().order?.state).toBe("rider_assigned");
+  });
+
+  it("offers the missing step when the server says the packed photo is not saved", async () => {
+    const { ApiError } = jest.requireActual<typeof import("@/lib/api")>("@/lib/api");
+    api.confirmPickup.mockRejectedValue(new ApiError(409, { error: "packing_photo_required" }));
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    await fireEvent.press(doneButton());
+
+    await screen.findByText(/The packed photo is not saved for this check/);
+    await fireEvent.press(screen.getByRole("button", { name: "Take the packed photo" }));
+    expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/trip/pack", params: { orderId: "ord_1" } });
   });
 });

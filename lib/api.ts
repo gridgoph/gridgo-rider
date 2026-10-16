@@ -7,6 +7,7 @@ import type { DevicePlatform } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
 import { parseOrderCall, parseOrderCalls, type CallPair, type OrderCall } from "@/lib/orderCalls";
+import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 
 /**
  * GRIDGO demo API client.
@@ -1523,13 +1524,6 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     const code = apiErrorCode(error) ?? error.message;
     switch (code) {
-      case "dispatch_paused":
-      case "refund_fulfillment_stopped":
-      case "reschedule_fulfillment_stopped":
-      case "shop_recovery_pending":
-        return "This job is paused. Wait for Operations to clear it, or choose another available job.";
-      case "not_offerable":
-        return "This job is no longer available. Pull down to refresh the list.";
       case "order_not_found":
         return "That job is gone. Open Offers to take a new one.";
       case "tracking_not_active":
@@ -1542,58 +1536,8 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "minio_unavailable":
       case "storage_initializing":
         return "Photo storage is offline, so nothing can be proven yet. Tell Operations.";
-      case "rider_not_approved":
-        return "Operations has not approved this rider account yet, so no work can be taken on it.";
-      case "pickup_escalation_open":
-        return "Do not transport this package. Operations is still handling the failed check — wait for their instruction, then run all six checks again.";
-      case "pickup_checklist_not_available":
-        return "The checks only run before you leave the shop. Pull down to refresh the trip and see where it is now.";
-      case "invalid_pickup_checklist":
-        return "Answer all six checks before submitting them.";
-      case "invalid_pickup_counts":
-        return "The counts did not line up with this order. Pull down to refresh the job, then count every line again.";
-      case "pickup_count_unavailable":
-        return "This order has no count to check against. Do not take the package — call Operations to review the order.";
-      case "checklist_evidence_required":
-        return "Photograph the problem and describe it before the escalation can be filed.";
-      case "unpacked_inspection_required":
-        return "Check the items unpacked first. Open the pickup checks and run all six with the shop.";
-      case "packing_photo_required":
-        return "Photograph the packed job before the shop signs. Open the packing step and take the photo.";
-      case "pickup_held":
-      case "claim_hold_active":
-        return "Do not take the package. GRIDGO has put this job on hold — wait for Operations before you continue.";
-      case "arrived_packed_not_available":
-        return "This can only be recorded before you check the items. Pull down to refresh the job.";
-      case "handover_flow_not_available":
-        return "This job uses a different pickup. Pull down to refresh the trip and follow its steps.";
-      case "invalid_checklist_evidence":
-        return "The photo did not reach the job. Take it again and send it before escalating.";
-      case "handoff_signature_required":
-        return "The package cannot move until the supplier has signed on your phone. Hand it over to sign, then send again.";
-      case "invalid_handoff_signature":
-        return "The signature did not reach the job. Ask the supplier to sign again and wait for it to save.";
-      case "handoff_signer_name_required":
-        return "Type the name of the person at the shop who signed.";
-      case "handoff_signature_upload_not_allowed":
-        return "This job has already left the shop, so a signature cannot be added now. Pull down to refresh the trip.";
       case "balance_not_confirmed":
         return "Operations has not confirmed the client's final payment yet, so this delivery cannot be closed. Call Operations before handing the package over.";
-      case "pof_required":
-        return "The proof of fulfilment did not reach the server. Take the photo again and wait for it to save.";
-      case "delivery_not_available":
-        return "Delivery opens once you have passed the pickup checks and left the shop. Pull down to refresh the trip.";
-      case "delivery_evidence_required":
-      case "invalid_delivery_evidence_type":
-        return "The evidence is not on the job yet. Take the photo again and wait for it to save.";
-      case "handover_otp_mismatch":
-        return "The handover code did not match. Do not hand the package over — escalate to Operations.";
-      case "handover_attempts_exceeded":
-        return "Too many codes were refused on this job, so it is locked for a few minutes. Keep the package and escalate to Operations.";
-      case "handover_already_completed":
-        return "This handover is already recorded. Go back to the trip to see where the job is now.";
-      case "handover_not_ready":
-        return "This job has no handover code to check right now. Go back to the trip and pull down to refresh it.";
       case "handover_verification_required":
         return "This delivery needs the client's handover code. Open the delivery step and enter the code they read aloud.";
       case "email_already_registered":
@@ -1626,6 +1570,8 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       default:
         break;
     }
+    const refusal = riderRefusal(code, errorBody(error));
+    if (refusal) return refusal.message;
     if (error.status >= 500) {
       return `${fallback} If it keeps happening, tell Operations the server is failing.`;
     }
@@ -1635,6 +1581,25 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
     return error.message;
   }
   return fallback;
+}
+
+function errorBody(error: ApiError): Record<string, unknown> {
+  return typeof error.body === "object" && error.body ? (error.body as Record<string, unknown>) : {};
+}
+
+/**
+ * A refusal on a trip screen: the sentence, and the step that fixes it.
+ *
+ * Reads the code from an API refusal or from an upload that failed on attach
+ * (`lib/attachments.ts` tags those with `code`). Every documented rider code
+ * says what happened and what to do next (`lib/riderRefusals.ts`); anything
+ * else falls back to `apiErrorMessage` with no step to offer.
+ */
+export function tripRefusal(error: unknown, fallback: string): RiderRefusal {
+  const tagged = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
+  const code = apiErrorCode(error) ?? (typeof tagged === "string" ? tagged : null);
+  const refusal = riderRefusal(code, error instanceof ApiError ? errorBody(error) : {});
+  return refusal ?? { message: apiErrorMessage(error, fallback), step: null };
 }
 
 /** Authorized file metadata and fresh signed links; never persist signed URLs. */

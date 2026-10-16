@@ -4,6 +4,7 @@ import {
 } from "expo-file-system/legacy";
 
 import { getApiBase, resolveBearer } from "@/lib/api";
+import { riderRefusal } from "@/lib/riderRefusals";
 import {
   UNREADABLE_CAPTURE_MESSAGE,
   type EvidenceUpload,
@@ -141,16 +142,6 @@ export function storageErrorMessage(code: string | undefined, status: number): s
     case "file_required":
     case "invalid_multipart":
       return "The photo did not come through in one piece. Retake it and send again.";
-    case "delivery_photo_upload_not_allowed":
-      return "This job is not at a stage that accepts evidence. Pull down on your trip to refresh it.";
-    case "handoff_signature_upload_not_allowed":
-      return "This job has already left the shop, so a signature cannot be added now. Pull down on your trip to refresh it.";
-    case "unpacked_inspection_required":
-      return "Check the items unpacked before you photograph the packed job. Go back to the pickup checks.";
-    case "packing_photo_required":
-      return "Photograph the packed job before the shop signs. Go back to the packing step.";
-    case "pickup_held":
-      return "GRIDGO has put this job on hold. Do not take the package — wait for Operations.";
     case "forbidden":
       return "This job is not assigned to you any more. Refresh your trip.";
     case "unauthorized":
@@ -172,11 +163,16 @@ export function storageErrorMessage(code: string | undefined, status: number): s
       return "The file store is offline, so evidence cannot be saved. Tell Operations before you leave.";
     case "storage_initializing":
       return "The file store is still starting up. Wait a moment and send it again.";
-    default:
+    default: {
+      // The trip refusals an attach can meet (the job moved on, a step is
+      // missing, a hold) read the same here as on the step itself.
+      const refusal = riderRefusal(code);
+      if (refusal) return refusal.message;
       if (status >= 500) {
         return "The server could not save the file just now. Send it again in a moment.";
       }
       return "The server refused the file. Send it again, and call Operations if it keeps failing.";
+    }
   }
 }
 
@@ -243,9 +239,9 @@ export function uploadEvidence({
   let cancelled = false;
   let settled = false;
 
-  function fail(message: string, retryable: boolean, error: Error): never {
+  function fail(message: string, retryable: boolean, error: Error & { code?: string }): never {
     settled = true;
-    onPhase({ phase: "failed", message, retryable });
+    onPhase({ phase: "failed", message, retryable, code: error.code });
     throw error;
   }
 
@@ -411,7 +407,9 @@ export function uploadEvidence({
         fail(
           storageErrorMessage(attachFailure.error, attachResponse.status),
           isRetryable(attachFailure.error, attachResponse.status),
-          new Error(attachFailure.error ?? "attach_failed"),
+          Object.assign(new Error(attachFailure.error ?? "attach_failed"), {
+            code: attachFailure.error,
+          }),
         );
       }
 

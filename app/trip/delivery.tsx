@@ -18,6 +18,7 @@ import { TripStepHeader } from "@/components/TripStepHeader";
 import { tripDestination } from "@/lib/tripNav";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
+import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { DELIVERY_TARGETS } from "@/lib/attachments";
@@ -34,6 +35,7 @@ import {
   isBalanceConfirmed,
   owesAcknowledgementReceipt,
 } from "@/lib/riderOrder";
+import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 import { useActiveTrip } from "@/store/activeTrip";
 
 /**
@@ -76,7 +78,8 @@ export default function DeliveryProofScreen() {
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
 
   const [busy, setBusy] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<RiderRefusal | null>(null);
+  const refusalAction = useRefusalAction(id, "delivery");
   const [storage, setStorage] = useState<"available" | "unavailable" | "unknown">("unknown");
   const [receiptHandedOver, setReceiptHandedOver] = useState(false);
   const [otp, setOtp] = useState("");
@@ -106,6 +109,10 @@ export default function DeliveryProofScreen() {
     step: "delivery",
     targets: DELIVERY_TARGETS,
   });
+
+  const uploadRefusal = refusalAction(
+    evidence.upload.phase === "failed" ? riderRefusal(evidence.upload.code) : null,
+  );
 
   const toOffice = order ? endsAtOffice(order) : false;
   const balanceHeld = order ? !toOffice && !isBalanceConfirmed(order) : false;
@@ -166,7 +173,7 @@ export default function DeliveryProofScreen() {
         return;
       }
       setSubmitError(
-        api.apiErrorMessage(
+        api.tripRefusal(
           e,
           toOffice
             ? "The drop-off was not recorded. Do not leave until it shows as recorded — try again."
@@ -322,6 +329,11 @@ export default function DeliveryProofScreen() {
               onRetry={evidence.retry}
               onClear={evidence.clear}
               onSignature={evidence.attachSignature}
+              failureAction={
+                uploadRefusal.actionLabel && uploadRefusal.onAction
+                  ? { label: uploadRefusal.actionLabel, onPress: uploadRefusal.onAction }
+                  : null
+              }
               disabled={busy || balanceHeld || codeHeld}
             />
 
@@ -340,7 +352,8 @@ export default function DeliveryProofScreen() {
                 tone="error"
                 icon="circle-x"
                 title={toOffice ? "Drop-off not recorded" : "Delivery not recorded"}
-                body={submitError}
+                body={submitError.message}
+                {...refusalAction(submitError)}
               />
             ) : null}
           </>
