@@ -3,8 +3,24 @@ import { Platform } from "react-native";
 
 import * as api from "@/lib/api";
 import { PUSH_CHANNEL_ID, pushOffer } from "@/lib/push";
-import { usePush, pushSupported, DEVICE_REGISTRATION_TIMEOUT_MS, cancelDeviceRegistrations } from "@/store/push";
+import type { FirebaseMessaging } from "@/lib/firebaseMessaging";
+import {
+  usePush,
+  pushSupported,
+  DEVICE_REGISTRATION_TIMEOUT_MS,
+  cancelDeviceRegistrations,
+  subscribePushTokenRotation,
+} from "@/store/push";
 import { bindClerkSignOut, useSession } from "@/store/session";
+
+/**
+ * An iPhone build with Firebase, when a test sets one. Null everywhere else,
+ * which is Android and an iPhone build made without GoogleService-Info.plist.
+ */
+let mockFirebase: FirebaseMessaging | null = null;
+jest.mock("@/lib/firebaseMessaging", () => ({
+  getFirebaseMessaging: () => mockFirebase,
+}));
 
 /**
  * The registration lifecycle, against a mocked native module (jest.setup.js).
@@ -303,6 +319,71 @@ describe("resume", () => {
     expect(usePush.getState().permission).toBe("blocked");
     expect(register).not.toHaveBeenCalled();
     register.mockRestore();
+  });
+});
+
+describe("an iPhone build with Firebase", () => {
+  it("registers Firebase's FCM token, never the APNs token", async () => {
+    // The API sends through FCM HTTP v1, which cannot address a raw APNs
+    // token. With Firebase in the build, the iPhone hands over an FCM token
+    // and is filed exactly like an Android phone.
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    mockFirebase = {
+      getToken: jest.fn(async () => "fcm-ios-token-9b1e"),
+      onTokenRefresh: jest.fn(() => () => undefined),
+    };
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
+    try {
+      await usePush.getState().registerIfGranted();
+    } finally {
+      Object.defineProperty(Platform, "OS", { value: "android", configurable: true });
+      mockFirebase = null;
+    }
+
+    expect(register).toHaveBeenCalledWith("fcm-ios-token-9b1e", "ios", expect.any(AbortSignal));
+    expect(mocked.getDevicePushTokenAsync).not.toHaveBeenCalled();
+    expect(usePush.getState().token).toBe("fcm-ios-token-9b1e");
+    register.mockRestore();
+  });
+});
+
+describe("subscribePushTokenRotation", () => {
+  it("follows expo-notifications' token where there is no Firebase", () => {
+    const heard: string[] = [];
+    const unsubscribe = subscribePushTokenRotation((token) => heard.push(token));
+    const listener = mocked.addPushTokenListener.mock.calls[0][0];
+    listener({ type: "android", data: "rotated-fcm" } as never);
+    listener({ type: "android", data: "" } as never);
+    unsubscribe();
+
+    expect(heard).toEqual(["rotated-fcm"]);
+    const subscription = mocked.addPushTokenListener.mock.results[0].value as { remove: jest.Mock };
+    expect(subscription.remove).toHaveBeenCalled();
+  });
+
+  it("follows Firebase, never the APNs token, on an iPhone build with Firebase", () => {
+    let refresh: ((token: string) => void) | undefined;
+    const stop = jest.fn();
+    mockFirebase = {
+      getToken: jest.fn(async () => "unused"),
+      onTokenRefresh: jest.fn((listener) => {
+        refresh = listener;
+        return stop;
+      }),
+    };
+    const heard: string[] = [];
+    try {
+      const unsubscribe = subscribePushTokenRotation((token) => heard.push(token));
+      refresh?.("rotated-fcm-ios");
+      unsubscribe();
+    } finally {
+      mockFirebase = null;
+    }
+
+    expect(heard).toEqual(["rotated-fcm-ios"]);
+    expect(stop).toHaveBeenCalled();
+    expect(mocked.addPushTokenListener).not.toHaveBeenCalled();
   });
 });
 

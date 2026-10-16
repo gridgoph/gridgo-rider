@@ -4,6 +4,7 @@ import { Redirect, useRouter, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
+import { AppleButton } from "@/components/AppleButton";
 import { AuthDivider } from "@/components/AuthDivider";
 import { CodeField } from "@/components/CodeField";
 import { FormScroll } from "@/components/FormScroll";
@@ -17,6 +18,7 @@ import { SessionWait } from "@/components/SessionWait";
 import { fieldInputStyle } from "@/constants/theme";
 import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
 import { useThemeColors } from "@/hooks/useTheme";
+import { appleSignInOutcome, isAppleCancel, type AppleFlowResult } from "@/lib/appleSignIn";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
 import {
   clerkSignOutRecoveryMessage,
@@ -249,6 +251,39 @@ export default function LoginScreen() {
     }
   }
 
+  /**
+   * Sign in with Apple (iPhone only). Apple's sheet is native, so unlike
+   * Google there is no browser return to wait for: the flow either hands back
+   * a session, which is activated and then adopted by the session bridge the
+   * same way a Google session is, or the person closed the sheet and nothing
+   * is said.
+   */
+  async function continueWithApple(start: () => Promise<AppleFlowResult>) {
+    if (busy) return;
+    setBusy(true);
+    setClerkError(null);
+    clearError();
+    try {
+      if (isSignedIn) {
+        useSession.getState().beginSessionWait("in");
+        return;
+      }
+      const outcome = appleSignInOutcome(await start());
+      if (outcome.status === "activated") {
+        await setActive({ session: outcome.sessionId });
+        useSession.getState().beginSessionWait("in");
+        return;
+      }
+      if (outcome.status === "incomplete") setClerkError(outcome.message);
+    } catch (caught) {
+      if (isAppleCancel(caught)) return;
+      useSession.getState().clearSessionWait();
+      setClerkError(clerkErrorMessage(caught, "Apple sign in did not go through. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const loading = busy || adopting;
   const error = clerkError ?? storeError;
   const verifyCopy = loginVerifyCopy(verifyFactor, email);
@@ -412,6 +447,7 @@ export default function LoginScreen() {
           />
 
           <AuthDivider />
+          <AppleButton onPress={(start) => void continueWithApple(start)} disabled={loading} />
           <GoogleButton onPress={() => void continueWithGoogle()} disabled={loading} />
 
           <Pressable
