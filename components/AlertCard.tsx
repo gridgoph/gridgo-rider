@@ -15,6 +15,8 @@ type Props = {
   order: Order | null;
   read: boolean;
   onMarkRead: () => void;
+  /** A release notice: the tap also opens this install's store. */
+  onOpen?: () => void;
 };
 
 /**
@@ -36,7 +38,7 @@ type Props = {
  * The mark is kept on this phone; the demo API returns `read` but has no route
  * to set it. The list says so once at the bottom rather than on every card.
  */
-export function AlertCard({ alert, order, read, onMarkRead }: Props) {
+export function AlertCard({ alert, order, read, onMarkRead, onOpen }: Props) {
   const colors = useThemeColors();
   const progress = order ? orderStage(order) : null;
   const picture = notificationImageUrl(alert.imageUrl);
@@ -65,11 +67,14 @@ export function AlertCard({ alert, order, read, onMarkRead }: Props) {
       )}
     >
       <Pressable
-        onPress={onMarkRead}
-        disabled={read}
+        onPress={() => {
+          if (!read) onMarkRead();
+          onOpen?.();
+        }}
+        disabled={read && !onOpen}
         accessibilityRole="button"
         accessibilityLabel={spoken}
-        accessibilityHint={read ? undefined : "Marks this alert read"}
+        accessibilityHint={onOpen ? "Opens the update" : read ? undefined : "Marks this alert read"}
         /*
           Read alerts recede; unread ones stay on `surface`. The obvious move
           was to lift unread onto `surfaceHigh`, but in Light that token is

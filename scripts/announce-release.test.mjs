@@ -32,3 +32,22 @@ test('HTTP failures and network errors become warnings without leaking errors or
 test('an idempotent retry is success', async () => {
   assert.equal((await announceRelease(env, async () => ({ ok: true, status: 200 }))).level, 'notice');
 });
+test('a store channel is sent only when named; unset keeps the APK body', async () => {
+  for (const channel of ['play', 'ios', 'apk']) {
+    const result = await announceRelease({ ...env, RELEASE_CHANNEL: channel }, async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), { app: 'client', version: '1.0.123', channel });
+      return { ok: true, status: 201 };
+    });
+    assert.equal(result.level, 'notice');
+  }
+});
+test('a store failure names the store upload that already succeeded', async () => {
+  const result = await announceRelease({ ...env, RELEASE_CHANNEL: 'play' }, async () => ({ ok: false, status: 500 }));
+  assert.equal(result.level, 'warning');
+  assert.match(result.message, /Play upload is already published/);
+});
+test('an unknown channel is a warning without a request', async () => {
+  const result = await announceRelease({ ...env, RELEASE_CHANNEL: 'web' }, () => { throw new Error('must not call'); });
+  assert.equal(result.level, 'warning');
+  assert.match(result.message, /RELEASE_CHANNEL/);
+});
