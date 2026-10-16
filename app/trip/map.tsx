@@ -98,7 +98,8 @@ export default function TripMapScreen() {
           style={{ paddingTop: insets.top + 8 }}
         >
           <Pressable
-            onPress={() => router.back()}
+            // Opened from a link there is nothing behind it; the trip is home.
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/active"))}
             accessibilityRole="button"
             accessibilityLabel="Close the full screen map"
             hitSlop={8}
