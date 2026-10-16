@@ -256,6 +256,22 @@ describe("release push follows both successful publishes", () => {
     expect(step).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
     expect(step).toContain("steps.config.outputs.version");
     expect(step).toContain("RELEASE_APP: rider");
+    // The APK notice keeps the body it always had: no channel means apk.
+    expect(step).not.toContain("RELEASE_CHANNEL");
+  });
+
+  it("tells Play installs only after a successful Play upload, and never fails it", () => {
+    const steps = apkSteps.filter(step => step.includes("scripts/announce-release.mjs"));
+    expect(steps).toHaveLength(2);
+    const play = steps[1];
+    const submit = apkSteps.findIndex(step => step.includes("- name: Submit the Play bundle to the internal testing track"));
+    expect(apkSteps.indexOf(play)).toBeGreaterThan(submit);
+    expect(play).toMatch(/if: github\.event\.inputs\.play_bundle == 'true' && github\.event\.inputs\.submit_to_play == 'true'\n/);
+    expect(play).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
+    expect(play).toContain("continue-on-error: true");
+    expect(play).toContain("RELEASE_CHANNEL: play");
+    expect(play).toContain("RELEASE_APP: rider");
+    expect(play).toContain("steps.config.outputs.version");
   });
 });
 
@@ -325,7 +341,7 @@ describe("a manual play_bundle run builds a Google Play bundle and publishes not
     expect(upload).toContain("if-no-files-found: error");
   });
 
-  it("never reaches the landing site, a GitHub Release or the release push", () => {
+  it("never reaches the landing site, a GitHub Release or the APK release push", () => {
     // A push event carries no inputs, so these push-only steps cannot run on a dispatch.
     for (const marker of ["upload-apk rider", "scripts/announce-release.mjs"]) {
       expect(apkSteps.find((step) => step.includes(marker))).toMatch(pushToMain);
@@ -363,7 +379,8 @@ describe("submit_to_play hands the verified AAB to EAS Submit for the internal t
     // Nothing else in the job reads the new input, so the APK path cannot change.
     const readers = apkSteps.filter((step) => /inputs\.submit_to_play/.test(step));
     const named = apkSteps.find((step) => step.includes("Name the Play bundle"));
-    expect(readers).toEqual([named, submitStep()]);
+    const notice = apkSteps.find((step) => step.includes("Broadcast the Play release"));
+    expect(readers).toEqual([named, submitStep(), notice]);
   });
 
   it("submits the AAB after it is verified and kept as an artifact", () => {

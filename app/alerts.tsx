@@ -2,7 +2,7 @@ import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { Linking, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { AlertCard } from "@/components/AlertCard";
 import { EmptyState } from "@/components/EmptyState";
@@ -13,6 +13,8 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { AlertListSkeleton } from "@/components/SkeletonScreens";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { installChannel } from "@/lib/buildDistribution";
+import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { useNotifications } from "@/store/notifications";
 import { askConfirm } from "@/store/sheets";
 
@@ -34,6 +36,7 @@ import { askConfirm } from "@/store/sheets";
 export default function AlertsScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const channel = installChannel();
 
   const load = useNotifications((s) => s.load);
   const items = useNotifications((s) => s.items);
@@ -173,15 +176,20 @@ export default function AlertsScreen() {
             />
 
             <View>
-              {items.map((item) => (
-                <AlertCard
-                  key={item.id}
-                  alert={item}
-                  order={item.orderId ? (byId.get(item.orderId) ?? null) : null}
-                  read={isRead(item)}
-                  onMarkRead={() => markRead(item.id)}
-                />
-              ))}
+              {items.map((item) => {
+                // A release notice opens this install's own store, as its push does.
+                const release = releaseNoticeDestination(item, item.title, channel);
+                return (
+                  <AlertCard
+                    key={item.id}
+                    alert={item}
+                    order={item.orderId ? (byId.get(item.orderId) ?? null) : null}
+                    read={isRead(item)}
+                    onMarkRead={() => markRead(item.id)}
+                    onOpen={release ? () => void openReleaseDestination(release, (url) => Linking.openURL(url)) : undefined}
+                  />
+                );
+              })}
             </View>
 
             <Text className="text-caption text-text-muted">

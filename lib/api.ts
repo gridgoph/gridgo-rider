@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 
 import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
 import type { DevicePlatform } from "@/lib/push";
+import type { InstallChannel } from "@/lib/buildDistribution";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
 import { parseOrderCall, parseOrderCalls, type CallPair, type OrderCall } from "@/lib/orderCalls";
@@ -399,6 +400,9 @@ export type Notification = {
   orderId?: string;
   /** The support conversation a `support_message` is about. Never in push data. */
   threadId?: string | null;
+  /** A release notice's install channel and store (`lib/releasePush.ts`). */
+  releaseChannel?: string;
+  storeTarget?: string;
 };
 
 /**
@@ -890,6 +894,22 @@ export async function logout(deviceToken?: string | null, capturedBearer?: Promi
 }
 
 /**
+ * The `POST /devices` body, signed in or not. `installChannel` says how this
+ * install arrived, so release notices reach it only once its own store has the
+ * version; web reports none. Every launch re-registers, which is how an
+ * install that predates the field starts reporting it.
+ */
+function deviceBody(token: string, platform: DevicePlatform, installChannel: InstallChannel | null) {
+  return {
+    token,
+    platform,
+    appRole: "rider",
+    tokenProvider: platform === "ios" ? "apns" : "fcm",
+    ...(installChannel ? { installChannel } : {}),
+  };
+}
+
+/**
  * Register this installation's FCM token against the signed-in rider.
  *
  * Idempotent and cheap by design, so it is called on every launch and on every
@@ -902,12 +922,13 @@ export async function logout(deviceToken?: string | null, capturedBearer?: Promi
 export async function registerDevice(
   token: string,
   platform: DevicePlatform,
+  installChannel: InstallChannel | null,
   signal?: AbortSignal,
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
     signal,
-    body: JSON.stringify({ token, platform, appRole: "rider", tokenProvider: platform === "ios" ? "apns" : "fcm" }),
+    body: JSON.stringify(deviceBody(token, platform, installChannel)),
   });
 }
 
@@ -940,13 +961,14 @@ export async function registerDevice(
 export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
+  installChannel: InstallChannel | null,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform, appRole: "rider", tokenProvider: platform === "ios" ? "apns" : "fcm" }),
+    body: JSON.stringify(deviceBody(token, platform, installChannel)),
   });
   if (!res.ok) {
     const text = await res.text();

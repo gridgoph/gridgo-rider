@@ -223,7 +223,7 @@ it("cancels a device claim while its bearer is unresolved", async () => {
   const fetchSpy = jest.spyOn(global, "fetch");
   const controller = new AbortController();
   try {
-    const request = api.registerDevice("device", "android", controller.signal);
+    const request = api.registerDevice("device", "android", "apk", controller.signal);
     controller.abort();
     await expect(request).rejects.toThrow();
     finish("late-token");

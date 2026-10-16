@@ -1,5 +1,5 @@
-import { buildDistribution } from "@/lib/buildDistribution";
-import { releasePushDownloadUrl } from "@/lib/releasePush";
+import { installChannel } from "@/lib/buildDistribution";
+import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
 import * as api from "@/lib/api";
 import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
@@ -194,11 +194,12 @@ export function usePushNotifications(): void {
       const key = parsePushData(data).notificationId ?? `response:${identifier}`;
       if (routed.current.has(key)) return;
       routed.current.add(key);
-      const download = releasePushDownloadUrl(data, title, buildDistribution());
-      if (download) {
+      const release = releaseNoticeDestination(data, title, installChannel());
+      if (release) {
         pending.current = null;
-        // An update is public and can rescue a signed-out install too.
-        void Linking.openURL(download).catch(() => undefined);
+        // An update is public and can rescue a signed-out install too. A Play
+        // or TestFlight install opens its store, never the side-load APK.
+        void openReleaseDestination(release, (url) => Linking.openURL(url));
         void Notifications?.clearLastNotificationResponseAsync?.().catch(() => undefined);
         return;
       }

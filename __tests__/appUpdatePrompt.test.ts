@@ -37,7 +37,7 @@ describe("the update prompt", () => {
     expect(read("lib/buildDistribution.ts")).toContain("process.env.EXPO_PUBLIC_APP_DISTRIBUTION");
     expect(read("hooks/useAppUpdateCheck.ts")).toContain("offersSideloadUpdates(buildDistribution())");
     expect(read("hooks/usePushNotifications.ts")).toContain(
-      "releasePushDownloadUrl(data, title, buildDistribution())",
+      "releaseNoticeDestination(data, title, installChannel())",
     );
   });
 

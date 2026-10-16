@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import {act,renderHook} from "@testing-library/react-native";
 import {usePushNotifications} from "@/hooks/usePushNotifications";
@@ -76,7 +76,12 @@ it.each(["cold start", "background"])("opens the exact authorized offer from %s 
 });
 
 
+const setOS=(os:string)=>Object.defineProperty(Platform,"OS",{value:os,configurable:true});
+const initialOS=Platform.OS;
+afterEach(()=>{setOS(initialOS);delete process.env.EXPO_PUBLIC_APP_DISTRIBUTION;});
+
 it.each(["cold start", "background"])("opens release download while signed out from %s", async mode => {
+  setOS("android");
   const open = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
   useSession.setState({ user: null });
   const release = { notification: { request: { identifier: "release-tap", content: {
@@ -93,6 +98,51 @@ it.each(["cold start", "background"])("opens release download while signed out f
   expect(open).toHaveBeenCalledTimes(1);
   expect(jest.requireMock("expo-notifications").clearLastNotificationResponseAsync).toHaveBeenCalledTimes(1);
   expect(mockPush).not.toHaveBeenCalled();
+  await view.unmount();
+  open.mockRestore();
+});
+
+const storeTap=(releaseChannel:string,storeTarget:string,title:string)=>({notification:{request:{identifier:`release-${releaseChannel}`,content:{
+  title,data:{notificationId:`release-${releaseChannel}`,type:"announcement",releaseChannel,storeTarget},
+}}}});
+
+it.each([
+  ["a Play install","android","play",storeTap("play","play_store","GRIDGO Rider 1.0.123 is on the Play Store"),"market://details?id=ph.gridgo.rider"],
+  ["a TestFlight install","ios",undefined,storeTap("ios","testflight","GRIDGO Rider 1.0.123 is in TestFlight"),"itms-beta://"],
+])("opens the store on %s, never the APK download",async(_label,os,distribution,tap,store)=>{
+  setOS(os);
+  if(distribution)process.env.EXPO_PUBLIC_APP_DISTRIBUTION=distribution;
+  const open=jest.spyOn(Linking,"openURL").mockResolvedValue(undefined);
+  mockLast.mockResolvedValue(tap);
+  const view=await renderHook(()=>usePushNotifications());
+  await act(async()=>{jest.advanceTimersByTime(100);});
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(open).toHaveBeenCalledWith(store);
+  expect(mockPush).not.toHaveBeenCalled();
+  await view.unmount();
+  open.mockRestore();
+});
+
+it("falls back to the Play Store web page when the Play app does not take the link",async()=>{
+  setOS("android");process.env.EXPO_PUBLIC_APP_DISTRIBUTION="play";
+  const open=jest.spyOn(Linking,"openURL").mockRejectedValueOnce(new Error("no handler")).mockResolvedValue(undefined);
+  mockLast.mockResolvedValue(storeTap("play","play_store","GRIDGO Rider 1.0.123 is on the Play Store"));
+  const view=await renderHook(()=>usePushNotifications());
+  await act(async()=>{jest.advanceTimersByTime(100);});
+  expect(open.mock.calls).toEqual([["market://details?id=ph.gridgo.rider"],["https://play.google.com/store/apps/details?id=ph.gridgo.rider"]]);
+  await view.unmount();
+  open.mockRestore();
+});
+
+it("never opens the APK download from an APK notice on a Play install",async()=>{
+  setOS("android");process.env.EXPO_PUBLIC_APP_DISTRIBUTION="play";mockReady=true;
+  const open=jest.spyOn(Linking,"openURL").mockResolvedValue(undefined);
+  (api.listNotifications as jest.Mock).mockResolvedValue([]);
+  mockLast.mockResolvedValue(storeTap("apk","apk_download","GRIDGO Rider 1.0.123 is ready"));
+  const view=await renderHook(()=>usePushNotifications());
+  await act(async()=>{jest.advanceTimersByTime(100);});
+  expect(open).not.toHaveBeenCalled();
+  expect(mockPush).toHaveBeenCalledWith("/alerts");
   await view.unmount();
   open.mockRestore();
 });
