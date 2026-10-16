@@ -10,12 +10,17 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "ph.gridgo.rider",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "GRIDGO shares your position only during a delivery job you accepted: with the shop until pick-up, then with the client until delivery. Sharing stops when the job ends.",
         "NSCameraUsageDescription": "GRIDGO uses the camera for pickup and delivery proof photos.",
-        "NSPhotoLibraryUsageDescription": "GRIDGO needs your photos so you can set a profile picture and attach a proof photo when the camera is unavailable."
+        "NSPhotoLibraryUsageDescription": "GRIDGO needs your photos so you can set a profile picture and attach a proof photo when the camera is unavailable.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "GRIDGO never asks to follow you all the time. It shares your position only during a delivery job you accepted, keeps sharing while you switch apps during that job with the blue location indicator showing, and stops when the job ends.",
+        "NSLocationAlwaysUsageDescription": "GRIDGO never asks to follow you all the time. It shares your position only during a delivery job you accepted, keeps sharing while you switch apps during that job with the blue location indicator showing, and stops when the job ends.",
+        "NSMotionUsageDescription": "GRIDGO does not read your motion or fitness activity. It only uses your location, during a delivery job you accepted.",
+        "NSFaceIDUsageDescription": "GRIDGO does not use Face ID. Your sign-in stays in the phone's secure storage.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -57,6 +62,7 @@
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",
+      "expo-apple-authentication",
       "@clerk/expo",
       "expo-secure-store",
       [
@@ -83,6 +89,7 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "GRIDGO shares your position only during a delivery job you accepted: with the shop until pick-up, then with the client until delivery. Sharing stops when the job ends.",
+          "locationAlwaysAndWhenInUsePermission": "GRIDGO never asks to follow you all the time. It shares your position only during a delivery job you accepted, keeps sharing while you switch apps during that job with the blue location indicator showing, and stops when the job ends.",
           "isAndroidForegroundServiceEnabled": true,
           "isIosBackgroundLocationEnabled": true
         }
@@ -104,6 +111,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b4ff2557-642e-4520-9427-c506e6cdcf93"
+      }
     }
   }
 }

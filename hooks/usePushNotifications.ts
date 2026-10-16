@@ -11,7 +11,7 @@ import { CHAT_LIST_ROUTE } from "@/lib/chatThreads";
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
 import { useNotifications } from "@/store/notifications";
-import { usePush } from "@/store/push";
+import { subscribePushTokenRotation, usePush } from "@/store/push";
 import { isSignedIn, useSession } from "@/store/session";
 
 const Notifications = loadExpoNotifications();
@@ -246,18 +246,16 @@ export function usePushNotifications(): void {
 
     // Firebase can reissue a token while the app is running. A stale one stops
     // delivering silently, which is the failure nobody reports.
-    const rotated = withoutNativeModule(() =>
-      Notifications.addPushTokenListener((token) => {
-        if (typeof token.data === "string" && token.data) {
-          void usePush.getState().adoptToken(token.data);
-        }
+    const unsubscribeRotation = withoutNativeModule(() =>
+      subscribePushTokenRotation((token) => {
+        void usePush.getState().adoptToken(token);
       }),
     );
 
     return () => {
       tap?.remove();
       received?.remove();
-      rotated?.remove();
+      unsubscribeRotation?.();
     };
   }, [router]);
 
