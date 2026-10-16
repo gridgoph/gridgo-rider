@@ -16,7 +16,15 @@ function round(n: number): string {
   return Number(n.toFixed(DECIMALS)).toString();
 }
 
-/** One stroke as an SVG path `d` value. A single point becomes a short dash. */
+/**
+ * One stroke as an SVG path `d` value. A single point becomes a short dash.
+ *
+ * The line runs through the midpoint of each pair of samples, curving towards
+ * the sample between them. A phone reports a finger a few dozen times a
+ * second, so joining the raw samples with straight segments draws a fast loop
+ * as a polygon; the curve keeps the shape the hand made and stays inside the
+ * points it was given.
+ */
 export function strokeToPath(stroke: SignatureStroke): string {
   if (stroke.length === 0) return "";
   const first = stroke[0]!;
@@ -24,11 +32,31 @@ export function strokeToPath(stroke: SignatureStroke): string {
     // A tap still leaves a visible mark rather than an empty path.
     return `M${round(first.x)} ${round(first.y)} L${round(first.x + 0.5)} ${round(first.y)}`;
   }
-  const rest = stroke
-    .slice(1)
-    .map((p) => `L${round(p.x)} ${round(p.y)}`)
-    .join(" ");
-  return `M${round(first.x)} ${round(first.y)} ${rest}`;
+  const parts = [`M${round(first.x)} ${round(first.y)}`];
+  for (let i = 1; i < stroke.length - 1; i += 1) {
+    const p = stroke[i]!;
+    const next = stroke[i + 1]!;
+    parts.push(
+      `Q${round(p.x)} ${round(p.y)} ${round((p.x + next.x) / 2)} ${round((p.y + next.y) / 2)}`,
+    );
+  }
+  const last = stroke[stroke.length - 1]!;
+  parts.push(`L${round(last.x)} ${round(last.y)}`);
+  return parts.join(" ");
+}
+
+/**
+ * Samples closer than this to the last one kept are dropped, in points. A
+ * finger resting on the glass still reports movement; keeping that jitter
+ * thickens the line into a blot and makes every redraw longer.
+ */
+export const MIN_POINT_GAP = 1.5;
+
+/** The stroke with `point` added, unless it is jitter on the last sample. */
+export function extendStroke(stroke: SignatureStroke, point: SignaturePoint): SignatureStroke {
+  const last = stroke[stroke.length - 1];
+  if (last && Math.hypot(point.x - last.x, point.y - last.y) < MIN_POINT_GAP) return stroke;
+  return [...stroke, point];
 }
 
 /**

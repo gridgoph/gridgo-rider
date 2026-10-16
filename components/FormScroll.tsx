@@ -54,13 +54,21 @@ type Props = {
    * keyboard and lands behind the bar instead.
    */
   stickyActionHeight?: number;
+  /** Off while a finger is drawing on a signature pad inside this scroll. */
+  scrollEnabled?: boolean;
   children: ReactNode;
 };
 
-export function FormScroll({ contentClassName, stickyActionHeight = 0, children }: Props) {
+export function FormScroll({
+  contentClassName,
+  stickyActionHeight = 0,
+  scrollEnabled = true,
+  children,
+}: Props) {
   return (
     <KeyboardAwareScrollView
       style={FILL}
+      scrollEnabled={scrollEnabled}
       contentContainerStyle={GROW}
       bottomOffset={CARET_GAP}
       extraKeyboardSpace={stickyActionHeight}

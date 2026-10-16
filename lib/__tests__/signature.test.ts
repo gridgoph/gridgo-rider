@@ -1,4 +1,5 @@
 import {
+  extendStroke,
   hasEnoughInk,
   inkLength,
   MIN_SIGNATURE_INK,
@@ -19,14 +20,31 @@ describe("strokeToPath", () => {
     expect(strokeToPath([{ x: 10, y: 20 }])).toBe("M10 20 L10.5 20");
   });
 
-  it("joins points into one path", () => {
+  it("joins two points with a straight line", () => {
+    expect(
+      strokeToPath([
+        { x: 0, y: 0 },
+        { x: 4, y: 3 },
+      ]),
+    ).toBe("M0 0 L4 3");
+  });
+
+  it("curves through the midpoints between samples instead of drawing a polygon", () => {
     expect(
       strokeToPath([
         { x: 0, y: 0 },
         { x: 1.25, y: 2 },
         { x: 4, y: 3 },
       ]),
-    ).toBe("M0 0 L1.3 2 L4 3");
+    ).toBe("M0 0 Q1.3 2 2.6 2.5 L4 3");
+    expect(
+      strokeToPath([
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 10 },
+        { x: 0, y: 10 },
+      ]),
+    ).toBe("M0 0 Q10 0 10 5 Q10 10 5 10 L0 10");
   });
 });
 
@@ -62,5 +80,17 @@ describe("refitting a restored signature", () => {
     const drawn: SignatureStroke[] = [[{ x: 1, y: 2 }]];
     expect(scaleStrokes(drawn, 300, 300)).toBe(drawn);
     expect(scaleStrokes(drawn, 0, 300)).toBe(drawn);
+  });
+});
+
+describe("extendStroke", () => {
+  it("keeps a sample that moved and drops one that is jitter on the last", () => {
+    const stroke: SignatureStroke = [{ x: 0, y: 0 }];
+    expect(extendStroke(stroke, { x: 1, y: 0.5 })).toBe(stroke);
+    expect(extendStroke(stroke, { x: 3, y: 0 })).toEqual([
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+    ]);
+    expect(extendStroke([], { x: 5, y: 5 })).toEqual([{ x: 5, y: 5 }]);
   });
 });
