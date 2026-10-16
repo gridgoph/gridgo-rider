@@ -120,7 +120,7 @@ it("creates the channel, raises the dialog, then registers the token", async () 
   });
 
   await waitFor(() =>
-    expect(register).toHaveBeenCalledWith("test-fcm-token", "android", expect.any(AbortSignal)),
+    expect(register).toHaveBeenCalledWith("test-fcm-token", "android", "apk", expect.any(AbortSignal)),
   );
   const channel = mocked.setNotificationChannelAsync.mock.invocationCallOrder[0];
   const dialog = mocked.requestPermissionsAsync.mock.invocationCallOrder[0];
