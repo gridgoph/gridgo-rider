@@ -32,7 +32,13 @@ export type EvidenceUpload =
   | { phase: "sending"; sentBytes: number; totalBytes: number | null }
   | { phase: "processing" }
   | { phase: "stored"; fileId: string }
-  | { phase: "failed"; message: string; retryable: boolean };
+  | {
+      phase: "failed";
+      message: string;
+      retryable: boolean;
+      /** The server's refusal code, when it gave one; never shown. */
+      code?: string;
+    };
 
 export const UPLOAD_IDLE: EvidenceUpload = { phase: "idle" };
 
