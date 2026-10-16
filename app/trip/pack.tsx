@@ -14,12 +14,14 @@ import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
+import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import { PACKING_PHOTO_TARGETS } from "@/lib/attachments";
 import { formatCheckedAt } from "@/lib/handoffSignature";
 import { recordedCountLines } from "@/lib/pickupCount";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
 import { pickupLabel } from "@/lib/riderOrder";
+import { riderRefusal } from "@/lib/riderRefusals";
 import {
   currentInspectionId,
   packedPhotoAt,
@@ -56,6 +58,12 @@ export default function PackedPhotoScreen() {
     step: "packing",
     targets: PACKING_PHOTO_TARGETS,
   });
+  const refusalAction = useRefusalAction(id, "pack");
+  // A refused attach that names a missing step (the unpacked check, most
+  // often) offers the way there under the photo it stopped.
+  const failedStep =
+    evidence.upload.phase === "failed" ? riderRefusal(evidence.upload.code) : null;
+  const { actionLabel: failureLabel, onAction: onFailureAction } = refusalAction(failedStep);
 
   const packs = order ? ridersPack(order) : false;
   const inspectionId = order ? currentInspectionId(order) : null;
@@ -152,6 +160,11 @@ export default function PackedPhotoScreen() {
                 onTakePhoto={() => void evidence.takePhoto()}
                 onRetry={evidence.retry}
                 onClear={evidence.clear}
+                failureAction={
+                  failureLabel && onFailureAction
+                    ? { label: failureLabel, onPress: onFailureAction }
+                    : null
+                }
                 disabled={savedNow}
               />
             )}

@@ -19,6 +19,7 @@ import { PickupChecklistSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
+import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
@@ -46,6 +47,7 @@ import {
 } from "@/lib/pickupCount";
 import { formatCheckedAt } from "@/lib/handoffSignature";
 import { pickupLabel } from "@/lib/riderOrder";
+import type { RiderRefusal } from "@/lib/riderRefusals";
 import {
   arrivedPackedAt,
   canMarkArrivedPacked,
@@ -106,7 +108,8 @@ export default function PickupChecklistScreen() {
   const [failureNote, setFailureNote] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<RiderRefusal | null>(null);
+  const refusalAction = useRefusalAction(id, "pickup");
   const [restoredFor, setRestoredFor] = useState<string | null>(null);
   // The action bar rides above the keyboard, so the escalation note has to
   // clear the bar as well as the keyboard to stay readable while it is typed.
@@ -244,7 +247,7 @@ export default function PickupChecklistScreen() {
         void reload("refresh");
       }
       setSubmitError(
-        api.apiErrorMessage(
+        api.tripRefusal(
           e,
           "The checks were not recorded. Try again before the package leaves the counter.",
         ),
@@ -444,7 +447,8 @@ export default function PickupChecklistScreen() {
                 tone="error"
                 icon="circle-x"
                 title="Checks not recorded"
-                body={submitError}
+                body={submitError.message}
+                {...refusalAction(submitError)}
               />
             ) : null}
           </>

@@ -17,6 +17,7 @@ import { StatusChip } from "@/components/StatusChip";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TextField } from "@/components/TextField";
 import { TripStepHeader } from "@/components/TripStepHeader";
+import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
@@ -45,6 +46,7 @@ import {
 import { type EvidenceUpload, UPLOAD_IDLE, uploadStatusLine } from "@/lib/proofEvidence";
 import { handoffSignatureEvidence } from "@/lib/proofPhoto";
 import { pickupLabel } from "@/lib/riderOrder";
+import type { RiderRefusal } from "@/lib/riderRefusals";
 import { currentInspectionId, packedPhotoStored, ridersPack } from "@/lib/shopHandover";
 import type { SignatureStroke } from "@/lib/signature";
 import { useActiveTrip } from "@/store/activeTrip";
@@ -107,7 +109,8 @@ export default function HandoffSignatureScreen() {
   const uploadRef = useRef<EvidenceUpload>(UPLOAD_IDLE);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<RiderRefusal | null>(null);
+  const refusalAction = useRefusalAction(id, "handoff");
   const [actionBarHeight, setActionBarHeight] = useState(0);
 
   useEffect(() => {
@@ -233,9 +236,11 @@ export default function HandoffSignatureScreen() {
           router.replace({ pathname: "/trip/pickup", params: { orderId: order.id } });
           return;
         }
-        setSubmitError(
-          "The handoff was not recorded. Do not take the package — pull down on the trip to refresh it, then try again.",
-        );
+        setSubmitError({
+          message:
+            "The handoff was not recorded. Do not take the package — pull down on the trip to refresh it, then try again.",
+          step: "trip",
+        });
         return;
       }
       clearChecklist(order.id);
@@ -243,24 +248,22 @@ export default function HandoffSignatureScreen() {
       // as it is owed, so this screen has nothing left to say.
       router.back();
     } catch (e) {
-      // The upload reports its own failure through the status line; only a
-      // refusal of the checks needs a sentence here.
-      if (uploadRef.current.phase !== "failed") {
-        const code = api.apiErrorCode(e);
-        if (code === "invalid_handoff_signature" && order) {
-          saveSignature(order.id, { storedFileId: null });
-        }
-        // A step the server says is missing: read the job again so the screen
-        // shows which one, with the way back to it in the bar.
-        if (code === "unpacked_inspection_required" || code === "packing_photo_required") {
-          void reload("refresh");
-        }
-        setSubmitError(
-          api.apiErrorMessage(
-            e,
-            "The handoff was not recorded. Do not take the package until it is — try again.",
-          ),
-        );
+      const refusal = api.tripRefusal(
+        e,
+        "The handoff was not recorded. Do not take the package until it is — try again.",
+      );
+      if (api.apiErrorCode(e) === "invalid_handoff_signature" && order) {
+        saveSignature(order.id, { storedFileId: null });
+      }
+      // A step the server says is missing: read the job again so the screen
+      // shows which one, with the way back to it in the bar.
+      if (refusal.step === "pickup" || refusal.step === "pack") {
+        void reload("refresh");
+      }
+      // The upload reports its own failure through the status line; a refusal
+      // that names a step to go back to still needs the way there.
+      if (uploadRef.current.phase !== "failed" || refusal.step) {
+        setSubmitError(refusal);
       }
     } finally {
       submitting.current = false;
@@ -384,7 +387,7 @@ export default function HandoffSignatureScreen() {
                 </Pressable>
               </View>
 
-              {status?.detail && status.tone === "error" ? (
+              {status?.detail && status.tone === "error" && !submitError ? (
                 <Text className="text-body text-error">{status.detail}</Text>
               ) : null}
             </View>
@@ -406,7 +409,8 @@ export default function HandoffSignatureScreen() {
                 tone="error"
                 icon="circle-x"
                 title="Handoff not recorded"
-                body={submitError}
+                body={submitError.message}
+                {...refusalAction(submitError)}
               />
             ) : null}
           </>
