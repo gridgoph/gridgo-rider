@@ -46,9 +46,10 @@ jest.mock("@/lib/proofPhoto", () => ({
 }));
 
 /**
- * A pad that can be signed from a test. The real one is a PanResponder over
- * an SVG, which a test cannot draw on; what the screen needs from it is the
- * ink verdict, the strokes, and a PNG when asked.
+ * A pad that can be signed from a test. The real one is a Gesture Handler pan
+ * over an SVG, covered on its own in `components/__tests__/SignaturePad.test.tsx`;
+ * what the screen needs from it is the ink verdict, the strokes, the pen going
+ * down and up, and a PNG when asked.
  */
 jest.mock("@/components/SignaturePad", () => {
   const React = jest.requireActual<typeof import("react")>("react");
@@ -58,14 +59,20 @@ jest.mock("@/components/SignaturePad", () => {
     props: {
       onSignedChange?: (signed: boolean) => void;
       onStrokesChange?: (strokes: SignatureStroke[], width: number) => void;
+      onDrawingChange?: (drawing: boolean) => void;
       initialStrokes?: SignatureStroke[];
       hint?: string;
     },
-    ref: React.Ref<{ toPngFile: () => Promise<string>; clear: () => void }>,
+    ref: React.Ref<{ toPngFile: () => Promise<string>; clear: () => void; undo: () => void }>,
   ) {
     React.useImperativeHandle(ref, () => ({
       toPngFile: async () => "file:///cache/pad.png",
       clear: () => {
+        props.onSignedChange?.(false);
+        props.onStrokesChange?.([], 320);
+      },
+      // The signature is one stroke here, so taking it back empties the paper.
+      undo: () => {
         props.onSignedChange?.(false);
         props.onStrokesChange?.([], 320);
       },
@@ -92,6 +99,18 @@ jest.mock("@/components/SignaturePad", () => {
           }}
         >
           <RN.Text>dot</RN.Text>
+        </RN.Pressable>
+        <RN.Pressable
+          accessibilityLabel="test: pen down"
+          onPress={() => props.onDrawingChange?.(true)}
+        >
+          <RN.Text>pen down</RN.Text>
+        </RN.Pressable>
+        <RN.Pressable
+          accessibilityLabel="test: pen up"
+          onPress={() => props.onDrawingChange?.(false)}
+        >
+          <RN.Text>pen up</RN.Text>
         </RN.Pressable>
       </RN.View>
     );
@@ -223,6 +242,39 @@ describe("the supplier signs on the rider's phone", () => {
     // Clearing the paper closes it again.
     await fireEvent.press(screen.getByLabelText("Clear the signature"));
     expect(doneButton().props.accessibilityState.disabled).toBe(true);
+  });
+
+  it("lets a stray mark be taken back, by undo or clear, before it counts as a signature", async () => {
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+
+    const undo = () => screen.getByRole("button", { name: "Undo the last stroke" });
+    const clear = () => screen.getByRole("button", { name: "Clear the signature" });
+    expect(undo().props.accessibilityState.disabled).toBe(true);
+    expect(clear().props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(screen.getByLabelText("test: dot"));
+    expect(undo().props.accessibilityState.disabled).toBe(false);
+    expect(clear().props.accessibilityState.disabled).toBe(false);
+
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    expect(doneButton().props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(undo());
+    expect(doneButton().props.accessibilityState.disabled).toBe(true);
+    expect(undo().props.accessibilityState.disabled).toBe(true);
+  });
+
+  it("holds the page still while a finger is on the paper", async () => {
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("Supplier signs here");
+
+    // The page is the only scroll view on this screen.
+    const pageScrolls = () => !JSON.stringify(screen.toJSON()).includes('"scrollEnabled":false');
+    expect(pageScrolls()).toBe(true);
+    await fireEvent.press(screen.getByLabelText("test: pen down"));
+    expect(pageScrolls()).toBe(false);
+    await fireEvent.press(screen.getByLabelText("test: pen up"));
+    expect(pageScrolls()).toBe(true);
   });
 
   it("will not send without a named signer", async () => {
