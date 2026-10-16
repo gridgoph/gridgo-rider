@@ -2,7 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { installChannel } from "@/lib/buildDistribution";
 import { invalidate } from "@/lib/live";
+import { showsOnInstall } from "@/lib/releasePush";
 
 const STORAGE_KEY = "gridgo.alertsRead.v1";
 
@@ -21,7 +23,10 @@ type NotificationsState = {
   hydrate: () => Promise<void>;
   /** Refresh unread count from the API. Safe to call from any tab. */
   refreshUnread: () => Promise<void>;
-  /** Adopt a freshly fetched list: recomputes unread against local marks. */
+  /**
+   * Adopt a freshly fetched list: keeps only this install's rows, then
+   * recomputes unread against local marks.
+   */
   adopt: (items: api.Notification[]) => void;
   markRead: (id: string) => Promise<void>;
   markAllRead: (items: api.Notification[]) => Promise<void>;
@@ -102,8 +107,12 @@ export const useNotifications = create<NotificationsState>((set, get) => {
 
     isRead: (item) => item.read || get().readIds.includes(item.id),
 
-    adopt: (items) => {
+    adopt: (fetched) => {
       readVersion += 1;
+      // Another install's release notice is hidden here, never deleted, so the
+      // list, the badge, Mark all and Clear all count the same rows.
+      const channel = installChannel();
+      const items = fetched.filter((item) => showsOnInstall(item, channel));
       set({ items, loadError: null, unread: countUnread(items, get().readIds) });
     },
 

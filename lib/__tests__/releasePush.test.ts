@@ -1,4 +1,4 @@
-import { openReleaseDestination, releaseNoticeDestination } from "../releasePush";
+import { openReleaseDestination, releaseNoticeDestination, showsOnInstall } from "../releasePush";
 
 const APK = { url: "https://gridgo.talasora.com/downloads/gridgo-rider.apk", fallbackUrl: null };
 const PLAY = {
@@ -47,6 +47,46 @@ describe("a release notice from before channels", () => {
       expect(releaseNoticeDestination({ type: "announcement" }, title, "apk")).toBeNull();
     }
     expect(releaseNoticeDestination({ type: "order_updated" }, "GRIDGO Rider 1.0.123 is ready", "apk")).toBeNull();
+  });
+});
+
+describe("showsOnInstall", () => {
+  const apk = { type: "announcement", title: "GRIDGO Rider 1.0.185 is ready", releaseChannel: "apk", storeTarget: "apk_download" };
+  const legacyApk = { type: "announcement", title: "GRIDGO Rider 1.0.182 is ready" };
+  const play = { type: "announcement", title: "GRIDGO Rider 1.0.5 is on the Play Store", releaseChannel: "play", storeTarget: "play_store" };
+  const ios = { type: "announcement", title: "GRIDGO Rider 1.0.5 is in TestFlight", releaseChannel: "ios", storeTarget: "testflight" };
+  const visible = (channel: "apk" | "play" | "ios" | null) =>
+    [apk, legacyApk, play, ios].filter((notice) => showsOnInstall(notice, channel)).map((notice) => notice.title);
+
+  it("shows each install only its own channel's release notices", () => {
+    expect(visible("ios")).toEqual([ios.title]);
+    expect(visible("play")).toEqual([play.title]);
+    expect(visible("apk")).toEqual([apk.title, legacyApk.title]);
+  });
+
+  it("shows no release notice where there is no install", () => {
+    expect(visible(null)).toEqual([]);
+  });
+
+  it("hides a release notice that names no known channel", () => {
+    expect(showsOnInstall({ type: "announcement", title: "x", storeTarget: "play_store" }, "play")).toBe(false);
+    expect(showsOnInstall({ type: "announcement", title: "x", releaseChannel: "watch", storeTarget: "x" }, "ios")).toBe(false);
+  });
+
+  it("keeps every notification that is not a release notice", () => {
+    for (const channel of ["apk", "play", "ios", null] as const) {
+      expect(showsOnInstall({ type: "announcement", title: "Office closed on Monday" }, channel)).toBe(true);
+      expect(showsOnInstall({ type: "order_updated", title: "GRIDGO Rider 1.0.185 is ready" }, channel)).toBe(true);
+      expect(showsOnInstall({ title: "Out for delivery" }, channel)).toBe(true);
+    }
+  });
+
+  it("agrees with the tap: every release notice it shows opens this install's store", () => {
+    for (const channel of ["apk", "play", "ios"] as const) {
+      for (const notice of [apk, legacyApk, play, ios]) {
+        expect(showsOnInstall(notice, channel)).toBe(releaseNoticeDestination(notice, notice.title, channel) !== null);
+      }
+    }
   });
 });
 
