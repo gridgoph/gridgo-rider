@@ -27,11 +27,16 @@ type Props = {
  * Height is left to the content, so the sheet's own `fitToContents` detent can
  * measure it — nothing here may claim `flex-1`.
  *
- * Bottom padding is the system inset plus one page step: the last action is a
- * real target, not a kiss against the home indicator.
+ * Bottom padding is one page step clear of the home indicator, so the last
+ * action is a real target rather than a kiss against it. On iOS the native
+ * sheet already lays this content out above the indicator and paints the strip
+ * below it (`confirmSheetContentStyle`), so adding the inset here as well
+ * stacked a second one under the buttons: a tall empty panel over a band of
+ * the wrong colour. Everywhere else the content runs to the bottom edge and
+ * carries the inset itself.
  */
-export function sheetBottomPadding(insetBottom: number): number {
-  return insetBottom + spacing.xl;
+export function sheetBottomPadding(os: string, insetBottom: number): number {
+  return os === "ios" ? spacing.xl : insetBottom + spacing.xl;
 }
 
 export function SheetSurface({ title, body, children, footer, cancelLabel }: Props) {
@@ -42,7 +47,7 @@ export function SheetSurface({ title, body, children, footer, cancelLabel }: Pro
       className="rounded-t-card border-t border-outline bg-surface px-4"
       style={{
         paddingTop: Platform.OS === "ios" ? 24 : 16,
-        paddingBottom: sheetBottomPadding(insets.bottom),
+        paddingBottom: sheetBottomPadding(Platform.OS, insets.bottom),
       }}
       accessibilityViewIsModal
       accessibilityHint={cancelLabel ? `Or ${cancelLabel}` : undefined}

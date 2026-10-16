@@ -43,6 +43,7 @@ import { usePushPrompt } from "@/hooks/usePushPrompt";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   callScreenOptions,
+  confirmSheetContentStyle,
   confirmSheetScreenOptions,
   fullBleedScreenOptions,
   multiOriginPushedScreenOptions,
@@ -226,6 +227,7 @@ function RootStack() {
   const ownerId = useSession((s) => rootStackOwner(s.user));
   const token = useThemeColors();
   const { top } = useSafeAreaInsets();
+  const sheetContent = confirmSheetContentStyle(Platform.OS, token.surface);
 
   return (
     <SessionShell>
@@ -427,11 +429,11 @@ function RootStack() {
         over everything, whether it was placed here or rang in.
       */}
       <Stack.Screen name="call" options={callScreenOptions} />
-      <Stack.Screen name="trip/start" options={confirmSheetScreenOptions} />
-      <Stack.Screen name="trip/arrived-packed" options={confirmSheetScreenOptions} />
-      <Stack.Screen name="confirm" options={confirmSheetScreenOptions} />
-      <Stack.Screen name="app-update" options={confirmSheetScreenOptions} />
-      <Stack.Screen name="push-permission" options={confirmSheetScreenOptions} />
+      <Stack.Screen name="trip/start" options={{ ...confirmSheetScreenOptions, contentStyle: sheetContent }} />
+      <Stack.Screen name="trip/arrived-packed" options={{ ...confirmSheetScreenOptions, contentStyle: sheetContent }} />
+      <Stack.Screen name="confirm" options={{ ...confirmSheetScreenOptions, contentStyle: sheetContent }} />
+      <Stack.Screen name="app-update" options={{ ...confirmSheetScreenOptions, contentStyle: sheetContent }} />
+      <Stack.Screen name="push-permission" options={{ ...confirmSheetScreenOptions, contentStyle: sheetContent }} />
     </Stack>
     </SessionShell>
   );

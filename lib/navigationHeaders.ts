@@ -58,6 +58,24 @@ export const confirmSheetScreenOptions = {
   sheetLargestUndimmedDetentIndex: "none" as const,
 };
 
+/**
+ * The colour of a confirmation sheet's own surface, set on the route.
+ *
+ * On iOS the sheet's content sits above the home indicator, and the strip
+ * beneath it is painted by the route's `contentStyle` background, not by
+ * anything the screen draws (react-native-screens moves it to the native sheet
+ * for exactly this reason). Left to the stack default, that strip is `canvas`:
+ * a black band under the panel in Dark that stops the sheet short of the
+ * screen's edge. Painting the route `surface` makes the sheet one panel down to
+ * the glass.
+ *
+ * Android's sheet lays content out to its own bottom and draws no such strip,
+ * so it keeps the stack default.
+ */
+export function confirmSheetContentStyle(os: string, surface: string) {
+  return os === "ios" ? { backgroundColor: surface } : undefined;
+}
+
 
 /**
  * A screen that owns its whole surface.

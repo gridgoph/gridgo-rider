@@ -20,7 +20,7 @@ describe("the update prompt", () => {
 
   it("is the platform's sheet, never a Modal", () => {
     const layout = read("app/_layout.tsx");
-    expect(layout).toMatch(/name="app-update" options=\{confirmSheetScreenOptions\}/);
+    expect(layout).toMatch(/name="app-update" options=\{\{ \.\.\.confirmSheetScreenOptions, contentStyle: sheetContent \}\}/);
     const route = read("app/app-update.tsx");
     expect(route).not.toMatch(/<Modal\b/);
   });
