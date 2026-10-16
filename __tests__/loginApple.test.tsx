@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
+import LoginScreen from "@/app/(auth)/login";
 import { APPLE_SIGN_UP_INCOMPLETE } from "@/lib/appleSignIn";
 
 const mockStartApple = jest.fn();
@@ -43,7 +44,6 @@ jest.mock("expo-router", () => ({
 
 jest.mock("@/lib/devLogin", () => ({ DEV_LOGIN: null }));
 
-import LoginScreen from "@/app/(auth)/login";
 
 /**
  * Sign in with Apple on the login screen (iPhone; the Jest preset runs as
