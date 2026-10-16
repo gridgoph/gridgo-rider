@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Eraser } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { Eraser, Undo2 } from "lucide-react-native";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Pressable, Text, useWindowDimensions, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
@@ -96,6 +96,11 @@ export default function HandoffSignatureScreen() {
   const padRef = useRef<SignaturePadHandle>(null);
   const [signerName, setSignerName] = useState("");
   const [signed, setSigned] = useState(false);
+  // Any ink at all, which is less than a signature: a stray dot can still be
+  // taken back.
+  const [inked, setInked] = useState(false);
+  // A finger is on the paper; the page holds still under it.
+  const [drawing, setDrawing] = useState(false);
   // Which job the draft was restored for; the pad's starting strokes with it.
   const [restoredFor, setRestoredFor] = useState<string | null>(null);
   const [initial, setInitial] = useState<{ strokes: SignatureStroke[]; width: number }>({
@@ -126,6 +131,7 @@ export default function HandoffSignatureScreen() {
   if (hydrated && order && id && !restored) {
     const signature = getChecklist(id)?.signature;
     setInitial({ strokes: signature?.strokes ?? [], width: signature?.padWidth ?? 0 });
+    setInked(Boolean(signature?.strokes?.length));
     setSignerName(signature?.signerName || defaultSignerName(order));
     setRestoredFor(id);
   }
@@ -157,10 +163,10 @@ export default function HandoffSignatureScreen() {
   const checkedAt = formatCheckedAt(checkedAtIso, openedAtMs);
   const status = uploadStatusLine(upload, "signature");
 
-  // A wide strip of paper, like the line on a form: full width, about two to
-  // one, bounded so a tablet does not offer a whole page and a small phone
-  // still gives room for a real signature.
-  const padHeight = Math.min(260, Math.max(180, Math.round((windowWidth - 32) * 0.5)));
+  // Room for a whole signature written with a finger, which is several times
+  // larger than one written with a pen: full width and about five to three,
+  // bounded so a tablet or a phone on its side does not offer a whole page.
+  const padHeight = Math.min(300, Math.max(220, Math.round((windowWidth - 32) * 0.6)));
 
   const blocked = !order
     ? "Loading the job."
@@ -176,6 +182,7 @@ export default function HandoffSignatureScreen() {
   }
 
   function strokesChanged(strokes: SignatureStroke[], padWidth: number) {
+    setInked(strokes.length > 0);
     // New ink means a new signature: a file stored for the old one no longer
     // stands for what is on the paper.
     if (id) saveSignature(id, { strokes, padWidth, storedFileId: null });
@@ -188,6 +195,12 @@ export default function HandoffSignatureScreen() {
 
   function clearPad() {
     padRef.current?.clear();
+    reportUpload(UPLOAD_IDLE);
+    setSubmitError(null);
+  }
+
+  function undoStroke() {
+    padRef.current?.undo();
     reportUpload(UPLOAD_IDLE);
     setSubmitError(null);
   }
@@ -279,7 +292,11 @@ export default function HandoffSignatureScreen() {
 
   return (
     <Screen edges={[]}>
-      <FormScroll contentClassName="gg-page gap-6 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
+      <FormScroll
+        contentClassName="gg-page gap-6 pb-8 pt-6"
+        stickyActionHeight={actionBarHeight}
+        scrollEnabled={!drawing}
+      >
         {loading ? <HandoffSkeleton /> : null}
 
         {loadError ? (
@@ -359,6 +376,7 @@ export default function HandoffSignatureScreen() {
                 initialWidth={initial.width}
                 onSignedChange={setSigned}
                 onStrokesChange={strokesChanged}
+                onDrawingChange={setDrawing}
                 hint="Turn the phone to the supplier and ask them to sign on the line."
                 accessibilityHint="Draw the supplier's signature with your finger"
               />
@@ -369,22 +387,22 @@ export default function HandoffSignatureScreen() {
                 ) : (
                   <View />
                 )}
-                <Pressable
-                  onPress={clearPad}
-                  disabled={busy || !signed}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear the signature"
-                  accessibilityState={{ disabled: busy || !signed }}
-                  className={
-                    busy || !signed
-                      ? "min-h-11 flex-row items-center gap-2 px-2 opacity-40"
-                      : "min-h-11 flex-row items-center gap-2 px-2"
-                  }
-                  style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-                >
-                  <Eraser size={16} color={colors.textSecondary} strokeWidth={2} />
-                  <Text className="text-button text-text-secondary">Clear</Text>
-                </Pressable>
+                <View className="flex-row items-center gap-1">
+                  <PadControl
+                    label="Undo"
+                    accessibilityLabel="Undo the last stroke"
+                    icon={<Undo2 size={16} color={colors.textSecondary} strokeWidth={2} />}
+                    onPress={undoStroke}
+                    disabled={busy || !inked}
+                  />
+                  <PadControl
+                    label="Clear"
+                    accessibilityLabel="Clear the signature"
+                    icon={<Eraser size={16} color={colors.textSecondary} strokeWidth={2} />}
+                    onPress={clearPad}
+                    disabled={busy || !inked}
+                  />
+                </View>
               </View>
 
               {status?.detail && status.tone === "error" && !submitError ? (
@@ -456,5 +474,39 @@ export default function HandoffSignatureScreen() {
 
       <BlockingOverlay visible={busy} label="Recording the handoff…" />
     </Screen>
+  );
+}
+
+/** A quiet control under the pad: an icon and a word, never a button slab. */
+function PadControl({
+  label,
+  accessibilityLabel,
+  icon,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  accessibilityLabel: string;
+  icon: ReactNode;
+  onPress: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      className={
+        disabled
+          ? "min-h-11 flex-row items-center gap-2 px-2 opacity-40"
+          : "min-h-11 flex-row items-center gap-2 px-2"
+      }
+      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+    >
+      {icon}
+      <Text className="text-button text-text-secondary">{label}</Text>
+    </Pressable>
   );
 }
