@@ -92,6 +92,26 @@ describe("ios-testflight.yml", () => {
   });
 });
 
+describe("the TestFlight release notice", () => {
+  it("follows a successful upload, as ios, and never fails the run", () => {
+    const notice = step("Broadcast the TestFlight release");
+    expect(notice).toMatch(/if: inputs\.submit_to_testflight && steps\.build\.outputs\.version != ''/);
+    expect(notice).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
+    expect(notice).toContain("continue-on-error: true");
+    expect(notice).toContain("RELEASE_CHANNEL: ios");
+    expect(notice).toContain("RELEASE_APP: rider");
+    expect(notice).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
+    expect(notice).toContain("node scripts/announce-release.mjs");
+    expect(workflow.indexOf("- name: Upload to TestFlight")).toBeLessThan(
+      workflow.indexOf("- name: Broadcast the TestFlight release"),
+    );
+  });
+
+  it("names MAJOR.MINOR.<build number>, the Android version shape", () => {
+    expect(step("Build the iPhone app on EAS")).toContain("version=${line[1]}.${line[2]}.${number}");
+  });
+});
+
 describe("eas.json", () => {
   it("raises the iPhone build number on EAS for every build", () => {
     expect(eas.cli.appVersionSource).toBe("remote");

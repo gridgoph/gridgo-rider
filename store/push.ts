@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { installChannel } from "@/lib/buildDistribution";
 import { loadExpoNotifications } from "@/lib/expoNotifications";
 import { getFirebaseMessaging } from "@/lib/firebaseMessaging";
 import { openPhoneSettings } from "@/lib/phoneSettings";
@@ -277,8 +278,9 @@ export const usePush = create<PushState>((set, get) => ({
           return;
         }
         if (signedIn) set({ token });
-        if (signedIn) await api.registerDevice(token, platform, controller.signal);
-        else await api.registerDeviceUnclaimed(token, platform, controller.signal);
+        const channel = installChannel();
+        if (signedIn) await api.registerDevice(token, platform, channel, controller.signal);
+        else await api.registerDeviceUnclaimed(token, platform, channel, controller.signal);
         if (isCurrent()) set({ token, claimed: signedIn, busy: false, error: null });
       } catch (e) {
         if (!isCurrent()) return;

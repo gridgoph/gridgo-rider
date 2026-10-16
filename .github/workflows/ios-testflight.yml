@@ -138,6 +138,12 @@ jobs:
             const builds = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
             const build = Array.isArray(builds) ? builds[0] : builds;
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `id=${build.id}\n`);
+            // The release notice names MAJOR.MINOR.<build number>, the same
+            // shape as the Android builds, so every TestFlight build is a new
+            // version to the announcement (app.json keeps the patch at 0).
+            const line = /^(\d+)\.(\d+)\./.exec(build.appVersion ?? "");
+            const number = /^[1-9]\d{0,8}$/.test(String(build.appBuildVersion ?? "")) ? build.appBuildVersion : null;
+            if (line && number) fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${line[1]}.${line[2]}.${number}\n`);
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
               "### GRIDGO Rider iPhone build",
               "",
@@ -177,6 +183,19 @@ jobs:
             echo
             echo "Uploaded to App Store Connect. It appears in TestFlight once Apple has processed it (usually 5 to 30 minutes)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # TestFlight testers hear about a build once it is uploaded, never when
+      # the APK lands: the server sends this notice only to installs reporting
+      # `ios`. Advisory, so it can never fail the upload.
+      - name: Broadcast the TestFlight release
+        if: inputs.submit_to_testflight && steps.build.outputs.version != ''
+        continue-on-error: true
+        env:
+          RELEASE_ANNOUNCE_TOKEN: ${{ secrets.RELEASE_ANNOUNCE_TOKEN }}
+          RELEASE_APP: rider
+          RELEASE_CHANNEL: ios
+          RELEASE_VERSION: ${{ steps.build.outputs.version }}
+        run: node scripts/announce-release.mjs
 
       - name: Remove the App Store Connect key
         if: always()
