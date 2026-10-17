@@ -18,6 +18,8 @@ type Props = {
   role: CallRole;
   /** A slow ring spreads outward while the call is ringing — in or out. */
   ringing?: boolean;
+  /** The call is over: the ring goes quiet so the screen no longer reads as live. */
+  ended?: boolean;
   size?: number;
 };
 
@@ -29,7 +31,7 @@ type Props = {
  * The spreading ring is decoration over a state the screen also says in words
  * ("Ringing…"), so it is simply absent under reduced motion.
  */
-export function CallAvatar({ role, ringing = false, size = 136 }: Props) {
+export function CallAvatar({ role, ringing = false, ended = false, size = 136 }: Props) {
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
   const pulse = useSharedValue(0);
@@ -67,10 +69,10 @@ export function CallAvatar({ role, ringing = false, size = 136 }: Props) {
         />
       ) : null}
       <View
-        className="items-center justify-center rounded-pill border-2 border-accent bg-surface"
+        className={`items-center justify-center rounded-pill border-2 bg-surface ${ended ? "border-outline" : "border-accent"}`}
         style={{ width: size, height: size }}
       >
-        <Icon size={Math.round(size * 0.4)} color={colors.textPrimary} strokeWidth={1.75} />
+        <Icon size={Math.round(size * 0.4)} color={ended ? colors.textMuted : colors.textPrimary} strokeWidth={1.75} />
       </View>
     </View>
   );

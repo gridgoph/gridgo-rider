@@ -250,7 +250,7 @@ export default function CallScreen() {
         </View>
 
         <ScrollView className="flex-1" contentContainerClassName="flex-grow items-center justify-center gap-2 py-4">
-          <CallAvatar role={role} ringing={ringing} size={panelShown ? 72 : undefined} />
+          <CallAvatar role={role} ringing={ringing} ended={Boolean(ended)} size={panelShown ? 72 : undefined} />
           <View
             className="items-center gap-1"
             accessible
