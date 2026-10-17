@@ -1,4 +1,5 @@
 import {
+  answeredEndReason,
   callDurationLabel,
   callWindow,
   counterpartOf,
@@ -125,9 +126,36 @@ describe("what the call screen says", () => {
       title: "No answer",
       body: "Alex did not pick up. They will see a missed call. Send a message, or try again.",
     });
-    expect(endReasonCopy("network_lost", alex).title).toBe("Call dropped");
-    expect(endReasonCopy("ended", alex).body).toBe("Your call with Alex, the client has ended.");
     expect(endReasonCopy("unsupported", null).title).toBe("Calls need the latest GRIDGO app");
+  });
+
+  it("says who hung up, in role words, and keeps a lost connection apart", () => {
+    const alex = { firstName: "Alex", role: "client" as const };
+    const mika = { firstName: "Mika", role: "supplier" as const };
+    expect(endReasonCopy("ended", alex)).toEqual({ title: "Call ended", body: "You ended the call." });
+    expect(endReasonCopy("ended_by_them", alex)).toEqual({ title: "Call ended", body: "The client ended the call." });
+    expect(endReasonCopy("ended_by_them", mika).body).toBe("The shop ended the call.");
+    expect(endReasonCopy("ended_by_them", null).body).toBe("The other person ended the call.");
+    expect(endReasonCopy("network_lost", alex)).toEqual({
+      title: "Connection lost",
+      body: "The call dropped before either of you hung up. Check your mobile data or Wi-Fi, then call again.",
+    });
+  });
+
+  it("reads an answered call's end: this phone's hang-up, theirs, or a lapsed lease", () => {
+    const lease = "2026-10-08T08:02:00.000Z";
+    const ended = (endedAt: string | null) => ({ state: "ended" as const, mine: true, acceptedAt: "x", endedAt });
+    expect(answeredEndReason(ended("2026-10-08T08:01:00.000Z"), { hungUpHere: true, leaseExpiresAt: lease })).toBe("ended");
+    expect(answeredEndReason(ended("2026-10-08T08:01:00.000Z"), { hungUpHere: false, leaseExpiresAt: lease })).toBe(
+      "ended_by_them",
+    );
+    // The server's sweep ends a call whose lease ran out: the other phone stopped renewing.
+    expect(answeredEndReason(ended(lease), { hungUpHere: false, leaseExpiresAt: lease })).toBe("network_lost");
+    // Without a lease to compare, an end this phone did not ask for is theirs.
+    expect(answeredEndReason(ended("2026-10-08T08:01:00.000Z"), { hungUpHere: false, leaseExpiresAt: null })).toBe(
+      "ended_by_them",
+    );
+    expect(answeredEndReason(ended(null), { hungUpHere: false, leaseExpiresAt: lease })).toBe("ended_by_them");
   });
 
   it("maps API refusals without showing a code", () => {

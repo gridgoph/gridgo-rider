@@ -15,6 +15,11 @@
  * - **One offer, one answer.** The caller offers after the call exists; the
  *   callee answers only after accepting. Remote ICE waits until the remote
  *   description is set.
+ * - **The server says how a call ended.** A dropped peer connection is
+ *   what this phone sees when the other person hangs up *and* when the
+ *   network goes, so before calling it a lost connection the session asks the
+ *   API: an ended call there was hung up, and only a call still live there was
+ *   dropped.
  * - **Fail closed.** On any terminal state, a refused heartbeat, a lease that
  *   ran out without a renewal, or a refusal of the window, the microphone is
  *   released and the peer connection closed. The server cannot cut a direct
@@ -27,6 +32,7 @@
 
 import type * as api from "@/lib/api";
 import {
+  answeredEndReason,
   CALL_HEARTBEAT_MS,
   CALL_POLL_MS,
   endReasonOf,
@@ -134,6 +140,11 @@ export class CallSession {
   private lastRenewedMs = 0;
   private finished = false;
   private abandoned = false;
+  /** This phone asked to end the call, so an ended state is its own hang-up. */
+  private hungUpHere = false;
+  /** The lease on the last live projection, to tell a lapsed call from a hung-up one. */
+  private leaseExpiresAt: string | null = null;
+  private peerFailing = false;
 
   constructor(deps: CallSessionDeps, init: Init) {
     this.deps = { now: Date.now, ...deps };
@@ -337,6 +348,7 @@ export class CallSession {
       await this.post("cancel");
       return this.finish(reason ?? "cancelled");
     }
+    this.hungUpHere = true;
     await this.post("end");
     this.finish(reason ?? "ended");
   }
@@ -427,10 +439,30 @@ export class CallSession {
       this.update({ phase: "connected", connectedAtMs: this.state.connectedAtMs ?? this.deps.now() });
     } else if (state === "disconnected" && this.state.connectedAtMs) {
       this.update({ phase: "reconnecting" });
+      // The other person hanging up looks like this too: ask now, not at the next tick.
+      void this.poll();
     } else if (state === "failed") {
-      // One negotiation per call: a failed path is a dropped call, not a retry.
-      void this.hangUp(this.state.connectedAtMs ? "network_lost" : "failed");
+      void this.peerFailed();
     }
+  }
+
+  /**
+   * One negotiation per call: a failed path ends it. Whether it was hung up or
+   * dropped is the server's to say, so ask before saying the connection was lost.
+   */
+  private async peerFailed(): Promise<void> {
+    const call = this.state.call;
+    if (this.finished || this.peerFailing || !call) return;
+    this.peerFailing = true;
+    try {
+      // A slow answer is still worth waiting for (the request has its own deadline):
+      // calling a hang-up a lost connection is the mistake this check exists to stop.
+      const current = await this.deps.api.getOrderCall(call.orderId, call.id);
+      if (!isLiveCall(current)) return this.adopt(current);
+    } catch {
+      // Unreachable: this phone's connection is the likely one to have gone.
+    }
+    await this.hangUp(this.state.connectedAtMs ? "network_lost" : "failed");
   }
 
   /** Signals leave in the order they were made, the offer before its candidates. */
@@ -546,8 +578,14 @@ export class CallSession {
     if (this.finished) return;
     const before = this.state.call?.state;
     this.update({ call });
+    if (call.state === "accepted" && call.leaseExpiresAt) this.leaseExpiresAt = call.leaseExpiresAt;
     if (!isLiveCall(call)) {
-      this.finish(this.state.connectedAtMs || before === "accepted" ? "ended" : endReasonOf(call));
+      const answered = this.state.connectedAtMs || before === "accepted";
+      this.finish(
+        answered
+          ? answeredEndReason(call, { hungUpHere: this.hungUpHere, leaseExpiresAt: this.leaseExpiresAt })
+          : endReasonOf(call),
+      );
       return;
     }
     if (call.state === "accepted" && before !== "accepted") this.onAccepted();
