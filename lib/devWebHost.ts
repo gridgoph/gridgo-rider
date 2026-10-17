@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
@@ -28,6 +30,9 @@ export function isolatedDevWebHref(location: DevWebLocation, isolatedHost: strin
 export function bounceToIsolatedDevWebHost(isolatedHost: string): boolean {
   if (typeof process !== "undefined" && process.env.JEST_WORKER_ID) return false;
   if (typeof __DEV__ !== "undefined" && !__DEV__) return false;
+  // Native dev builds have a `window.location` too (Expo sets it from the
+  // bundle URL, which is `localhost` under `start:usb`), and cannot replace it.
+  if (Platform.OS !== "web") return false;
   if (typeof window === "undefined") return false;
   const href = isolatedDevWebHref(window.location, isolatedHost);
   if (!href) return false;

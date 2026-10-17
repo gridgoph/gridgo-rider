@@ -1,4 +1,4 @@
-import { onboardingSlides } from "@/data/onboarding";
+import { onboardingSlides, onboardingSlidesFor } from "@/data/onboarding";
 
 describe("onboardingSlides", () => {
   it("has three sequential beats with step labels", () => {
@@ -21,3 +21,23 @@ describe("onboardingSlides", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe("onboardingSlidesFor", () => {
+  it("is the three beats unchanged when there is no bubble to ask for", () => {
+    expect(onboardingSlidesFor({ bubble: false })).toBe(onboardingSlides);
+  });
+
+  it("adds the bubble ask last, renumbered, with the starting verb moved to it", () => {
+    const slides = onboardingSlidesFor({ bubble: true });
+    expect(slides.map((s) => s.id)).toEqual(["offer", "carry", "proof", "bubble"]);
+    expect(slides.map((s) => s.step)).toEqual(["01 / 04", "02 / 04", "03 / 04", "04 / 04"]);
+    expect(slides.map((s) => s.cta)).toEqual(["Next", "Next", "Next", "Allow the bubble"]);
+    expect(slides[3].art).toBe("bubble");
+  });
+
+  it("tells the rider that saying no changes nothing else", () => {
+    expect(onboardingSlidesFor({ bubble: true })[3].body).toMatch(/Say no and everything else still works/);
+    expect(onboardingSlidesFor({ bubble: true })[3].body).toMatch(/pick GRIDGO Rider in the list/);
+  });
+});
+

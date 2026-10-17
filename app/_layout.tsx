@@ -1,4 +1,5 @@
 import { useTripTracking } from "@/hooks/useTripTracking";
+import { useTripBubble } from "@/hooks/useTripBubble";
 import { useAlertStream } from "@/hooks/useAlertStream";
 import { useIncomingCalls } from "@/hooks/useIncomingCalls";
 import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
@@ -115,6 +116,8 @@ function AppShell() {
   // is open, so the geofence lives here rather than on the Active tab.
   useTripTracking();
   useArrivalAlert();
+  // The Android delivery bubble over the rider's map app (lib/tripBubble.ts).
+  useTripBubble();
 
   // Read the stored session here, not in the gate: the gate lives inside the
   // tree that this component refuses to render until hydration finishes.
