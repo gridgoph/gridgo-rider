@@ -395,6 +395,24 @@ describe("when the call ends mid-conversation", () => {
     expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "network_lost" });
   });
 
+  it("says the client hung up, not that calling closed, when the poll is refused and the read after it is lost", async () => {
+    const { r, session } = await connected();
+    r.api.getCallSignals.mockRejectedValue(refusal("call_not_active"));
+    r.api.getOrderCall.mockRejectedValue(new Error("GRIDGO did not answer in time."));
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "ended_by_them" });
+  });
+
+  it("still says calling closed when a call that never connected is refused", async () => {
+    const r = rig();
+    const session = new CallSession(r.deps, { direction: "outgoing", orderId: "ord_1", pair: "delivery" });
+    await session.place();
+    r.api.getCallSignals.mockRejectedValue(refusal("call_not_active"));
+    r.api.getOrderCall.mockRejectedValue(new Error("GRIDGO did not answer in time."));
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot.endReason).toBe("not_available");
+  });
+
   it("calls it a lost connection when the server ended it on a lapsed lease", async () => {
     const { r, session } = await connected();
     // The client's phone stopped renewing; the server's sweep ends the call at the lease.

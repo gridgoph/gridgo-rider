@@ -595,7 +595,8 @@ export class CallSession {
   private async settleFromServer(error: unknown): Promise<void> {
     if (this.finished) return;
     const call = this.state.call;
-    const reason = endReasonOfError(this.deps.api.apiErrorCode(error));
+    const code = this.deps.api.apiErrorCode(error);
+    const reason = endReasonOfError(code);
     if (call) {
       try {
         const current = await this.deps.api.getOrderCall(call.orderId, call.id);
@@ -604,6 +605,12 @@ export class CallSession {
       } catch {
         // Fall through: the window itself is refused.
       }
+    }
+    if (this.finished) return;
+    // An answered call the server calls inactive is over, even when the read
+    // after it is lost: it was hung up, not closed for the job.
+    if (code === "call_not_active" && (this.state.connectedAtMs || call?.state === "accepted")) {
+      return this.finish(this.hungUpHere ? "ended" : "ended_by_them");
     }
     this.finish(reason ?? "failed");
   }
