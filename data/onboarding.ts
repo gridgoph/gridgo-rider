@@ -14,6 +14,9 @@
 /** Raster beat, keyed to `images.onboarding`. */
 export type OnboardingArt = "offer" | "check" | "proof";
 
+/** A slide's picture: a raster beat, or the scooter drawing on the bubble ask. */
+export type OnboardingPicture = OnboardingArt | "bubble";
+
 export type OnboardingSlide = {
   id: string;
   /** Position stated in text, so it survives reduced motion and grayscale. */
@@ -23,10 +26,10 @@ export type OnboardingSlide = {
   /** A clear verb. Changes on the last slide, which is the one that starts. */
   cta: string;
   /** Picture for this beat. */
-  art: OnboardingArt;
+  art: OnboardingPicture;
 };
 
-export const onboardingSlides: readonly OnboardingSlide[] = [
+export const onboardingSlides: readonly (OnboardingSlide & { art: OnboardingArt })[] = [
   {
     id: "offer",
     step: "01 / 03",
@@ -52,3 +55,30 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     art: "proof",
   },
 ] as const;
+
+/**
+ * The delivery bubble ask (`lib/tripBubble.ts`), Android only and only while
+ * the phone has not allowed it. It comes last because it is the one page that
+ * asks for something, and its button opens the phone's own switch: Android has
+ * no dialog for "Display over other apps".
+ */
+const bubbleSlide: OnboardingSlide = {
+  id: "bubble",
+  step: "",
+  title: "Back to the job in one tap",
+  body: "During a delivery, a small GRIDGO bubble can sit over your map app. Tap it to come back to the order; its number counts new messages and updates. Say no and everything else still works.",
+  cta: "Allow the bubble",
+  art: "bubble",
+};
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** The pages to show: the three beats, plus the bubble ask when it applies. */
+export function onboardingSlidesFor({ bubble }: { bubble: boolean }): readonly OnboardingSlide[] {
+  if (!bubble) return onboardingSlides;
+  const slides = [...onboardingSlides.map((slide) => ({ ...slide, cta: "Next" })), bubbleSlide];
+  return slides.map((slide, index) => ({
+    ...slide,
+    step: `${pad(index + 1)} / ${pad(slides.length)}`,
+  }));
+}

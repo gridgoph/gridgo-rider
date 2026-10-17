@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { PlayCircle } from "lucide-react-native";
+import { PictureInPicture2, PlayCircle } from "lucide-react-native";
 import { useEffect } from "react";
 import { ScrollView, Text, View } from "react-native";
 
@@ -11,6 +11,8 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
+import { bubbleSettingsRow, openBubbleSettings } from "@/lib/tripBubble";
+import { useBubblePermission } from "@/store/bubblePermission";
 
 const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
   { id: "system", label: "System" },
@@ -22,10 +24,14 @@ const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
  * Device preferences for the signed-in rider.
  *
  * Theme is local only (no network). Onboarding replay is a static screen —
- * no empty, loading, or failed states to show for either control.
+ * no empty, loading, or failed states to show for either control. The delivery
+ * bubble row exists only on a phone that can draw one (Android); its value is
+ * re-read when the rider comes back from the phone's settings.
  */
 export default function SettingsScreen() {
   const preference = useThemePreference();
+  const bubble = useBubblePermission((s) => s.permission);
+  const bubbleRow = bubble === "unavailable" ? null : bubbleSettingsRow(bubble);
 
   useEffect(() => {
     router.prefetch("/onboarding");
@@ -46,11 +52,24 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
+        {bubbleRow ? (
+          <View className="gg-card-flush">
+            <DestinationRow
+              icon={PictureInPicture2}
+              label="Delivery bubble"
+              value={bubbleRow.value}
+              detail={bubbleRow.detail}
+              onPress={() => void openBubbleSettings()}
+              last
+            />
+          </View>
+        ) : null}
+
         <View className="gg-card-flush">
           <DestinationRow
             icon={PlayCircle}
             label="View onboarding"
-            detail="Replay the three-slide introduction for this app"
+            detail="Replay the introduction for this app"
             onPress={() =>
               router.push({ pathname: "/onboarding", params: { from: "settings" } })
             }

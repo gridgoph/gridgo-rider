@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'ph.gridgo'
+version = '1.0.0'
+
+android {
+  namespace "ph.gridgo.tripbubble"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // Already in the app through expo-notifications; named here because the
+  // bubble reads whether any GRIDGO screen is visible from it.
+  implementation 'androidx.lifecycle:lifecycle-process:2.9.3'
+}

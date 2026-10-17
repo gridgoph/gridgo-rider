@@ -33,11 +33,21 @@ type Target = { orderId: string };
 let target: Target | null = null;
 let lastSentFixMs: number | null = null;
 let inFlight = false;
+let backgroundFixListener: ((nowMs: number) => void) | null = null;
 
 /** Which job the service posts for. Null ends posting at once. */
 export function setTripLocationTarget(next: Target | null): void {
   if (next?.orderId !== target?.orderId) lastSentFixMs = null;
   target = next;
+}
+
+/**
+ * Called on each fix while GRIDGO is off screen. The service's fixes are the
+ * only thing that wakes this app's code there, so the delivery bubble reads its
+ * unread count on them (`hooks/useTripBubble.ts`). One listener; null removes it.
+ */
+export function setBackgroundFixListener(listener: ((nowMs: number) => void) | null): void {
+  backgroundFixListener = listener;
 }
 
 function supported(): boolean {
@@ -54,7 +64,9 @@ export async function handleServiceFixes(
     void stopTripLocationUpdates();
     return;
   }
-  if (AppState.currentState === "active" || inFlight) return;
+  if (AppState.currentState === "active") return;
+  backgroundFixListener?.(nowMs);
+  if (inFlight) return;
   const fix = pickServiceFix(locations, { lastSentFixMs, nowMs });
   if (!fix) return;
   inFlight = true;
