@@ -36,7 +36,11 @@ export function readBubblePermission(
   }
 }
 
-/** The phone's "Display over other apps" switch for GRIDGO. Never throws. */
+/**
+ * The phone's "Display over other apps" screen. From Android 11 it opens on the
+ * list of apps, not on GRIDGO's own switch, so the copy around every way in
+ * says to pick GRIDGO Rider there. Never throws.
+ */
 export async function openBubbleSettings(native: BubbleNative = TripBubbleModule): Promise<void> {
   try {
     await native?.openOverlaySettings();
@@ -114,10 +118,10 @@ export function bubbleSettingsRow(permission: Exclude<BubblePermission, "unavail
   return permission === "granted"
     ? {
         value: "On",
-        detail: "Shows over your map app during a delivery. Tap to turn it off in the phone's settings.",
+        detail: "Shows over your map app during a delivery. To turn it off, pick GRIDGO Rider on the next screen.",
       }
     : {
         value: "Off",
-        detail: "A bubble over your map app that brings you back to the delivery. Tap to allow it.",
+        detail: "A bubble over your map app that brings you back to the delivery. Tap, then pick GRIDGO Rider and turn it on.",
       };
 }

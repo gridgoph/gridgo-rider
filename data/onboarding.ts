@@ -59,14 +59,15 @@ export const onboardingSlides: readonly (OnboardingSlide & { art: OnboardingArt 
 /**
  * The delivery bubble ask (`lib/tripBubble.ts`), Android only and only while
  * the phone has not allowed it. It comes last because it is the one page that
- * asks for something, and its button opens the phone's own switch: Android has
- * no dialog for "Display over other apps".
+ * asks for something, and its button opens the phone's own "Display over other
+ * apps" list: Android has no dialog for it, and from Android 11 it will not
+ * open on one app's switch, so the body says to pick GRIDGO Rider there.
  */
 const bubbleSlide: OnboardingSlide = {
   id: "bubble",
   step: "",
   title: "Back to the job in one tap",
-  body: "During a delivery, a small GRIDGO bubble can sit over your map app. Tap it to come back to the order; its number counts new messages and updates. Say no and everything else still works.",
+  body: "During a delivery, a small GRIDGO bubble can sit over your map app. Tap it to come back to the order; its number counts new messages and updates. Next, pick GRIDGO Rider in the list and turn it on. Say no and everything else still works.",
   cta: "Allow the bubble",
   art: "bubble",
 };

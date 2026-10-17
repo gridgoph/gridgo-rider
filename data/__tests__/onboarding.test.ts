@@ -37,6 +37,7 @@ describe("onboardingSlidesFor", () => {
 
   it("tells the rider that saying no changes nothing else", () => {
     expect(onboardingSlidesFor({ bubble: true })[3].body).toMatch(/Say no and everything else still works/);
+    expect(onboardingSlidesFor({ bubble: true })[3].body).toMatch(/pick GRIDGO Rider in the list/);
   });
 });
 

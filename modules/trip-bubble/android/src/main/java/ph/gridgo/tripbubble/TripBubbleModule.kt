@@ -29,7 +29,8 @@ class TripBubbleModule : Module() {
       canDrawOverlays(context)
     }
 
-    // The phone's own switch for this app. Android has no dialog for it.
+    // The phone's own screen for it; Android has no dialog. From Android 11 the
+    // package is ignored and the list of apps opens (seen on the Motorola).
     AsyncFunction("openOverlaySettings") {
       val packageUri = Uri.parse("package:${context.packageName}")
       val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri)

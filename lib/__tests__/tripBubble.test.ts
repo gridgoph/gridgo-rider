@@ -128,4 +128,9 @@ describe("bubbleSettingsRow", () => {
     expect(bubbleSettingsRow("granted").value).toBe("On");
     expect(bubbleSettingsRow("denied").value).toBe("Off");
   });
+
+  it("tells the rider to pick GRIDGO Rider, because Android opens a list of apps", () => {
+    expect(bubbleSettingsRow("denied").detail).toMatch(/pick GRIDGO Rider/);
+    expect(bubbleSettingsRow("granted").detail).toMatch(/pick GRIDGO Rider/);
+  });
 });
