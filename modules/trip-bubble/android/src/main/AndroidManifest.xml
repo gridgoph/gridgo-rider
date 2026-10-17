@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    The delivery bubble: one small window over the rider's navigation app while
+    a delivery is active, kept alive by a foreground service. The rider grants
+    "Display over other apps" in the phone's settings; without it nothing here
+    runs and the app works as before.
+  -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+  <application>
+    <service
+      android:name=".TripBubbleService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Shows a floating button over the rider's navigation app only while they have an active delivery. One tap returns them to that delivery in GRIDGO, with a count of unread messages and order updates. It stops when the delivery ends." />
+    </service>
+  </application>
+</manifest>

@@ -24,9 +24,11 @@ import { OnboardingMark } from "@/components/OnboardingMark";
 import { PaginationDots } from "@/components/PaginationDots";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
-import { onboardingSlides, type OnboardingArt } from "@/data/onboarding";
+import { onboardingSlidesFor, type OnboardingPicture } from "@/data/onboarding";
 import { onboardingShouldPop, resolveOnboardingExit } from "@/lib/onboardingExit";
 import { estimatePagerHeight } from "@/lib/onboardingStage";
+import { openBubbleSettings } from "@/lib/tripBubble";
+import { useBubblePermission } from "@/store/bubblePermission";
 
 /**
  * Rider onboarding.
@@ -34,6 +36,12 @@ import { estimatePagerHeight } from "@/lib/onboardingStage";
  * Three pages: offer, check, proof. Each beat is a PNG the captain picked,
  * loaded through `images.onboarding` — not a scene SVG. Those drawings
  * froze the first open and hitching Next on the phone.
+ *
+ * On an Android phone that has not allowed the delivery bubble, a fourth page
+ * asks for it (`lib/tripBubble.ts`). Its button opens the phone's switch and
+ * finishes onboarding; Skip reads "Not now" there, and either way the app
+ * works the same. The page set is fixed when the screen opens, so the pager
+ * never changes length under the rider.
  *
  * Entry points: first-run / public (`/onboarding`) and Settings replay
  * (`/onboarding?from=settings`). Exit is explicit via `resolveOnboardingExit`
@@ -48,13 +56,17 @@ export default function OnboardingScreen() {
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollX = useSharedValue(0);
+  const [slides] = useState(() =>
+    onboardingSlidesFor({ bubble: useBubblePermission.getState().permission === "denied" }),
+  );
   const [index, setIndex] = useState(0);
   const [measuredPager, setMeasuredPager] = useState(0);
   const pagerHeight =
     measuredPager > 0
       ? measuredPager
       : estimatePagerHeight(windowHeight, insets.top, insets.bottom);
-  const last = onboardingSlides.length - 1;
+  const last = slides.length - 1;
+  const asksBubble = slides[index].id === "bubble";
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
@@ -79,6 +91,15 @@ export default function OnboardingScreen() {
     router.replace(resolveOnboardingExit(from));
   }
 
+  function next() {
+    if (index < last) {
+      goTo(index + 1);
+      return;
+    }
+    if (asksBubble) void openBubbleSettings();
+    dismiss();
+  }
+
   function onPagerLayout(event: LayoutChangeEvent) {
     const next = event.nativeEvent.layout.height;
     setMeasuredPager((current) => (current === next ? current : next));
@@ -91,11 +112,11 @@ export default function OnboardingScreen() {
         <Pressable
           onPress={dismiss}
           accessibilityRole="button"
-          accessibilityLabel="Skip onboarding"
+          accessibilityLabel={asksBubble ? "Not now, finish without the bubble" : "Skip onboarding"}
           className="gg-touch items-end justify-center"
           style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
         >
-          <Text className="text-button text-text-secondary">Skip</Text>
+          <Text className="text-button text-text-secondary">{asksBubble ? "Not now" : "Skip"}</Text>
         </Pressable>
       </View>
 
@@ -111,7 +132,7 @@ export default function OnboardingScreen() {
           style={{ flex: 1 }}
           bounces={false}
         >
-          {onboardingSlides.map((slide, slideIndex) => (
+          {slides.map((slide, slideIndex) => (
             <Slide
               key={slide.id}
               active={slideIndex === index}
@@ -136,7 +157,7 @@ export default function OnboardingScreen() {
       <View className="gg-page gap-2 pb-2 pt-3">
         <View className="items-center">
           <PaginationDots
-            count={onboardingSlides.length}
+            count={slides.length}
             activeIndex={index}
             scrollX={scrollX}
             width={width}
@@ -144,8 +165,8 @@ export default function OnboardingScreen() {
           />
         </View>
         <PrimaryButton
-          label={onboardingSlides[index].cta}
-          onPress={() => (index === last ? dismiss() : goTo(index + 1))}
+          label={slides[index].cta}
+          onPress={next}
         />
       </View>
     </Screen>
@@ -156,7 +177,7 @@ type SlideProps = {
   /** The settled page, not the scroll position. Drives accessibility only. */
   active: boolean;
   index: number;
-  art: OnboardingArt;
+  art: OnboardingPicture;
   step: string;
   title: string;
   body: string;
@@ -174,7 +195,7 @@ type SlideProps = {
  * a delivery actually moves in — not a decorative count. It is also what
  * states position when motion is off.
  *
- * All three pages stay mounted so the pager can scroll, and fading one out
+ * Every page stays mounted so the pager can scroll, and fading one out
  * does not take it out of the accessibility tree.
  */
 function Slide({
