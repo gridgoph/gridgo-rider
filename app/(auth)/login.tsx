@@ -179,6 +179,13 @@ export default function LoginScreen() {
       }
       const completed = await signIn.finalize();
       if (completed.error) throw completed.error;
+      // The code has done its job. Adoption swaps this screen for Signing you
+      // in, which unmounts CodeField; leaving the digits here let it remount
+      // full and auto-submit them again once a refused role came back, and
+      // Clerk answered that second verify with "already signed in". A rider
+      // is redirected from here; anyone refused reads why on the sign-in form.
+      setCode("");
+      setVerifying(false);
     } catch (caught) {
       setCode("");
       if (!useSession.getState().error) {
