@@ -5,6 +5,7 @@ import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 
 import { CallAvatar } from "@/components/CallAvatar";
 import { CallControl } from "@/components/CallControl";
+import { CallEndSummary } from "@/components/CallEndSummary";
 import { CallTimer } from "@/components/CallTimer";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -19,7 +20,6 @@ import {
   callWindow,
   counterpartOf,
   counterpartPhrase,
-  endReasonCopy,
   partyOfPair,
   phaseLabel,
   ringingIncoming,
@@ -44,7 +44,7 @@ type Gate = "none" | "checking" | "confirm" | "permission" | "blocked" | "unsupp
 export const UNSUPPORTED_TITLE = "Calls need the latest GRIDGO app from the download page";
 
 /** Ends that can be tried again from here. */
-const RETRYABLE: readonly CallEndReason[] = ["declined", "no_answer", "missed", "declined_by_you", "network_lost", "failed", "busy"];
+const RETRYABLE: readonly CallEndReason[] = ["ended_by_them", "declined", "no_answer", "missed", "declined_by_you", "network_lost", "failed", "busy"];
 
 /** How long a plainly finished call lingers before the screen gets out of the way. */
 const AUTO_CLOSE_MS = 2_000;
@@ -210,7 +210,8 @@ export default function CallScreen() {
   const panelShown = gate === "confirm" || gate === "permission" || gate === "blocked" || gate === "unsupported";
   const ringing = phase === "incoming" || phase === "ringing" || phase === "calling";
   const live = Boolean(phase && phase !== "ended");
-  const ended = phase === "ended" && snapshot?.endReason ? endReasonCopy(snapshot.endReason, person) : null;
+  const ended = phase === "ended" && snapshot?.endReason ? snapshot.endReason : null;
+  const durationMs = snapshot?.connectedAtMs && snapshot.endedAtMs ? snapshot.endedAtMs - snapshot.connectedAtMs : null;
 
   const status =
     gate === "checking"
@@ -249,7 +250,7 @@ export default function CallScreen() {
         </View>
 
         <ScrollView className="flex-1" contentContainerClassName="flex-grow items-center justify-center gap-2 py-4">
-          <CallAvatar role={role} ringing={ringing} size={panelShown ? 72 : undefined} />
+          <CallAvatar role={role} ringing={ringing} ended={Boolean(ended)} size={panelShown ? 72 : undefined} />
           <View
             className="items-center gap-1"
             accessible
@@ -269,9 +270,7 @@ export default function CallScreen() {
             {phase === "connected" && snapshot?.connectedAtMs ? (
               <CallTimer since={snapshot.connectedAtMs} className="text-h3 text-text-primary" />
             ) : ended ? (
-              <Text className="text-h3 text-text-primary" accessibilityRole="text">
-                {ended.title}
-              </Text>
+              <CallEndSummary reason={ended} person={person} durationMs={durationMs} />
             ) : (
               <Text className="text-h3 text-text-secondary">{status}</Text>
             )}
@@ -431,7 +430,6 @@ export default function CallScreen() {
 
         {ended && snapshot ? (
           <View className="gap-3">
-            <Text className="text-center text-body-lg text-text-secondary">{ended.body}</Text>
             {snapshot.endReason === "mic_blocked" ? (
               <PrimaryButton label="Open phone settings" size="large" onPress={() => void Linking.openSettings()} />
             ) : snapshot.endReason && RETRYABLE.includes(snapshot.endReason) && windowOpen ? (

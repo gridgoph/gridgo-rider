@@ -1,4 +1,9 @@
-import { CALL_CONNECT_TIMEOUT_MS, CallSession, type CallApi, type CallSessionDeps } from "@/lib/callSession";
+import {
+  CALL_CONNECT_TIMEOUT_MS,
+  CallSession,
+  type CallApi,
+  type CallSessionDeps,
+} from "@/lib/callSession";
 import type { OrderCall } from "@/lib/orderCalls";
 import type { RtcPeer, RtcStream, WebRTCApi } from "@/lib/webrtc";
 
@@ -309,6 +314,133 @@ describe("calling the client", () => {
   });
 });
 
+describe("when the call ends mid-conversation", () => {
+  /** A call the client answered and the voices connected on. */
+  async function connected() {
+    const r = rig();
+    const session = new CallSession(r.deps, { direction: "outgoing", orderId: "ord_1", pair: "delivery" });
+    await session.place();
+    r.setServer({ state: "accepted", acceptedAt: new Date(NOW).toISOString(), leaseExpiresAt: new Date(NOW + 90_000).toISOString() });
+    await jest.advanceTimersByTimeAsync(2_000);
+    r.peers[0]!.emit("connectionstatechange", { state: "connected" });
+    await jest.advanceTimersByTimeAsync(14_000);
+    return { r, session, peer: r.peers[0]! };
+  }
+  const posted = (r: ReturnType<typeof rig>) => r.api.orderCallAction.mock.calls.map((call) => (call as unknown[])[2]);
+  const hungUpByClient = () => ({ state: "ended" as const, endedAt: new Date(Date.now()).toISOString(), leaseExpiresAt: null });
+
+  it("says the client hung up when the server's ended state arrives first, with the time on the call", async () => {
+    const { r, session, peer } = await connected();
+    r.setServer(hungUpByClient());
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "ended_by_them" });
+    expect(session.snapshot.endedAtMs! - session.snapshot.connectedAtMs!).toBe(16_000);
+    expect(peer.closed).toBe(true);
+    // The peer dying afterwards changes nothing.
+    peer.emit("connectionstatechange", { state: "failed" });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(session.snapshot.endReason).toBe("ended_by_them");
+    expect(posted(r)).not.toContain("end");
+  });
+
+  it("asks the server the moment the audio drops, instead of showing a weak connection", async () => {
+    const { r, session, peer } = await connected();
+    r.setServer(hungUpByClient());
+    const polls = r.api.getCallSignals.mock.calls.length;
+    peer.emit("connectionstatechange", { state: "disconnected" });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(r.api.getCallSignals.mock.calls.length).toBe(polls + 1);
+    expect(session.snapshot.endReason).toBe("ended_by_them");
+  });
+
+  it("says the client hung up when the peer fails before the server's ended state reached the poll", async () => {
+    const { r, session, peer } = await connected();
+    // The phone's reads are slow: the poll in flight never comes back in time.
+    r.api.getCallSignals.mockImplementation(() => new Promise(() => undefined));
+    await jest.advanceTimersByTimeAsync(2_000);
+    r.setServer(hungUpByClient());
+    peer.emit("connectionstatechange", { state: "disconnected" });
+    expect(session.snapshot.phase).toBe("reconnecting");
+    peer.emit("connectionstatechange", { state: "failed" });
+    peer.emit("iceconnectionstatechange");
+    await jest.advanceTimersByTimeAsync(0);
+    expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "ended_by_them" });
+    expect(r.api.getOrderCall).toHaveBeenCalledTimes(1);
+    expect(posted(r)).not.toContain("end");
+    expect(r.track.stop).toHaveBeenCalled();
+  });
+
+  it("calls a failed peer a lost connection only when the server still has the call live, and ends it there", async () => {
+    const { r, session, peer } = await connected();
+    peer.emit("connectionstatechange", { state: "failed" });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "network_lost" });
+    expect(posted(r)).toContain("end");
+  });
+
+  it("calls it a lost connection when the server cannot be reached to ask", async () => {
+    const { r, session, peer } = await connected();
+    let fail: () => void = () => undefined;
+    r.api.getOrderCall.mockImplementation(
+      () => new Promise((_, reject) => {
+        fail = () => reject(new Error("Network request failed"));
+      }),
+    );
+    peer.emit("connectionstatechange", { state: "failed" });
+    await jest.advanceTimersByTimeAsync(0);
+    // Still asking: no verdict until the server answers or the request gives up.
+    expect(session.snapshot.phase).not.toBe("ended");
+    fail();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "network_lost" });
+  });
+
+  it("says the client hung up, not that calling closed, when the poll is refused and the read after it is lost", async () => {
+    const { r, session } = await connected();
+    r.api.getCallSignals.mockRejectedValue(refusal("call_not_active"));
+    r.api.getOrderCall.mockRejectedValue(new Error("GRIDGO did not answer in time."));
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot).toMatchObject({ phase: "ended", endReason: "ended_by_them" });
+  });
+
+  it("still says calling closed when a call that never connected is refused", async () => {
+    const r = rig();
+    const session = new CallSession(r.deps, { direction: "outgoing", orderId: "ord_1", pair: "delivery" });
+    await session.place();
+    r.api.getCallSignals.mockRejectedValue(refusal("call_not_active"));
+    r.api.getOrderCall.mockRejectedValue(new Error("GRIDGO did not answer in time."));
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot.endReason).toBe("not_available");
+  });
+
+  it("calls it a lost connection when the server ended it on a lapsed lease", async () => {
+    const { r, session } = await connected();
+    // The client's phone stopped renewing; the server's sweep ends the call at the lease.
+    const lease = session.snapshot.call!.leaseExpiresAt!;
+    r.setServer({ state: "ended", endedAt: lease, leaseExpiresAt: null });
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot.endReason).toBe("network_lost");
+  });
+
+  it("keeps the rider's own hang-up as theirs when a poll lands the ended state first", async () => {
+    const { r, session } = await connected();
+    let respond: () => void = () => undefined;
+    r.api.orderCallAction.mockImplementationOnce(async () => {
+      r.setServer({ state: "ended", endedAt: new Date(Date.now()).toISOString(), leaseExpiresAt: null });
+      await new Promise<void>((resolve) => {
+        respond = resolve;
+      });
+      return r.api.getOrderCall();
+    });
+    const hangingUp = session.hangUp();
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot.endReason).toBe("ended");
+    respond();
+    await hangingUp;
+    expect(session.snapshot.endReason).toBe("ended");
+  });
+});
+
 describe("a call ringing in from the shop", () => {
   const incoming = () =>
     makeCall({
@@ -385,6 +517,19 @@ describe("a call ringing in from the shop", () => {
     r.setServer({ state: "missed" });
     await jest.advanceTimersByTimeAsync(2_000);
     expect(session.snapshot.endReason).toBe("missed");
+  });
+
+  it("says the shop hung up on an answered call", async () => {
+    const r = rig();
+    r.setServer(incoming());
+    const session = new CallSession(r.deps, { direction: "incoming", call: incoming() });
+    session.ring();
+    r.signals.push({ id: 7, kind: "offer", sdp: "v=0\r\noffer\r\n" });
+    await session.answer();
+    r.peers[0]!.emit("connectionstatechange", { state: "connected" });
+    r.setServer({ state: "ended", endedAt: new Date(Date.now()).toISOString() });
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(session.snapshot.endReason).toBe("ended_by_them");
   });
 
   it("reads a lost race on Answer as the call it became", async () => {
