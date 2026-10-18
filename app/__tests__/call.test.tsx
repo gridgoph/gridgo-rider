@@ -220,3 +220,74 @@ it("does not reopen ringing for a stale push: it lands on the trip", async () =>
   expect(stopRing).not.toHaveBeenCalled();
   expect(useCall.getState().snapshot).toBeNull();
 });
+
+describe("once the call is over", () => {
+  function endWith(endReason: "ended" | "ended_by_them" | "network_lost") {
+    useCall.setState({
+      snapshot: {
+        orderId: "ord_1",
+        pair: "delivery",
+        direction: "outgoing",
+        call: makeCall({ state: "ended", acceptedAt: new Date(NOW).toISOString(), endedAt: new Date(NOW + 134_000).toISOString() }),
+        phase: "ended",
+        endReason,
+        connectedAtMs: NOW + 2_000,
+        endedAtMs: NOW + 136_000,
+        muted: false,
+        speaker: false,
+        relayAvailable: false,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("says the client ended it, for how long, and stays up with Call again and Close", async () => {
+    await renderScreen(<CallScreen />);
+    await act(async () => endWith("ended_by_them"));
+
+    expect(screen.getByText("Call ended")).toBeTruthy();
+    expect(screen.getByText("The client ended the call.")).toBeTruthy();
+    expect(screen.getByText("Call time 2:14")).toBeTruthy();
+    expect(screen.getByText("Call again")).toBeTruthy();
+    expect(screen.getByText("Message the client")).toBeTruthy();
+    expect(screen.queryByText(/Connection lost|Call dropped|connection was lost/)).toBeNull();
+    expect(screen.queryByText("End call")).toBeNull();
+
+    // The rider reads it in their own time: it does not close itself.
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.press(screen.getAllByText("Close").at(-1)!);
+    });
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a real drop as a lost connection, with its own words and a way to call again", async () => {
+    await renderScreen(<CallScreen />);
+    await act(async () => endWith("network_lost"));
+
+    expect(screen.getByText("Connection lost")).toBeTruthy();
+    expect(screen.getByText(/dropped before either of you hung up/)).toBeTruthy();
+    expect(screen.getByText("Call time 2:14")).toBeTruthy();
+    expect(screen.getByText("Call again")).toBeTruthy();
+    expect(screen.queryByText("Call ended")).toBeNull();
+  });
+
+  it("says the rider ended it, then gets out of the way", async () => {
+    await renderScreen(<CallScreen />);
+    await act(async () => endWith("ended"));
+
+    expect(screen.getByText("Call ended")).toBeTruthy();
+    expect(screen.getByText("You ended the call.")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+  });
+});

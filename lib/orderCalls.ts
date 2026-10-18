@@ -207,7 +207,11 @@ export type CallEndReason =
   | "no_answer"
   | "missed"
   | "cancelled"
+  /** This phone hung up. */
   | "ended"
+  /** The other person hung up an answered call. */
+  | "ended_by_them"
+  /** The audio path died while the server still had the call live. */
   | "network_lost"
   | "not_available"
   | "busy"
@@ -260,11 +264,16 @@ export function endReasonCopy(reason: CallEndReason, person: CallPerson | null):
     case "cancelled":
       return { title: "Call cancelled", body: "Nothing was connected." };
     case "ended":
-      return { title: "Call ended", body: `Your call with ${who} has ended.` };
+      return { title: "Call ended", body: "You ended the call." };
+    case "ended_by_them":
+      return {
+        title: "Call ended",
+        body: `The ${person ? roleWord(person.role).toLowerCase() : "other person"} ended the call.`,
+      };
     case "network_lost":
       return {
-        title: "Call dropped",
-        body: "The connection was lost. Check your mobile data or Wi-Fi, then call again.",
+        title: "Connection lost",
+        body: "The call dropped before either of you hung up. Check your mobile data or Wi-Fi, then call again.",
       };
     case "not_available":
       return {
@@ -311,6 +320,25 @@ export function endReasonOf(call: Pick<OrderCall, "state" | "mine" | "acceptedAt
     default:
       return "ended";
   }
+}
+
+/**
+ * How an answered call that finished on the server reads from this phone.
+ *
+ * The projection does not say who ended it, so this phone works it out. Its
+ * own hang-up is "ended". A call that ended once the lease this phone last saw
+ * had run out was dropped: the other phone stopped renewing it. Any other end
+ * came from the other person.
+ */
+export function answeredEndReason(
+  call: Pick<OrderCall, "state" | "mine" | "acceptedAt" | "endedAt">,
+  seen: { hungUpHere: boolean; leaseExpiresAt: string | null },
+): CallEndReason {
+  if (call.state !== "ended") return endReasonOf(call);
+  if (seen.hungUpHere) return "ended";
+  const endedMs = call.endedAt ? Date.parse(call.endedAt) : NaN;
+  const leaseMs = seen.leaseExpiresAt ? Date.parse(seen.leaseExpiresAt) : NaN;
+  return endedMs >= leaseMs ? "network_lost" : "ended_by_them";
 }
 
 /** The API's refusal as an end reason, or null for a failure a retry may fix. */
