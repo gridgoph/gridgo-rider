@@ -131,6 +131,50 @@ describe("Sign in new-device verification", () => {
     });
   });
 
+  it("lands a refused account on the refusal, not on a resubmitted code", async () => {
+    // The supplier and client accounts this app refuses. A second verify after
+    // Clerk already finished is what Clerk answers with "already signed in".
+    const refusal = "This is a supplier account. Open the GRIDGO supplier app to sign in.";
+    mockVerifyEmailCode.mockImplementation(async () => {
+      if (mockSignInStatus === "complete") {
+        return { error: { errors: [{ longMessage: "You're already signed in." }] } };
+      }
+      mockSignInStatus = "complete";
+      return { error: null };
+    });
+    // Finalizing hands the session to the bridge, which holds the screen on
+    // Signing you in while /auth/me answers.
+    mockFinalize.mockImplementation(async () => {
+      mockSessionState.loading = true;
+      return { error: null };
+    });
+
+    await typeCredentialsAndSubmit();
+    await waitFor(() => {
+      expect(screen.getByTestId("login-code")).toBeTruthy();
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText("Emailed code"), "424242");
+    });
+    await waitFor(() => {
+      expect(mockFinalize).toHaveBeenCalled();
+    });
+    await screen.rerender(<LoginScreen />);
+
+    // /auth/me refused the role; the bridge signed Clerk out and left the reason.
+    mockSessionState.loading = false;
+    mockSessionState.error = refusal;
+    await screen.rerender(<LoginScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText(refusal)).toBeTruthy();
+    });
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Not signed in")).toBeTruthy();
+    expect(screen.queryByText("Code not accepted")).toBeNull();
+    expect(screen.queryByText("You're already signed in.")).toBeNull();
+  });
+
   it("still names a real password rejection", async () => {
     mockPassword.mockResolvedValue({
       error: { errors: [{ longMessage: "Password is incorrect. Try again, or use another method." }] },
