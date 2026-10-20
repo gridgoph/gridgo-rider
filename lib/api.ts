@@ -9,6 +9,7 @@ import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryCha
 import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
 import { parseOrderCall, parseOrderCalls, type CallPair, type OrderCall } from "@/lib/orderCalls";
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
+import type { AcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
 
 /**
  * GRIDGO demo API client.
@@ -256,7 +257,9 @@ export type Order = {
    * app puts on screen — the client's subtotal and total are visible to this
    * role but say nothing a rider can act on, and showing them was only ever
    * there to support cash collection. Read what the rider earns through
-   * `riderPay` in `lib/riderPay.ts`, never from this field directly.
+   * `riderPay` in `lib/riderPay.ts`, never from this field directly. The one
+   * other place client money appears is the acknowledgement receipt at the
+   * door, which has its own route (`lib/acknowledgementReceipt.ts`).
    */
   deliveryFeeMinor: number;
   /**
@@ -346,11 +349,24 @@ export type Order = {
   /** When this rider was assigned; arrived-packed marks are one per assignment. */
   riderAssignedAt?: string | null;
   /**
+   * Door deliveries only, for this assignment. `arrived` is `completed` once
+   * the rider has recorded arrival (`recordArrival`), which is what opens the
+   * acknowledgement receipt. Absent on pickup jobs and older APIs.
+   */
+  deliveryMilestones?: DeliveryMilestone[];
+  /**
    * GRIDGO moved the job past a shop step without its usual evidence. Every
    * app shows "Forced by GRIDGO"; the reason is in `forcedSteps`.
    */
   forcedByGridgo?: boolean;
   forcedSteps?: { at: string; from: string; to: string; reasonCode: string; note: string }[];
+};
+
+export type DeliveryMilestone = {
+  code: "rider_assigned" | "heading_to_shop" | "at_shop" | "picked_up" | "on_the_way" | "arrived";
+  label: string;
+  status: "pending" | "completed" | "passed";
+  at: string | null;
 };
 
 export type StoredFile = {
@@ -1188,6 +1204,45 @@ export async function markArrivedPacked(orderId: string): Promise<Order> {
     body: JSON.stringify({}),
   });
   return result.order;
+}
+
+/**
+ * Tell GRIDGO the rider is at the client's door (`POST /dispatch/:id/milestones`).
+ *
+ * Changes no order state; the client and Operations are told, and it opens the
+ * acknowledgement receipt for this assignment. Repeating it is harmless — the
+ * server keeps the first time.
+ */
+export async function recordArrival(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(`/dispatch/${encodeURIComponent(orderId)}/milestones`, {
+    method: "POST",
+    body: JSON.stringify({ milestone: "arrived" }),
+  });
+  return result.order;
+}
+
+/**
+ * The acknowledgement receipt GRIDGO already issued for this order, read at the
+ * door. `404 acknowledgement_receipt_not_found` means none has been issued yet.
+ * gridgo-api `docs/ACKNOWLEDGEMENT_RECEIPTS_API.md`. Never store the result.
+ */
+export async function getAcknowledgementReceipt(orderId: string): Promise<AcknowledgementReceipt> {
+  const result = await request<{ receipt: AcknowledgementReceipt }>(
+    `/orders/${encodeURIComponent(orderId)}/acknowledgement-receipt`,
+  );
+  return result.receipt;
+}
+
+/**
+ * Issue the receipt, or get back the one already issued: the order is the
+ * idempotency key, so a retry never takes a second number.
+ */
+export async function prepareAcknowledgementReceipt(orderId: string): Promise<AcknowledgementReceipt> {
+  const result = await request<{ receipt: AcknowledgementReceipt }>(
+    `/orders/${encodeURIComponent(orderId)}/acknowledgement-receipt`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return result.receipt;
 }
 
 /**

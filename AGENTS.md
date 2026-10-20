@@ -25,7 +25,7 @@ The app includes:
 - Delivery evidence (photo, or signature when the camera cannot be used)
 - Active-trip location pings (live GPS from accepting the pick-up until the job leaves the rider: the shop sees it on the way to the shop, the client after pick-up)
 
-**No cash.** Operational model v2 removed cash on delivery outright — the captain's risk decision about riders carrying the client's balance. There is no cash screen, no COD path, and no peso figure on any screen except the rider's own earnings and, as secondary detail, the gross delivery fee they are a share of. Do not reintroduce one.
+**No cash.** Operational model v2 removed cash on delivery outright — the captain's risk decision about riders carrying the client's balance. There is no cash screen, no COD path, and no peso figure on any screen except the rider's own earnings and, as secondary detail, the gross delivery fee they are a share of — and the client's acknowledgement receipt, shown only on the delivery step after arrival until handover (`lib/acknowledgementReceipt.ts`, guarded by `__tests__/receiptDisclosure.test.ts`). Do not reintroduce one.
 
 **Cross-cutting**
 
@@ -61,7 +61,7 @@ Every screen that needs network uses **`lib/api.ts`** against the shared local *
 - **Clerk auth** — Google, recovery, and Operations invitation tickets. Clerk tokens use SecureStore and flow through `lib/api.ts`; rider membership follows [Authentication](#authentication). Password apply and sign-in use the domain API (`POST /auth/signup`, `POST /auth/login`) while `AUTH_MODE` is still `legacy`. Do not flip `AUTH_MODE` from this app.
 - **Custom domain API** — orders, dispatch, pickup checklist, delivery evidence, files, settings, notifications.
 - **Zustand** — session and feature stores (not React Context for global session).
-- **Money** — PHP minor units only, formatted at the edge. The only figures this app renders are the rider's earnings and the gross fee beside them, both read through `riderPay` in `lib/riderPay.ts` (see *Earnings* below).
+- **Money** — PHP minor units only, formatted at the edge. The only figures this app renders are the rider's earnings and the gross fee beside them, both read through `riderPay` in `lib/riderPay.ts` (see *Earnings* below), and the door receipt above.
 - **Contract** — `gridgo-api` `docs/OPERATIONAL_MODEL_V2_API.md` is authoritative for routes, states, transitions and role projections; `docs/STORAGE_API.md` for file bytes. Read them before changing a call site rather than inferring from the app.
 - **Stable API surface** — feature call sites continue through `lib/api.ts`; auth chooses a fresh Clerk bearer or the development-only legacy bearer there.
 - **API base** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → Expo dev-server hostname from `expo-constants` + `EXPO_PUBLIC_API_PORT` (default `8787`) → Android emulator `10.0.2.2` when that host is loopback → `127.0.0.1`. Do not hardcode a LAN IP; a physical device inherits the host it loaded the bundle from. Unit tests: `lib/__tests__/apiBase.test.ts`.

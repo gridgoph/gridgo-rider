@@ -230,6 +230,33 @@ const REFUSALS: Record<string, Entry> = {
       "Too many codes were refused on this job, so it is locked for a few minutes. Keep the package and escalate to Operations.",
     step: null,
   },
+
+  // The acknowledgement receipt, prepared at the door and issued again by the
+  // delivery itself when it was not (gridgo-api ACKNOWLEDGEMENT_RECEIPTS_API.md).
+  acknowledgement_not_available: {
+    message: `GRIDGO issues the receipt only while you are delivering this job to the client's door. ${TRIP}`,
+    step: "trip",
+  },
+  acknowledgement_payment_pending: {
+    message:
+      "The client's payment is not settled yet, so GRIDGO cannot issue the receipt or record the delivery. Keep the package and call Operations.",
+    step: null,
+  },
+  acknowledgement_amount_unavailable: {
+    message:
+      "This order's amounts are incomplete, so GRIDGO cannot issue the receipt or record the delivery. Do not write the amounts yourself — keep the package and call Operations.",
+    step: null,
+  },
+  acknowledgement_amount_mismatch: {
+    message:
+      "This order's amounts do not add up, so GRIDGO cannot issue the receipt or record the delivery. Do not write the amounts yourself — keep the package and call Operations.",
+    step: null,
+  },
+  acknowledgement_customer_unavailable: {
+    message:
+      "The client's account has no name on file, so GRIDGO cannot issue the receipt or record the delivery. Keep the package and call Operations.",
+    step: null,
+  },
 };
 
 /** When a closed GRIDGO opens again, in Davao's own clock. */
