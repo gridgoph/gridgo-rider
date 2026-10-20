@@ -33,6 +33,10 @@ jest.mock("@/components/HandoverCodeCard", () => ({ HandoverCodeCard: "HandoverC
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
 jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));
 jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptReminder" }));
+// The receipt has its own suite (deliveryReceipt); payment is the subject here.
+jest.mock("@/hooks/useAcknowledgementReceipt", () => ({ useAcknowledgementReceipt: () => ({
+  stage: "none", load: { status: "none" }, retry: jest.fn(), arrive: jest.fn(), arriving: false, arrivalError: null,
+}) }));
 jest.mock("@/components/Screen", () => ({ Screen: "Screen" }));
 jest.mock("@/components/SkeletonScreens", () => ({ ProofStepSkeleton: "ProofStepSkeleton" }));
 jest.mock("@/components/FormScroll", () => ({ FormScroll: "FormScroll" }));
