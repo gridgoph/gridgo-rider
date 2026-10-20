@@ -52,9 +52,9 @@ import { useActiveTrip } from "@/store/activeTrip";
  * milestone. The server binds a file to one purpose only, so the alternative
  * was asking a rider to photograph the same doorstep twice.
  *
- * No money is handled here and none is shown. On a delivery the client's
- * balance must be confirmed by Operations or not required because the order
- * was paid in full — a status the rider needs, not an amount.
+ * No money is handled here. On a delivery the client's balance must be
+ * confirmed by Operations or not required because the order was paid in full —
+ * a status the rider needs, not an amount.
  *
  * A collected job is the other shape entirely: the far end is GRIDGO's own
  * counter, so there is nobody to hand it to and nothing to be paid. Holding a
@@ -63,8 +63,11 @@ import { useActiveTrip } from "@/store/activeTrip";
  * and asks only for proof the package reached the shelf.
  *
  * At a client's door the rider also hands over an acknowledgement receipt —
- * the pilot's only receipt. Its tick is the rider's own reminder: it stays on
- * this phone and never holds the confirm button, because it is not a server delivery gate.
+ * the pilot's only receipt. Once they record arrival, GRIDGO's issued receipt
+ * opens in that card for them to copy onto paper: the only client amounts a
+ * rider ever sees, and only until this handover is done (`ReceiptReminder`).
+ * Neither the receipt nor its tick holds the confirm button; the server is the
+ * gate, and it issues the receipt itself on delivery if the card never did.
  *
  * The client reads their code aloud and the rider types it. Only the server
  * verifies it, together with the evidence. A job with no requirement delivers
@@ -74,7 +77,7 @@ export default function DeliveryProofScreen() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
-  const { order, loading, error: loadError, reload } = useTripOrder(id);
+  const { order, setOrder, loading, error: loadError, reload } = useTripOrder(id);
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
 
   const [busy, setBusy] = useState(false);
@@ -245,6 +248,22 @@ export default function DeliveryProofScreen() {
               />
             ) : null}
 
+            {/* Hidden while the balance holds the package: the rider has just
+                been told not to hand anything over. */}
+            {owesAcknowledgementReceipt(order) && !balanceHeld && !codeHeld ? (
+              <ReceiptReminder
+                order={order}
+                handedOver={receiptHandedOver}
+                onToggle={() => setReceiptHandedOver((v) => !v)}
+                onOrder={(next) => {
+                  setOrder(next);
+                  setActiveOrder(next);
+                }}
+                onClosed={() => void reload("refresh")}
+                disabled={busy}
+              />
+            ) : null}
+
             {handover.load.status === "ready" ? (
               <HandoverCodeCard
                 otp={otp}
@@ -336,16 +355,6 @@ export default function DeliveryProofScreen() {
               }
               disabled={busy || balanceHeld || codeHeld}
             />
-
-            {/* Hidden while the balance holds the package: the rider has just
-                been told not to hand anything over. */}
-            {owesAcknowledgementReceipt(order) && !balanceHeld && !codeHeld ? (
-              <ReceiptReminder
-                handedOver={receiptHandedOver}
-                onToggle={() => setReceiptHandedOver((v) => !v)}
-                disabled={busy}
-              />
-            ) : null}
 
             {submitError ? (
               <InlineNotice

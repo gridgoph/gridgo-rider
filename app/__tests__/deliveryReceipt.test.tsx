@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import type { Order } from "@/lib/api";
+import type { AcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
 
 const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn() };
 
@@ -18,6 +19,9 @@ jest.mock("@/lib/api", () => ({
   health: jest.fn(),
   storageStatus: () => "available",
   recordDelivery: jest.fn(),
+  recordArrival: jest.fn(),
+  getAcknowledgementReceipt: jest.fn(),
+  prepareAcknowledgementReceipt: jest.fn(),
   // No handover code on these jobs: the receipt is the subject here.
   getHandover: jest.fn(() => Promise.resolve(null)),
 }));
@@ -44,6 +48,14 @@ jest.mock("@/hooks/useProofEvidence", () => ({
   }),
 }));
 
+/** The live invalidation `useTripOrder` listens to, fired by hand. */
+let mockLiveRefresh: (() => void) | null = null;
+jest.mock("@/hooks/useLiveRefresh", () => ({
+  useLiveRefresh: (_topics: string[], onRefresh: () => void) => {
+    mockLiveRefresh = onRefresh;
+  },
+}));
+
 // The camera surface is covered by its own tests; here it only has to exist.
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: () => null }));
 
@@ -51,13 +63,19 @@ jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: () => null }
 // eslint-disable-next-line import/first
 import DeliveryProofScreen from "@/app/trip/delivery";
 
+const actual = jest.requireActual("@/lib/api") as typeof import("@/lib/api");
 const api = jest.requireMock("@/lib/api") as {
   getOrder: jest.Mock;
   health: jest.Mock;
   recordDelivery: jest.Mock;
+  recordArrival: jest.Mock;
+  getAcknowledgementReceipt: jest.Mock;
+  prepareAcknowledgementReceipt: jest.Mock;
 };
 
-const atDoor = {
+const refused = (status: number, error: string) => new actual.ApiError(status, { error });
+
+const onTheWay = {
   id: "ord_1",
   clientId: "user_client",
   supplierId: "user_supplier",
@@ -74,65 +92,322 @@ const atDoor = {
   dropoff: { lat: 7.07, lng: 125.61, label: "Bajada" },
   pickupChecklist: null,
   timeline: [],
+  deliveryMilestones: [
+    { code: "on_the_way", label: "On the way to you", status: "completed", at: "2026-10-21T00:40:00.000Z" },
+    { code: "arrived", label: "Arrived", status: "pending", at: null },
+  ],
 } as unknown as Order;
+
+const atDoor = {
+  ...onTheWay,
+  deliveryMilestones: [
+    { code: "on_the_way", label: "On the way to you", status: "completed", at: "2026-10-21T00:40:00.000Z" },
+    { code: "arrived", label: "Arrived", status: "completed", at: "2026-10-21T01:00:00.000Z" },
+  ],
+} as unknown as Order;
+
+/** The contract's own example: legacy rounding, one manual QR payment. */
+const receipt: AcknowledgementReceipt = {
+  version: 1,
+  orderId: "ord_1",
+  orderNumber: "ord_1",
+  arNumber: "AR-0000000001",
+  issuedAt: "2026-10-21T01:00:00.000Z",
+  issuedTo: "José Muñoz",
+  currency: "PHP",
+  lines: [
+    { id: "line_1", description: "Flyers", quantity: 1, unitPriceMinor: 5506, subtotalMinor: 5506 },
+    { id: "line_2", description: "Posters", quantity: 3, unitPriceMinor: null, subtotalMinor: 5506 },
+  ],
+  deliveryFeeMinor: 5000,
+  organizationDiscountMinor: 0,
+  voucherDiscountMinor: 0,
+  roundingAdjustmentMinor: -1,
+  grandTotalMinor: 16011,
+  payments: [
+    {
+      code: "initial",
+      type: "digital",
+      method: "qr_manual",
+      reference: "RECORDED-REFERENCE",
+      amountMinor: 16011,
+      amountReceivedMinor: null,
+      changeMinor: null,
+    },
+  ],
+  note:
+    "This temporary receipt acknowledges initial receipt pending final processing. It does not replace an Official Receipt or final invoice.",
+};
 
 const tick = () => screen.getByRole("checkbox", { name: "Receipt handed over" });
 const confirm = () => screen.getByRole("button", { name: /confirm delivery/i });
+const arrive = () => screen.getByRole("button", { name: "I'm at the client's door" });
+/** Any peso figure at all on screen. */
+const amounts = () => screen.queryAllByText(/₱/);
 
 describe("the acknowledgement receipt at the door", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     api.health.mockResolvedValue({});
-    api.getOrder.mockResolvedValue(atDoor);
+    api.getOrder.mockResolvedValue(onTheWay);
     api.recordDelivery.mockResolvedValue({ ...atDoor, state: "issue_window_open" });
+    api.recordArrival.mockResolvedValue(atDoor);
+    api.getAcknowledgementReceipt.mockResolvedValue(receipt);
+    api.prepareAcknowledgementReceipt.mockResolvedValue(receipt);
   });
 
-  it("reminds the rider to hand it over, and never calls it an official receipt", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Acknowledgement receipt");
+  describe("before arrival", () => {
+    it("offers the arrival step, shows no amounts, and asks the server for nothing", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
 
-    expect(screen.getByText("HAND THIS TO THE CLIENT")).toBeTruthy();
-    expect(screen.getByText(/acknowledgement receipt with the package/)).toBeTruthy();
-    expect(screen.queryByText(/official receipt/i)).toBeNull();
-  });
+      expect(screen.getByText("HAND THIS TO THE CLIENT")).toBeTruthy();
+      expect(screen.getByText(/acknowledgement receipt with the package/)).toBeTruthy();
+      expect(arrive()).toBeTruthy();
+      expect(amounts()).toEqual([]);
+      expect(screen.queryByText(/AR-/)).toBeNull();
+      expect(api.getAcknowledgementReceipt).not.toHaveBeenCalled();
+      expect(api.prepareAcknowledgementReceipt).not.toHaveBeenCalled();
+    });
 
-  it("ticks and unticks as the rider's own reminder", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Acknowledgement receipt");
+    it("records arrival, then issues the receipt when none exists yet", async () => {
+      api.getAcknowledgementReceipt.mockRejectedValue(refused(404, "acknowledgement_receipt_not_found"));
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
 
-    expect(tick().props.accessibilityState).toMatchObject({ checked: false });
-    await fireEvent.press(tick());
-    expect(tick().props.accessibilityState).toMatchObject({ checked: true });
-    await fireEvent.press(tick());
-    expect(tick().props.accessibilityState).toMatchObject({ checked: false });
-  });
+      await fireEvent.press(arrive());
 
-  it("does not hold the delivery back, and sends the server evidence only", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Acknowledgement receipt");
+      await screen.findByText("AR-0000000001");
+      expect(api.recordArrival).toHaveBeenCalledWith("ord_1");
+      expect(api.getAcknowledgementReceipt).toHaveBeenCalledWith("ord_1");
+      expect(api.prepareAcknowledgementReceipt).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("button", { name: "I'm at the client's door" })).toBeNull();
+    });
 
-    // Unticked, and still the button is live.
-    expect(confirm().props.accessibilityState).not.toMatchObject({ disabled: true });
+    it("explains a refused arrival and shows no receipt", async () => {
+      api.recordArrival.mockRejectedValue(refused(409, "delivery_milestone_not_available"));
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
 
-    await fireEvent.press(tick());
-    await fireEvent.press(confirm());
+      await fireEvent.press(arrive());
 
-    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
-    expect(api.recordDelivery).toHaveBeenCalledTimes(1);
-    expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
-      evidenceFileId: "fil_door",
-      evidenceType: "photo",
+      await screen.findByText("Arrival not recorded");
+      expect(screen.getByText(/does not fit where this job is now/)).toBeTruthy();
+      expect(api.getAcknowledgementReceipt).not.toHaveBeenCalled();
+      expect(amounts()).toEqual([]);
     });
   });
 
-  it("confirms without the tick, too", async () => {
-    await render(<DeliveryProofScreen />);
-    await screen.findByText("Acknowledgement receipt");
+  describe("at the door", () => {
+    beforeEach(() => {
+      api.getOrder.mockResolvedValue(atDoor);
+    });
 
-    await fireEvent.press(confirm());
+    it("lays out everything the paper form asks for, as the server issued it", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
 
-    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
-    expect(api.recordDelivery).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("ord_1")).toBeTruthy();
+      expect(screen.getByText("José Muñoz")).toBeTruthy();
+      expect(screen.getByText(/Oct/)).toBeTruthy();
+      expect(screen.getByText("Flyers")).toBeTruthy();
+      expect(screen.getByText("Posters")).toBeTruthy();
+      expect(screen.getByText("3")).toBeTruthy();
+      // The unit rate as recorded, and "Not recorded" — never one worked out.
+      expect(screen.getAllByText("₱55.06")).toHaveLength(3);
+      expect(screen.getByText("Not recorded")).toBeTruthy();
+      expect(screen.getByText("₱50.00")).toBeTruthy();
+      expect(screen.getByText("Rounding adjustment")).toBeTruthy();
+      expect(screen.getByText("−₱0.01")).toBeTruthy();
+      expect(screen.getByText("Grand total")).toBeTruthy();
+      expect(screen.getAllByText("₱160.11")).toHaveLength(2);
+      expect(screen.getByText("Digital payment (manual QR)")).toBeTruthy();
+      expect(screen.getByText("RECORDED-REFERENCE")).toBeTruthy();
+      expect(screen.getByText(receipt.note)).toBeTruthy();
+      // Zero discounts have no row.
+      expect(screen.queryByText(/discount/i)).toBeNull();
+    });
+
+    it("reads the issued receipt again without asking for another number", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      expect(api.getAcknowledgementReceipt).toHaveBeenCalledTimes(1);
+      expect(api.prepareAcknowledgementReceipt).not.toHaveBeenCalled();
+    });
+
+    it("shows discounts when there are some, and no rounding row at zero", async () => {
+      api.getAcknowledgementReceipt.mockResolvedValue({
+        ...receipt,
+        organizationDiscountMinor: 1000,
+        voucherDiscountMinor: 500,
+        roundingAdjustmentMinor: 0,
+      });
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      expect(screen.getByText("Organization discount")).toBeTruthy();
+      expect(screen.getByText("−₱10.00")).toBeTruthy();
+      expect(screen.getByText("Voucher discount")).toBeTruthy();
+      expect(screen.queryByText("Rounding adjustment")).toBeNull();
+    });
+
+    it("shows recorded cash facts, and Not recorded where nothing was", async () => {
+      api.getAcknowledgementReceipt.mockResolvedValue({
+        ...receipt,
+        payments: [
+          { ...receipt.payments[0], amountMinor: 6000 },
+          {
+            code: "final_online",
+            type: "cash",
+            method: "cash",
+            reference: null,
+            amountMinor: 10011,
+            amountReceivedMinor: 11000,
+            changeMinor: null,
+          },
+        ],
+      });
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      expect(screen.getByText("PAYMENTS")).toBeTruthy();
+      expect(screen.getByText("Initial payment")).toBeTruthy();
+      expect(screen.getByText("Final payment")).toBeTruthy();
+      expect(screen.getByText("Cash")).toBeTruthy();
+      expect(screen.getByText("₱110.00")).toBeTruthy();
+      expect(screen.getAllByText("Not recorded").length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("never calls itself an official receipt beyond the server's own note", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      expect(screen.getAllByText(/official receipt/i)).toHaveLength(1);
+    });
+
+    it("closes, with no amounts, when the server says the window is shut", async () => {
+      api.getAcknowledgementReceipt.mockRejectedValue(refused(403, "forbidden"));
+      await render(<DeliveryProofScreen />);
+
+      await screen.findByText("The receipt is closed");
+      expect(amounts()).toEqual([]);
+      // The job is read again to learn why (reassigned, delivered, cancelled).
+      await waitFor(() => expect(api.getOrder).toHaveBeenCalledTimes(2));
+      expect(api.prepareAcknowledgementReceipt).not.toHaveBeenCalled();
+    });
+
+    it("waits for a settled payment, and tries again on request", async () => {
+      api.getAcknowledgementReceipt.mockRejectedValue(refused(404, "acknowledgement_receipt_not_found"));
+      api.prepareAcknowledgementReceipt.mockRejectedValueOnce(refused(409, "acknowledgement_payment_pending"));
+      await render(<DeliveryProofScreen />);
+
+      await screen.findByText("Payment not settled");
+      expect(amounts()).toEqual([]);
+
+      await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+
+      await screen.findByText("AR-0000000001");
+      // The retry gets the same receipt back: the order is the key.
+      expect(api.prepareAcknowledgementReceipt).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(["acknowledgement_amount_mismatch", "acknowledgement_amount_unavailable"])(
+      "%s sends the rider to Operations, with nothing to copy",
+      async (code) => {
+        api.getAcknowledgementReceipt.mockRejectedValue(refused(404, "acknowledgement_receipt_not_found"));
+        api.prepareAcknowledgementReceipt.mockRejectedValue(refused(409, code));
+        await render(<DeliveryProofScreen />);
+
+        await screen.findByText("GRIDGO could not issue the receipt");
+        expect(screen.getByText(/Do not write the amounts yourself/)).toBeTruthy();
+        expect(amounts()).toEqual([]);
+      },
+    );
+
+    it("falls back to the paper receipt on an API without the route", async () => {
+      api.getAcknowledgementReceipt.mockRejectedValue(refused(404, "not_found"));
+      await render(<DeliveryProofScreen />);
+
+      await screen.findByText("Receipt details are not available yet");
+      expect(api.prepareAcknowledgementReceipt).not.toHaveBeenCalled();
+      await fireEvent.press(tick());
+      expect(tick().props.accessibilityState).toMatchObject({ checked: true });
+    });
+
+    it.each([
+      ["delivered", () => api.getOrder.mockResolvedValue({ ...atDoor, state: "issue_window_open" })],
+      ["cancelled", () => api.getOrder.mockResolvedValue({ ...atDoor, state: "cancelled" })],
+      ["given to another rider", () => api.getOrder.mockRejectedValue(refused(403, "forbidden"))],
+    ])("drops the receipt the moment a refresh shows the job %s", async (_label, change) => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+      expect(amounts().length).toBeGreaterThan(0);
+
+      change();
+      await act(async () => {
+        mockLiveRefresh?.();
+      });
+
+      await waitFor(() => expect(screen.queryByText("AR-0000000001")).toBeNull());
+      expect(amounts()).toEqual([]);
+      expect(api.getAcknowledgementReceipt).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("the tick", () => {
+    it("ticks and unticks as the rider's own reminder", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      expect(tick().props.accessibilityState).toMatchObject({ checked: false });
+      await fireEvent.press(tick());
+      expect(tick().props.accessibilityState).toMatchObject({ checked: true });
+      await fireEvent.press(tick());
+      expect(tick().props.accessibilityState).toMatchObject({ checked: false });
+    });
+
+    it("does not hold the delivery back, and sends the server evidence only", async () => {
+      api.getOrder.mockResolvedValue(atDoor);
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      // Unticked, and still the button is live.
+      expect(confirm().props.accessibilityState).not.toMatchObject({ disabled: true });
+
+      await fireEvent.press(tick());
+      await fireEvent.press(confirm());
+
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+      expect(api.recordDelivery).toHaveBeenCalledTimes(1);
+      expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
+        evidenceFileId: "fil_door",
+        evidenceType: "photo",
+      });
+    });
+
+    it("confirms without arrival or the tick, too: the server issues the receipt then", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      await fireEvent.press(confirm());
+
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+      expect(api.recordDelivery).toHaveBeenCalledTimes(1);
+      expect(api.recordArrival).not.toHaveBeenCalled();
+    });
+
+    it("explains a delivery the server refused because the receipt could not be issued", async () => {
+      api.recordDelivery.mockRejectedValue(refused(409, "acknowledgement_amount_mismatch"));
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      await fireEvent.press(confirm());
+
+      await screen.findByText("Delivery not recorded");
+      expect(screen.getByText(/amounts do not add up/)).toBeTruthy();
+      expect(mockRouter.back).not.toHaveBeenCalled();
+    });
   });
 
   it("is not asked for at GRIDGO's own counter, where there is no client", async () => {
@@ -142,5 +417,7 @@ describe("the acknowledgement receipt at the door", () => {
 
     expect(screen.queryByText("Acknowledgement receipt")).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(api.getAcknowledgementReceipt).not.toHaveBeenCalled();
+    expect(amounts()).toEqual([]);
   });
 });

@@ -63,6 +63,15 @@ const DOCUMENTED: Record<string, string[]> = {
     "handover_otp_mismatch",
     "handover_attempts_exceeded",
   ],
+  // gridgo-api `docs/ACKNOWLEDGEMENT_RECEIPTS_API.md` → "Errors and rollout":
+  // preparing the receipt at the door, and the delivery that issues it too.
+  "acknowledgement-receipt": [
+    "acknowledgement_not_available",
+    "acknowledgement_payment_pending",
+    "acknowledgement_amount_unavailable",
+    "acknowledgement_amount_mismatch",
+    "acknowledgement_customer_unavailable",
+  ],
 };
 
 const ALL = [...new Set(Object.values(DOCUMENTED).flat())];
