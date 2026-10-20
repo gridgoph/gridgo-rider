@@ -60,12 +60,15 @@ export type AcknowledgementReceipt = {
  * Where this job stands for the receipt.
  *
  * `none`: no receipt for this rider — a GRIDGO Office drop, a job past the
- * door, or one not out yet. `before_arrival`: on the way, arrival not
- * recorded. `at_door`: arrival recorded for this assignment and the handover
- * is not done, which is when the server opens the receipt to this rider. The
- * server still decides; a `403` from it closes the receipt whatever this says.
+ * door, or one not out yet. `paper_only`: an API older than arrival tracking
+ * (no `deliveryMilestones`), so it has no receipt to show either; the rider
+ * hands over the paper receipt as before. `before_arrival`: on the way,
+ * arrival not recorded. `at_door`: arrival recorded for this assignment and
+ * the handover is not done, which is when the server opens the receipt to
+ * this rider. The server still decides; a `403` from it closes the receipt
+ * whatever this says.
  */
-export type ReceiptStage = "none" | "before_arrival" | "at_door";
+export type ReceiptStage = "none" | "paper_only" | "before_arrival" | "at_door";
 
 type StageOrder = Pick<Order, "state" | "fulfillmentMode" | "deliveryEvidence" | "deliveryMilestones">;
 
@@ -73,6 +76,7 @@ export function receiptStage(order: StageOrder | null | undefined): ReceiptStage
   if (!order || endsAtOffice(order)) return "none";
   if (order.state !== "picked_up" && order.state !== "out_for_delivery") return "none";
   if (order.deliveryEvidence?.recordedAt) return "none";
+  if (!order.deliveryMilestones) return "paper_only";
   return arrivalRecorded(order.deliveryMilestones) ? "at_door" : "before_arrival";
 }
 
@@ -217,5 +221,46 @@ export function receiptProblem(error: unknown): ReceiptProblem {
             ? "GRIDGO could not prepare the receipt. Try again — if it keeps failing, tell Operations the server is failing."
             : "Check this phone's connection and try again. Do not write the receipt from memory.",
       };
+  }
+}
+
+/**
+ * The receipt as the delivery screen holds it. `none` also covers a receipt
+ * taken off screen while the app was away or the screen covered; `checking`
+ * is the job being read again before it may come back.
+ */
+export type ReceiptLoad =
+  | { status: "none" }
+  | { status: "checking" }
+  | { status: "loading" }
+  | { status: "ready"; receipt: AcknowledgementReceipt }
+  | { status: "problem"; problem: ReceiptProblem };
+
+/**
+ * Why a door delivery cannot be confirmed yet, or null.
+ *
+ * The rider writes the AR number on paper before handing over, and the
+ * server closes the receipt to them the moment the delivery is recorded. A
+ * delivery confirmed first would still get a receipt — the server issues one
+ * inside the delivery — but its number would never reach the paper. So on a
+ * server that has receipts, confirmation waits for arrival and a receipt on
+ * screen. A server without them (`paper_only`, or a bare `404` on the route)
+ * delivers as before, and the tick never holds anything.
+ */
+export function receiptDeliveryHold(stage: ReceiptStage, load: ReceiptLoad): string | null {
+  if (stage === "none" || stage === "paper_only") return null;
+  if (stage === "before_arrival") {
+    return "Tap “I'm at the client's door” and copy the acknowledgement receipt before you hand the package over.";
+  }
+  switch (load.status) {
+    case "ready":
+      return null;
+    case "problem":
+      if (load.problem.kind === "unsupported") return null;
+      return load.problem.kind === "retry"
+        ? "Copy the acknowledgement receipt before you hand the package over. Load it again in the receipt card."
+        : "The acknowledgement receipt is closed. Keep the package with you while GRIDGO checks this job, or call Operations.";
+    default:
+      return "Loading the acknowledgement receipt to copy before you hand the package over.";
   }
 }

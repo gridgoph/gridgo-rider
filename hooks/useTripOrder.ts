@@ -25,19 +25,22 @@ export function useTripOrder(orderId: string | null) {
   }
 
   const nextRead = useReadVersion();
-  const load = useCallback(() => {
+  /** Resolves true only when this read's copy of the job was adopted. */
+  const load = useCallback((): Promise<boolean> => {
     const current = nextRead();
-    if (!orderId) return Promise.resolve();
+    if (!orderId) return Promise.resolve(false);
     return api.getOrder(orderId).then((next) => {
-      if (!current()) return;
+      if (!current()) return false;
       setOrder(next);
       setError(null);
+      return true;
     }).catch((e: unknown) => {
-      if (!current()) return;
+      if (!current()) return false;
       if (e instanceof api.ApiError && (e.status === 403 || e.status === 404)) setOrder(null);
       setError(
         api.apiErrorMessage(e, "Could not load this job. Check your connection and try again."),
       );
+      return false;
     }).finally(() => {
       if (current()) setLoading(false);
     });

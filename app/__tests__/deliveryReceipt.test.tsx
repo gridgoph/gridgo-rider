@@ -1,13 +1,26 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { AppState, type AppStateStatus } from "react-native";
 
 import type { Order } from "@/lib/api";
 import type { AcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
 
 const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn() };
 
+/** Whether the delivery screen is on top; flipped by `blur()` / `focus()`. */
+let mockFocused = true;
+const mockFocusListeners = new Set<() => void>();
 jest.mock("expo-router", () => ({
-  useFocusEffect: (callback: () => void) => {
-    jest.requireActual<typeof import("react")>("react").useEffect(callback, [callback]);
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    const React = jest.requireActual<typeof import("react")>("react");
+    const [, rerender] = React.useReducer((n: number) => n + 1, 0);
+    React.useEffect(() => {
+      mockFocusListeners.add(rerender);
+      return () => {
+        mockFocusListeners.delete(rerender);
+      };
+    }, []);
+    const focused = mockFocused;
+    React.useEffect(() => (focused ? callback() : undefined), [callback, focused]);
   },
   useLocalSearchParams: () => ({ orderId: "ord_1" }),
   useRouter: () => mockRouter,
@@ -74,6 +87,29 @@ const api = jest.requireMock("@/lib/api") as {
 };
 
 const refused = (status: number, error: string) => new actual.ApiError(status, { error });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+let appStateListeners: ((state: AppStateStatus) => void)[] = [];
+async function appGoes(state: AppStateStatus) {
+  await act(async () => {
+    for (const listener of appStateListeners) listener(state);
+  });
+}
+async function setFocus(focused: boolean) {
+  await act(async () => {
+    mockFocused = focused;
+    for (const listener of mockFocusListeners) listener();
+  });
+}
 
 const onTheWay = {
   id: "ord_1",
@@ -142,12 +178,19 @@ const receipt: AcknowledgementReceipt = {
 const tick = () => screen.getByRole("checkbox", { name: "Receipt handed over" });
 const confirm = () => screen.getByRole("button", { name: /confirm delivery/i });
 const arrive = () => screen.getByRole("button", { name: "I'm at the client's door" });
+const held = () => confirm().props.accessibilityState?.disabled === true;
 /** Any peso figure at all on screen. */
 const amounts = () => screen.queryAllByText(/₱/);
 
 describe("the acknowledgement receipt at the door", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFocused = true;
+    appStateListeners = [];
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
+      appStateListeners.push(listener as (state: AppStateStatus) => void);
+      return { remove: () => undefined } as ReturnType<typeof AppState.addEventListener>;
+    });
     api.health.mockResolvedValue({});
     api.getOrder.mockResolvedValue(onTheWay);
     api.recordDelivery.mockResolvedValue({ ...atDoor, state: "issue_window_open" });
@@ -386,21 +429,11 @@ describe("the acknowledgement receipt at the door", () => {
       });
     });
 
-    it("confirms without arrival or the tick, too: the server issues the receipt then", async () => {
-      await render(<DeliveryProofScreen />);
-      await screen.findByText("Acknowledgement receipt");
-
-      await fireEvent.press(confirm());
-
-      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
-      expect(api.recordDelivery).toHaveBeenCalledTimes(1);
-      expect(api.recordArrival).not.toHaveBeenCalled();
-    });
-
     it("explains a delivery the server refused because the receipt could not be issued", async () => {
+      api.getOrder.mockResolvedValue(atDoor);
       api.recordDelivery.mockRejectedValue(refused(409, "acknowledgement_amount_mismatch"));
       await render(<DeliveryProofScreen />);
-      await screen.findByText("Acknowledgement receipt");
+      await screen.findByText("AR-0000000001");
 
       await fireEvent.press(confirm());
 
@@ -410,14 +443,225 @@ describe("the acknowledgement receipt at the door", () => {
     });
   });
 
+  describe("the receipt comes before the handover", () => {
+    it("holds the delivery until arrival is recorded, and says why", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      expect(held()).toBe(true);
+      expect(screen.getByText(/Tap “I'm at the client's door” and copy/)).toBeTruthy();
+      await fireEvent.press(confirm());
+      expect(api.recordDelivery).not.toHaveBeenCalled();
+    });
+
+    it("prepares the receipt, then delivers", async () => {
+      api.getAcknowledgementReceipt.mockRejectedValue(refused(404, "acknowledgement_receipt_not_found"));
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      await fireEvent.press(arrive());
+      await screen.findByText("AR-0000000001");
+      expect(held()).toBe(false);
+
+      await fireEvent.press(confirm());
+
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+      expect(api.recordDelivery).toHaveBeenCalledTimes(1);
+      expect(api.prepareAcknowledgementReceipt.mock.invocationCallOrder[0]).toBeLessThan(
+        api.recordDelivery.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("holds the delivery while the receipt is still loading", async () => {
+      api.getOrder.mockResolvedValue(atDoor);
+      api.getAcknowledgementReceipt.mockReturnValue(new Promise(() => undefined));
+      await render(<DeliveryProofScreen />);
+      await screen.findByLabelText("Loading the receipt");
+
+      expect(held()).toBe(true);
+      expect(screen.getByText(/Loading the acknowledgement receipt/)).toBeTruthy();
+      await fireEvent.press(confirm());
+      expect(api.recordDelivery).not.toHaveBeenCalled();
+    });
+
+    it("holds the delivery when the receipt fails to load, until a retry brings it", async () => {
+      api.getOrder.mockResolvedValue(atDoor);
+      api.getAcknowledgementReceipt.mockRejectedValueOnce(refused(500, "internal"));
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("The receipt did not load");
+
+      expect(held()).toBe(true);
+      await fireEvent.press(confirm());
+      expect(api.recordDelivery).not.toHaveBeenCalled();
+
+      await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+      await screen.findByText("AR-0000000001");
+      expect(held()).toBe(false);
+    });
+
+    it("delivers on an API without the receipt route", async () => {
+      api.getOrder.mockResolvedValue(atDoor);
+      api.getAcknowledgementReceipt.mockRejectedValue(refused(404, "not_found"));
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Receipt details are not available yet");
+
+      expect(held()).toBe(false);
+      await fireEvent.press(confirm());
+      await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledTimes(1));
+    });
+
+    it("delivers on an API older than arrival tracking, with the paper reminder only", async () => {
+      api.getOrder.mockResolvedValue({ ...onTheWay, deliveryMilestones: undefined });
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      expect(screen.queryByRole("button", { name: "I'm at the client's door" })).toBeNull();
+      expect(tick()).toBeTruthy();
+      expect(held()).toBe(false);
+      await fireEvent.press(confirm());
+      await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledTimes(1));
+      expect(api.getAcknowledgementReceipt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the receipt lives only while the handover is on screen", () => {
+    beforeEach(() => {
+      api.getOrder.mockResolvedValue(atDoor);
+    });
+
+    it("drops the receipt the moment the app goes to the background", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      await appGoes("background");
+
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(amounts()).toEqual([]);
+    });
+
+    it("keeps it hidden on return until the job has been read again", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+      await appGoes("background");
+
+      const fresh = deferred<Order>();
+      api.getOrder.mockReturnValueOnce(fresh.promise);
+      await appGoes("active");
+
+      expect(screen.getByLabelText("Checking this job before the receipt opens again")).toBeTruthy();
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(held()).toBe(true);
+
+      await act(async () => fresh.resolve(atDoor));
+
+      await screen.findByText("AR-0000000001");
+      expect(api.getAcknowledgementReceipt).toHaveBeenCalledTimes(2);
+    });
+
+    it("stays hidden when the job cannot be read again, and offers to try", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+      await appGoes("background");
+
+      api.getOrder.mockRejectedValueOnce(new TypeError("Network request failed"));
+      await appGoes("active");
+
+      await screen.findByText("The receipt is hidden");
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(amounts()).toEqual([]);
+      expect(held()).toBe(true);
+
+      await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+      await screen.findByText("AR-0000000001");
+    });
+
+    it("does not come back when the job moved on while the app was away", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+      await appGoes("background");
+
+      api.getOrder.mockResolvedValue({ ...atDoor, state: "cancelled" });
+      await appGoes("active");
+
+      await waitFor(() => expect(api.getOrder).toHaveBeenCalledTimes(2));
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(amounts()).toEqual([]);
+      expect(api.getAcknowledgementReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a receipt that arrives after the app went away", async () => {
+      const late = deferred<AcknowledgementReceipt>();
+      api.getAcknowledgementReceipt.mockReturnValueOnce(late.promise);
+      await render(<DeliveryProofScreen />);
+      await screen.findByLabelText("Loading the receipt");
+
+      await appGoes("background");
+      await act(async () => late.resolve(receipt));
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+
+      const fresh = deferred<Order>();
+      api.getOrder.mockReturnValueOnce(fresh.promise);
+      await appGoes("active");
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(amounts()).toEqual([]);
+    });
+
+    it("ignores an arrival answered after the app went away, and checks the job instead", async () => {
+      api.getOrder.mockResolvedValue(onTheWay);
+      const recorded = deferred<Order>();
+      api.recordArrival.mockReturnValueOnce(recorded.promise);
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("Acknowledgement receipt");
+
+      await fireEvent.press(arrive());
+      await appGoes("background");
+      await act(async () => recorded.resolve(atDoor));
+      expect(api.getAcknowledgementReceipt).not.toHaveBeenCalled();
+
+      api.getOrder.mockResolvedValue(atDoor);
+      await appGoes("active");
+
+      await screen.findByText("AR-0000000001");
+      expect(api.getOrder).toHaveBeenCalledTimes(2);
+    });
+
+    it("drops the receipt when another screen covers it, and checks again on return", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      await setFocus(false);
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(amounts()).toEqual([]);
+
+      await setFocus(true);
+      await screen.findByText("AR-0000000001");
+      expect(api.getOrder).toHaveBeenCalledTimes(2);
+    });
+
+    it("drops the receipt as soon as the delivery is recorded, before the screen goes", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      await fireEvent.press(confirm());
+
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+      expect(screen.queryByText("AR-0000000001")).toBeNull();
+      expect(amounts()).toEqual([]);
+    });
+  });
+
   it("is not asked for at GRIDGO's own counter, where there is no client", async () => {
-    api.getOrder.mockResolvedValue({ ...atDoor, fulfillmentMode: "pickup" });
+    api.getOrder.mockResolvedValue({ ...atDoor, fulfillmentMode: "pickup", deliveryMilestones: undefined });
     await render(<DeliveryProofScreen />);
-    await screen.findByRole("button", { name: /confirm drop-off/i });
+    const dropOff = await screen.findByRole("button", { name: /confirm drop-off/i });
 
     expect(screen.queryByText("Acknowledgement receipt")).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(api.getAcknowledgementReceipt).not.toHaveBeenCalled();
     expect(amounts()).toEqual([]);
+
+    await fireEvent.press(dropOff);
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledTimes(1));
+    expect(api.recordArrival).not.toHaveBeenCalled();
   });
 });

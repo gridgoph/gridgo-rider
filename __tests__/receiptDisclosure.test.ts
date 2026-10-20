@@ -41,9 +41,9 @@ describe("the receipt stays at the door", () => {
     ]);
   });
 
-  it("is held only by the door card", () => {
+  it("is held only by the delivery step", () => {
     expect(using(/\buseAcknowledgementReceipt\(/)).toEqual([
-      "components/ReceiptReminder.tsx",
+      "app/trip/delivery.tsx",
       "hooks/useAcknowledgementReceipt.ts",
     ]);
   });
@@ -70,6 +70,7 @@ describe("the receipt stays at the door", () => {
       "hooks/useAcknowledgementReceipt.ts",
       "components/AcknowledgementReceipt.tsx",
       "components/ReceiptReminder.tsx",
+      "app/trip/delivery.tsx",
     ]) {
       const file = files.find((candidate) => candidate.path === path)!;
       expect([path, /\bconsole\./.test(file.text)]).toEqual([path, false]);

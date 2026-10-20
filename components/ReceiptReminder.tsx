@@ -1,24 +1,22 @@
 import { Check } from "lucide-react-native";
-import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { AcknowledgementReceipt } from "@/components/AcknowledgementReceipt";
 import { InlineNotice, type NoticeIcon, type NoticeTone } from "@/components/InlineNotice";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonText } from "@/components/Skeleton";
-import { useAcknowledgementReceipt } from "@/hooks/useAcknowledgementReceipt";
 import { useThemeColors } from "@/hooks/useTheme";
-import * as api from "@/lib/api";
-import { receiptStage, type ReceiptProblem } from "@/lib/acknowledgementReceipt";
+import type { ReceiptLoad, ReceiptProblem, ReceiptStage } from "@/lib/acknowledgementReceipt";
 
 type Props = {
-  order: api.Order;
+  stage: ReceiptStage;
+  load: ReceiptLoad;
+  onRetry: () => void;
+  onArrive: () => void;
+  arriving: boolean;
+  arrivalError: string | null;
   handedOver: boolean;
   onToggle: () => void;
-  /** The job as the server returned it after the rider recorded arrival. */
-  onOrder: (order: api.Order) => void;
-  /** The server closed the receipt: re-read the job to learn where it went. */
-  onClosed: () => void;
   disabled?: boolean;
 };
 
@@ -41,35 +39,28 @@ const PROBLEM_LOOK: Record<ReceiptProblem["kind"], { tone: NoticeTone; icon: Not
  * out. The signed paper copy stays the proof at the door.
  *
  * The rider sees those figures only here, only after recording arrival, and
- * only until the handover is done (`receiptStage`, `useAcknowledgementReceipt`).
- * Before arrival the card offers that step; it says nothing about money.
+ * only while this handover is on screen (`useAcknowledgementReceipt`, which
+ * the delivery screen owns). Before arrival the card offers that step; it says
+ * nothing about money. On a server older than arrival tracking it is the plain
+ * paper reminder it used to be.
  *
  * The tick is still the rider's own reminder and nothing more. It never blocks
- * the delivery and never leaves the phone. Nor does the receipt: the delivery
- * issues the same receipt itself if this card never got to, and refuses
- * atomically if it cannot, so the server stays the only gate.
+ * the delivery and never leaves the phone. The receipt does hold the
+ * delivery, on a server that has one: the delivery screen waits for it (`receiptDeliveryHold`)
+ * so the AR number reaches the paper before the server closes it.
  */
-export function ReceiptReminder({ order, handedOver, onToggle, onOrder, onClosed, disabled = false }: Props) {
+export function ReceiptReminder({
+  stage,
+  load,
+  onRetry,
+  onArrive,
+  arriving,
+  arrivalError,
+  handedOver,
+  onToggle,
+  disabled = false,
+}: Props) {
   const colors = useThemeColors();
-  const stage = receiptStage(order);
-  const { load, retry } = useAcknowledgementReceipt(stage === "at_door" ? order.id : null, onClosed);
-  const [arriving, setArriving] = useState(false);
-  const [arrivalError, setArrivalError] = useState<string | null>(null);
-
-  async function recordArrival() {
-    if (arriving) return;
-    setArriving(true);
-    setArrivalError(null);
-    try {
-      onOrder(await api.recordArrival(order.id));
-    } catch (e) {
-      setArrivalError(
-        api.tripRefusal(e, "Your arrival was not recorded. Check your connection and try again.").message,
-      );
-    } finally {
-      setArriving(false);
-    }
-  }
 
   return (
     <View className="gap-4 rounded-card border-2 border-accent bg-surface p-6">
@@ -77,6 +68,12 @@ export function ReceiptReminder({ order, handedOver, onToggle, onOrder, onClosed
         <Text className="text-overline text-text-muted">HAND THIS TO THE CLIENT</Text>
         <Text className="text-h3 text-text-primary">Acknowledgement receipt</Text>
       </View>
+
+      {stage === "paper_only" ? (
+        <Text className="text-body text-text-secondary">
+          Give the client an acknowledgement receipt with the package, as well as your thank-you.
+        </Text>
+      ) : null}
 
       {stage === "before_arrival" ? (
         <>
@@ -87,7 +84,7 @@ export function ReceiptReminder({ order, handedOver, onToggle, onOrder, onClosed
           </Text>
           <SecondaryButton
             label={arriving ? "Recording arrival…" : "I'm at the client's door"}
-            onPress={() => void recordArrival()}
+            onPress={onArrive}
             disabled={disabled || arriving}
           />
           <Text className="text-caption text-text-muted">GRIDGO lets the client know you have arrived.</Text>
@@ -97,8 +94,13 @@ export function ReceiptReminder({ order, handedOver, onToggle, onOrder, onClosed
         </>
       ) : null}
 
-      {load.status === "loading" ? (
-        <View className="gap-3" accessibilityLabel="Loading the receipt">
+      {load.status === "loading" || load.status === "checking" ? (
+        <View
+          className="gap-3"
+          accessibilityLabel={
+            load.status === "checking" ? "Checking this job before the receipt opens again" : "Loading the receipt"
+          }
+        >
           <SkeletonText width="60%" height={30} />
           <SkeletonText />
           <SkeletonText />
@@ -122,7 +124,7 @@ export function ReceiptReminder({ order, handedOver, onToggle, onOrder, onClosed
           title={load.problem.title}
           body={load.problem.body}
           {...(load.problem.kind === "retry"
-            ? { actionLabel: "Try again", onAction: () => void retry() }
+            ? { actionLabel: "Try again", onAction: onRetry }
             : {})}
         />
       ) : null}

@@ -3,6 +3,7 @@ import {
   paymentMethodLabel,
   paymentStageLabel,
   receiptAdjustments,
+  receiptDeliveryHold,
   receiptIssuedLabel,
   receiptProblem,
   receiptSigned,
@@ -43,8 +44,8 @@ describe("the receipt window, as this phone can see it", () => {
         deliveryMilestones: [{ code: "arrived", label: "Arrived", status: "completed", at: null }],
       }),
     ).toBe("before_arrival");
-    // An API without milestones never opens it on its own say-so.
-    expect(receiptStage({ ...onTheWay, deliveryMilestones: undefined })).toBe("before_arrival");
+    // An API without milestones predates receipts: the paper reminder only.
+    expect(receiptStage({ ...onTheWay, deliveryMilestones: undefined })).toBe("paper_only");
   });
 
   it.each([
@@ -154,5 +155,38 @@ describe("every documented receipt refusal reads as a reason and a next step", (
   it("separates a failing server from a dead connection", () => {
     expect(problem(500, "internal").body).toMatch(/server is failing/);
     expect(receiptProblem(new Error("Network request failed")).body).toMatch(/connection/);
+  });
+});
+
+describe("what holds a door delivery", () => {
+  const problem = (status: number, error: string) => receiptProblem(new ApiError(status, { error }));
+  const ready = { status: "ready", receipt: {} } as Parameters<typeof receiptDeliveryHold>[1];
+  const failed = (status: number, code: string) =>
+    ({ status: "problem", problem: problem(status, code) }) as Parameters<typeof receiptDeliveryHold>[1];
+
+  it("holds nothing where there is no receipt to copy", () => {
+    expect(receiptDeliveryHold("none", { status: "none" })).toBeNull();
+    expect(receiptDeliveryHold("paper_only", { status: "none" })).toBeNull();
+  });
+
+  it("holds until arrival is recorded", () => {
+    expect(receiptDeliveryHold("before_arrival", { status: "none" })).toMatch(/I'm at the client's door/);
+  });
+
+  it("holds at the door until the receipt is on screen", () => {
+    expect(receiptDeliveryHold("at_door", { status: "loading" })).toMatch(/Loading/);
+    expect(receiptDeliveryHold("at_door", { status: "checking" })).toMatch(/Loading/);
+    expect(receiptDeliveryHold("at_door", { status: "none" })).toMatch(/Loading/);
+    expect(receiptDeliveryHold("at_door", ready)).toBeNull();
+  });
+
+  it("holds on a failure worth retrying, or a closed receipt", () => {
+    expect(receiptDeliveryHold("at_door", failed(500, "internal"))).toMatch(/Load it again/);
+    expect(receiptDeliveryHold("at_door", failed(409, "acknowledgement_payment_pending"))).toMatch(/Load it again/);
+    expect(receiptDeliveryHold("at_door", failed(403, "forbidden"))).toMatch(/closed/);
+  });
+
+  it("lets an API without the receipt route deliver as before", () => {
+    expect(receiptDeliveryHold("at_door", failed(404, "not_found"))).toBeNull();
   });
 });
