@@ -163,7 +163,8 @@ jest.mock("@react-native-firebase/app", () => ({ getApps: jest.fn(() => []) }));
 
 // Sign in with Apple (components/AppleButton.ios.tsx). Apple's system button
 // is native, so it is a labelled Pressable here, and Clerk's flow answers
-// "closed the sheet" unless a test says otherwise.
+// "closed the sheet" unless a test says otherwise. So does `signInAsync`, the
+// sheet Delete account opens directly (lib/appleReauthorize.ios.ts).
 jest.mock("expo-apple-authentication", () => {
   const React = require("react");
   const { Pressable, Text } = require("react-native");
@@ -178,6 +179,11 @@ jest.mock("expo-apple-authentication", () => {
     AppleAuthenticationButton,
     AppleAuthenticationButtonType: { SIGN_IN: 0, CONTINUE: 1, SIGN_UP: 2 },
     AppleAuthenticationButtonStyle: { WHITE: 0, WHITE_OUTLINE: 1, BLACK: 2 },
+    signInAsync: jest.fn(async () => {
+      throw Object.assign(new Error("The user canceled the authorization attempt"), {
+        code: "ERR_REQUEST_CANCELED",
+      });
+    }),
   };
 });
 jest.mock("@clerk/expo/apple", () => ({
