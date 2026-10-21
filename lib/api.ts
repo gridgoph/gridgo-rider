@@ -1970,6 +1970,12 @@ export type AppleRevocation = {
   error: string | null;
 };
 
+/** A revocation answer, with the deletion request its attempt belongs to. */
+export type AppleRevocationAnswer = AppleRevocation & {
+  /** A replayed code answers for the request it was first sent for. */
+  requestId?: string | null;
+};
+
 export type PendingAccountDeletion = {
   id: string;
   /** Latest attempt per bundle. Empty means unknown, not "not required". */
@@ -1997,8 +2003,8 @@ export async function getAccountDeletionRequest(): Promise<PendingAccountDeletio
 export async function revokeAppleAuthorization(
   clientId: string,
   authorizationCode: string,
-): Promise<AppleRevocation | null> {
-  const result = await request<{ appleRevocation?: AppleRevocation }>(
+): Promise<AppleRevocationAnswer | null> {
+  const result = await request<{ requestId?: string; appleRevocation?: AppleRevocation }>(
     "/me/account-deletion-request/apple-revocation",
     {
       method: "POST",
@@ -2006,5 +2012,5 @@ export async function revokeAppleAuthorization(
       holdUnauthorized: true,
     },
   );
-  return result.appleRevocation ?? null;
+  return result.appleRevocation ? { ...result.appleRevocation, requestId: result.requestId ?? null } : null;
 }

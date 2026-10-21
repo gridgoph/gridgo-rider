@@ -83,15 +83,15 @@ describe("every refusal in GRIDGO's table", () => {
 describe("GRIDGO's record of an earlier disconnect", () => {
   const attempt = (clientId: string, status: string) => ({ clientId, status, revokedAt: null, error: null });
 
-  it("counts only this app's revoked attempt", () => {
+  it("reads only this app's latest attempt", () => {
     expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.rider", "revoked")] })).toBe(true);
     expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.rider", "retry_required")] })).toBe(false);
-    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.client", "revoked")] })).toBe(false);
+    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.client", "revoked")] })).toBeNull();
   });
 
   it("reads an empty or missing record as unknown, never as done", () => {
-    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [] })).toBe(false);
-    expect(appleRevokedOnServer({ id: "adr_1" })).toBe(false);
-    expect(appleRevokedOnServer(null)).toBe(false);
+    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [] })).toBeNull();
+    expect(appleRevokedOnServer({ id: "adr_1" })).toBeNull();
+    expect(appleRevokedOnServer(null)).toBeNull();
   });
 });

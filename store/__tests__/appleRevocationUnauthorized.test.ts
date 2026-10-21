@@ -113,6 +113,20 @@ it("ends the session when the rider leaves instead", async () => {
   expect(useSession.getState().user).toBeNull();
 });
 
+it("never signs out the account that signed in after the 401", async () => {
+  await deleteAccount();
+  expect(useAccountDeletion.getState().appleSessionEnded).toBe(true);
+
+  // Another account is adopted before the old screen is dismissed; the root
+  // stack re-keys and the old screen's cleanup runs.
+  const other = { ...rider, id: "user_other" };
+  useSession.setState({ user: other });
+  expect(useAccountDeletion.getState().appleSessionEnded).toBe(false);
+  useAccountDeletion.getState().reset();
+  useAccountDeletion.getState().endSession();
+  expect(useSession.getState().user).toEqual(other);
+});
+
 it("leaves every other 401 to the global handler as before", async () => {
   await expect(api.listPrivacyRequests()).rejects.toBeInstanceOf(api.ApiError);
   expect(useSession.getState().user).toBeNull();

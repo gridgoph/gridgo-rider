@@ -139,9 +139,20 @@ function attemptFor(owner: string): AppleAttempt {
   return attempt;
 }
 
+/**
+ * The session a 401 proved over, owed an end once its explanation was read.
+ * Only for the account that got the 401: a change of account cancels it, so
+ * the old screen's cleanup cannot sign out whoever signed in next.
+ */
+let sessionEndOwed = false;
+
 /** The signed-in account changed or ended: nothing of its attempt carries over. */
 export function forgetAppleRevocation(): void {
   attempt = null;
+  sessionEndOwed = false;
+  if (useAccountDeletion.getState().appleSessionEnded) {
+    useAccountDeletion.setState({ appleSessionEnded: false });
+  }
 }
 
 /** Bumped by `reset`, so a continuation from a left screen changes nothing. */
@@ -166,7 +177,50 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
       const failure = appleRevocationFailure("signed_out");
       fail(failure.message, failure.retry);
       if (live() && error instanceof ApiError && error.sessionEnded) {
+        sessionEndOwed = true;
         set({ appleSessionEnded: true });
+      }
+    };
+    /** Whether an answer names an earlier deletion request than `current`. */
+    const elsewhere = (requestId: unknown, current: string | null) =>
+      typeof requestId === "string" && current != null && requestId !== current;
+    /**
+     * Send `code` until GRIDGO answers. "elsewhere" is an earlier request's
+     * recorded result: the code is settled, and the current request is not.
+     */
+    const send = async (code: string, current: string | null): Promise<"revoked" | "elsewhere" | "stop"> => {
+      set({ busy: "revoking", apple: "sending" });
+      for (let tries = 0; ; tries += 1) {
+        try {
+          const result = await revokeAppleAuthorization(APPLE_CLIENT_ID, code);
+          // Spent either way: a recorded result is all this code can return now.
+          a.code = null;
+          if (elsewhere(result?.requestId, current)) return "elsewhere";
+          if (result?.status === "revoked") {
+            a.revoked = true;
+            return "revoked";
+          }
+          fail(APPLE_NOT_CONFIRMED, "fresh");
+          return "stop";
+        } catch (error) {
+          if (error instanceof ApiError && elsewhere((error.body as { requestId?: unknown } | null)?.requestId, current)) {
+            a.code = null;
+            return "elsewhere";
+          }
+          if (!live()) return "stop";
+          const refusal = appleRevocationRefusal(error);
+          // GRIDGO's own attempt is still in flight: the same code, after a pause.
+          if (refusal === "busy" && tries < APPLE_BUSY_RETRIES) {
+            await wait(APPLE_BUSY_WAIT_MS);
+            if (!live()) return "stop";
+            continue;
+          }
+          if (refusal === "deletion_request_missing") a.filed = false;
+          const failure = appleRevocationFailure(refusal);
+          if (failure.retry !== "same") a.code = null;
+          failRefused(error, () => fail(failure.message, failure.retry));
+          return "stop";
+        }
       }
     };
     set({ appleError: null, appleRetry: null });
@@ -183,77 +237,64 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
         a.filed = true;
       }
 
-      if (!a.code) {
-        // GRIDGO's record first: a disconnect it already holds, from this
-        // visit or an earlier one, means Apple is never asked again.
-        set({ busy: "revoking", apple: "sending" });
-        let revokedBefore = a.revoked;
-        try {
-          const pending = await getAccountDeletionRequest();
-          if (!live()) return;
-          if (a.requestId && pending?.id !== a.requestId) a.revoked = false;
-          a.requestId = pending?.id ?? null;
-          revokedBefore = a.revoked || appleRevokedOnServer(pending);
-        } catch (error) {
-          if (!live()) return;
-          if (!revokedBefore) {
-            failRefused(error, () => fail(APPLE_CHECK_FAILED, "same"));
-            return;
-          }
-        }
-        if (revokedBefore) {
-          a.revoked = true;
+      // GRIDGO's record of the current request first, on every attempt. What
+      // it says about this app is authoritative: a newer failure outranks a
+      // disconnect this phone saw earlier.
+      set({ busy: "revoking", apple: "sending" });
+      let current: string | null;
+      try {
+        const pending = await getAccountDeletionRequest();
+        if (!live()) return;
+        current = pending?.id ?? null;
+        // No attempt on record is unknown: this phone's own disconnect for the
+        // same request still stands.
+        a.revoked = appleRevokedOnServer(pending) ?? (a.revoked && a.requestId === current);
+        a.requestId = current;
+      } catch (error) {
+        if (!live()) return;
+        if (a.revoked && !a.code) {
           set({ apple: "revoked" });
           return;
         }
+        failRefused(error, () => fail(APPLE_CHECK_FAILED, "same"));
+        return;
+      }
 
-        set({ busy: "apple", apple: "asking" });
-        const outcome = await reauthorizeWithApple();
-        // Kept even if the screen closed meanwhile: the next visit sends this
-        // code rather than asking Apple for another.
-        if (outcome.status === "ok") a.code = outcome.authorizationCode;
-        if (!live()) return;
-        if (outcome.status === "cancelled") {
-          set({ apple: "cancelled" });
-          return;
-        }
-        if (outcome.status === "failed") {
-          fail(APPLE_SIGN_IN_FAILED, "fresh");
+      // A held code is sent before anything else: it may have authorized the
+      // app again, and its answer settles it. Only an answer for the current
+      // request says anything about this disconnect.
+      if (a.code) {
+        const settled = await send(a.code, current);
+        if (settled === "stop" || !live()) return;
+        if (settled === "revoked") {
+          set({ apple: "revoked" });
           return;
         }
       }
-
-      const code = a.code;
-      if (!code) return;
-      set({ busy: "revoking", apple: "sending" });
-      for (let tries = 0; ; tries += 1) {
-        try {
-          const result = await revokeAppleAuthorization(APPLE_CLIENT_ID, code);
-          // Spent either way: a recorded result is all this code can return now.
-          a.code = null;
-          if (result?.status === "revoked") {
-            a.revoked = true;
-            if (live()) set({ apple: "revoked" });
-          } else {
-            fail(APPLE_NOT_CONFIRMED, "fresh");
-          }
-          return;
-        } catch (error) {
-          if (!live()) return;
-          const refusal = appleRevocationRefusal(error);
-          // GRIDGO's own attempt is still in flight: the same code, after a pause.
-          if (refusal === "busy" && tries < APPLE_BUSY_RETRIES) {
-            await wait(APPLE_BUSY_WAIT_MS);
-            if (!live()) return;
-            continue;
-          }
-          if (refusal === "deletion_request_missing") a.filed = false;
-          const failure = appleRevocationFailure(refusal);
-          if (failure.retry !== "same") a.code = null;
-          failRefused(error, () => fail(failure.message, failure.retry));
-          return;
-        }
+      if (a.revoked) {
+        set({ apple: "revoked" });
+        return;
       }
+
+      set({ busy: "apple", apple: "asking" });
+      const outcome = await reauthorizeWithApple();
+      // Kept even if the screen closed meanwhile: the next visit sends this
+      // code rather than asking Apple for another.
+      if (outcome.status === "ok") a.code = outcome.authorizationCode;
+      if (!live()) return;
+      if (outcome.status === "cancelled") {
+        set({ apple: "cancelled" });
+        return;
+      }
+      if (outcome.status === "failed" || !a.code) {
+        fail(APPLE_SIGN_IN_FAILED, "fresh");
+        return;
+      }
+      const settled = await send(a.code, current);
+      if (!live()) return;
+      if (settled === "revoked") set({ apple: "revoked" });
+      // A fresh code cannot belong to an earlier request; never call it done.
+      else if (settled === "elsewhere") fail(APPLE_NOT_CONFIRMED, "fresh");
     } finally {
       if (live()) set({ busy: null });
     }
@@ -351,17 +392,19 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
     },
 
     endSession: () => {
-      if (!get().appleSessionEnded) return;
+      const owed = sessionEndOwed;
+      sessionEndOwed = false;
       set({ appleSessionEnded: false });
-      endExpiredSession();
+      if (owed) endExpiredSession();
     },
 
     reset: () => {
-      const ended = get().appleSessionEnded;
+      const owed = sessionEndOwed;
+      sessionEndOwed = false;
       flow += 1;
       owner = null;
       set(initial);
-      if (ended) endExpiredSession();
+      if (owed) endExpiredSession();
     },
   };
 });

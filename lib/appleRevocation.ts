@@ -41,13 +41,14 @@ export function hasAppleAccount(user: AppleLinkedUser | null | undefined): boole
   return user?.externalAccounts?.some((account) => account.provider === "apple") ?? false;
 }
 
-/** Whether GRIDGO already recorded this app's disconnect on the pending request. */
-export function appleRevokedOnServer(pending: PendingAccountDeletion | null): boolean {
-  return (
-    pending?.appleRevocations?.some(
-      (attempt) => attempt.clientId === APPLE_CLIENT_ID && attempt.status === "revoked",
-    ) ?? false
-  );
+/**
+ * What GRIDGO recorded for this app's latest attempt on the pending request:
+ * `true` revoked, `false` an attempt that did not revoke, `null` no attempt on
+ * record (unknown, never "not required").
+ */
+export function appleRevokedOnServer(pending: PendingAccountDeletion | null): boolean | null {
+  const latest = pending?.appleRevocations?.find((attempt) => attempt.clientId === APPLE_CLIENT_ID);
+  return latest ? latest.status === "revoked" : null;
 }
 
 /** Only an iPhone can ask Apple again; Android and the web keep today's flow. */

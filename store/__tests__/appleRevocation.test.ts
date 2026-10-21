@@ -333,6 +333,54 @@ describe("leaving the screen and coming back", () => {
     expect(revoke).toHaveBeenCalledWith("ph.gridgo.rider", "late-code");
   });
 
+  it("believes a newer failure on GRIDGO's record over its own earlier disconnect", async () => {
+    await deleteAccount(true);
+    leave();
+    // Another sign-in authorized the app again and its revoke failed later.
+    pending.mockResolvedValue({ id: "adr_1", appleRevocations: [{
+      ...REVOKED, status: "retry_required", revokedAt: null,
+      attemptedAt: "2026-10-21T03:00:00.000Z", error: "apple_revocation_failed",
+    }] });
+    askApple.mockResolvedValueOnce({ status: "cancelled" });
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(2);
+    expect(useAccountDeletion.getState().apple).toBe("cancelled");
+  });
+
+  it("never counts an earlier request's replayed disconnect as the current one's", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    const held = revoke.mock.calls[0][1];
+    leave();
+
+    // Operations finished adr_1; adr_2's last attempt failed elsewhere.
+    pending.mockResolvedValue({ id: "adr_2", appleRevocations: [{ ...REVOKED, status: "retry_required", revokedAt: null, error: "apple_revocation_failed" }] });
+    revoke.mockResolvedValueOnce({ ...REVOKED, requestId: "adr_1" });
+    revoke.mockResolvedValueOnce({ ...REVOKED, requestId: "adr_2" });
+    await deleteAccount(true);
+
+    expect(pending).toHaveBeenCalledTimes(2);
+    // The held code settles first, then adr_2 gets its own fresh code.
+    expect(revoke.mock.calls[1][1]).toBe(held);
+    expect(askApple).toHaveBeenCalledTimes(2);
+    expect(revoke.mock.calls[2][1]).not.toBe(held);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
+  it("settles an earlier request's code and stops when the current one is already disconnected", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    leave();
+
+    pending.mockResolvedValue({ id: "adr_2", appleRevocations: [REVOKED] });
+    revoke.mockRejectedValueOnce(new ApiError(400, { error: "invalid_apple_authorization_code", requestId: "adr_1" }));
+    await deleteAccount(true);
+
+    expect(revoke).toHaveBeenCalledTimes(2);
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
   it("starts over for a new deletion request", async () => {
     await deleteAccount(true);
     leave();
