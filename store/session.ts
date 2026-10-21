@@ -2,6 +2,7 @@ import { sessionWaitHold } from "@/lib/sessionWait";
 import { cancelDeviceRegistrations, serializeDeviceMutation, usePush } from "@/store/push";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
+import { forgetAppleRevocation } from "@/store/accountDeletion";
 import { setLiveOwner } from "@/lib/live";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
@@ -645,7 +646,10 @@ useSession.subscribe((state, previous) => {
   const next = state.user?.id ?? null;
   const status = state.user?.verificationStatus;
   if (next === (previous.user?.id ?? null) && status === previous.user?.verificationStatus) return;
-  if (next !== (previous.user?.id ?? null)) cancelDeviceRegistrations();
+  if (next !== (previous.user?.id ?? null)) {
+    cancelDeviceRegistrations();
+    forgetAppleRevocation();
+  }
   setLiveOwner(next ? `${next}:${status ?? "approved"}` : null);
   useNotifications.getState().bindOwner(next);
   useActiveTrip.getState().clear();

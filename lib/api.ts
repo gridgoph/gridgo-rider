@@ -460,6 +460,12 @@ export function setUnauthorizedHandler(handler: (() => void) | null): () => void
   };
 }
 
+/** Drop the bearer a confirmed 401 proved dead and run the unauthorized handler. */
+export function endExpiredSession(): void {
+  tokenMemory = null;
+  unauthorizedHandler?.();
+}
+
 const DEFAULT_API_PORT = "8787";
 
 /** Inputs for pure base-URL resolution (unit-tested). */
@@ -671,6 +677,11 @@ export async function sessionBearerPresent(): Promise<boolean> {
 export class ApiError extends Error {
   status: number;
   body: unknown;
+  /**
+   * A confirmed 401 on a `holdUnauthorized` request: the session is over, but
+   * the caller ends it with {@link endExpiredSession} once it has said why.
+   */
+  sessionEnded = false;
   constructor(status: number, body: unknown) {
     super(
       typeof body === "object" && body && "error" in body
@@ -694,13 +705,21 @@ type RequestInitWithProbe = RequestInit & {
     session down signed brand-new riders out mid-application.
   */
   ignoreUnauthorized?: boolean;
+  /*
+    Same token retry and same verdict as any request, but a confirmed 401 does
+    not end the session here: it is thrown with `sessionEnded`, and the caller
+    calls `endExpiredSession` after showing what the 401 interrupted. Delete
+    account's Apple step uses it, because ending the session removes the
+    screen before the rider can read that their deletion request still stands.
+  */
+  holdUnauthorized?: boolean;
 };
 
 export const API_REQUEST_MS = 20_000;
 
 async function request<T>(path: string, init: RequestInitWithProbe = {}): Promise<T> {
   const generation = liveGeneration();
-  const { ignoreUnauthorized, ...fetchInit } = init;
+  const { ignoreUnauthorized, holdUnauthorized, ...fetchInit } = init;
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -776,8 +795,12 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
     // start.
     if (!ignoreUnauthorized && sentBearer && confirmedUnauthorized &&
         shouldInvalidateSessionOnStatus(res.status, path)) {
-      tokenMemory = null;
-      unauthorizedHandler?.();
+      if (holdUnauthorized) {
+        const error = new ApiError(res.status, data);
+        error.sessionEnded = true;
+        throw error;
+      }
+      endExpiredSession();
     }
     throw new ApiError(res.status, data);
   }
@@ -1935,6 +1958,7 @@ export async function fileAccountDeletionRequest(): Promise<void> {
   await request("/me/account-deletion-request", {
     method: "POST",
     body: JSON.stringify({ confirmed: true }),
+    holdUnauthorized: true,
   });
 }
 
@@ -1945,6 +1969,25 @@ export type AppleRevocation = {
   revokedAt: string | null;
   error: string | null;
 };
+
+export type PendingAccountDeletion = {
+  id: string;
+  /** Latest attempt per bundle. Empty means unknown, not "not required". */
+  appleRevocations?: AppleRevocation[] | null;
+};
+
+/**
+ * This account's pending deletion request and its recorded Apple attempts,
+ * read before Apple is ever asked for a new code: a bundle already revoked
+ * must not be authorized again.
+ */
+export async function getAccountDeletionRequest(): Promise<PendingAccountDeletion | null> {
+  const result = await request<{ request: PendingAccountDeletion | null }>(
+    "/me/account-deletion-request",
+    { holdUnauthorized: true },
+  );
+  return result.request ?? null;
+}
 
 /**
  * Hand GRIDGO a fresh Apple authorization code to revoke. The code is single
@@ -1960,6 +2003,7 @@ export async function revokeAppleAuthorization(
     {
       method: "POST",
       body: JSON.stringify({ confirmed: true, clientId, authorizationCode }),
+      holdUnauthorized: true,
     },
   );
   return result.appleRevocation ?? null;

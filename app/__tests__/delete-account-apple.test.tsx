@@ -6,7 +6,9 @@ import {
   ApiError,
   createPrivacyRequest,
   fileAccountDeletionRequest,
+  getAccountDeletionRequest,
   revokeAppleAuthorization,
+  setUnauthorizedHandler,
 } from "@/lib/api";
 import {
   APPLE_CANCELLED,
@@ -14,13 +16,14 @@ import {
   APPLE_REVOKED,
   appleRevocationFailure,
 } from "@/lib/appleRevocation";
-import { useAccountDeletion } from "@/store/accountDeletion";
+import { forgetAppleRevocation, useAccountDeletion } from "@/store/accountDeletion";
 
 jest.mock("expo-router", () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   createPrivacyRequest: jest.fn(),
   fileAccountDeletionRequest: jest.fn(),
+  getAccountDeletionRequest: jest.fn(),
   revokeAppleAuthorization: jest.fn(),
 }));
 
@@ -30,6 +33,7 @@ jest.mock("@clerk/expo", () => ({
   useUser: () => ({
     isLoaded: true,
     user: {
+      id: "user_clerk_rider",
       passwordEnabled: true,
       primaryEmailAddress: { emailAddress: "rider@example.com" },
       externalAccounts: mockProviders.map((provider) => ({ provider })),
@@ -49,6 +53,7 @@ jest.mock("@clerk/expo", () => ({
 const send = createPrivacyRequest as jest.Mock;
 const file = fileAccountDeletionRequest as jest.Mock;
 const revoke = revokeAppleAuthorization as jest.Mock;
+const pending = getAccountDeletionRequest as jest.Mock;
 const signInAsync = jest.requireMock("expo-apple-authentication").signInAsync as jest.Mock;
 
 const REVOKED = { clientId: "ph.gridgo.rider", status: "revoked", revokedAt: "2026-10-21T02:00:00.000Z", error: null };
@@ -60,6 +65,8 @@ function setOS(os: typeof Platform.OS) {
 
 beforeEach(() => {
   useAccountDeletion.getState().reset();
+  forgetAppleRevocation();
+  pending.mockReset().mockResolvedValue({ id: "adr_1", appleRevocations: [] });
   mockProviders = ["apple"];
   setOS("ios");
   send.mockReset().mockResolvedValue({ id: "pr_1", kind: "deletion", status: "pending", requestedAt: "2026-10-21T02:00:00.000Z", dueAt: "2026-11-20T02:00:00.000Z" });
@@ -136,6 +143,49 @@ describe("Delete account on an Apple-linked iPhone", () => {
     expect(screen.queryByText(APPLE_REVOKED)).toBeNull();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign in with Apple again" })).toBeNull();
+  });
+});
+
+describe("Delete account after leaving and coming back", () => {
+  it("does not open Apple's sheet again once disconnected", async () => {
+    await deleteMyAccount();
+    await waitFor(() => expect(screen.getByText(APPLE_REVOKED)).toBeTruthy());
+    await screen.unmount();
+
+    await deleteMyAccount();
+    await waitFor(() => expect(screen.getByText(APPLE_REVOKED)).toBeTruthy());
+    expect(signInAsync).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("resends a lost answer's code on the next visit", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteMyAccount();
+    await waitFor(() => expect(screen.getByText(appleRevocationFailure("lost").message)).toBeTruthy());
+    await screen.unmount();
+
+    await deleteMyAccount();
+    await waitFor(() => expect(screen.getByText(APPLE_REVOKED)).toBeTruthy());
+    expect(signInAsync).toHaveBeenCalledTimes(1);
+    expect(revoke.mock.calls.map((call) => call[1])).toEqual(["fresh-apple-code", "fresh-apple-code"]);
+  });
+
+  it("explains a 401 before the session ends, then ends it on Sign in again", async () => {
+    const ended = jest.fn();
+    const unbind = setUnauthorizedHandler(ended);
+    const refused = new ApiError(401, { error: "unauthorized" });
+    refused.sessionEnded = true;
+    revoke.mockRejectedValueOnce(refused);
+    try {
+      await deleteMyAccount();
+      await waitFor(() => expect(screen.getByText(appleRevocationFailure("signed_out").message)).toBeTruthy());
+      expect(ended).not.toHaveBeenCalled();
+
+      fireEvent.press(screen.getByRole("button", { name: "Sign in again" }));
+      expect(ended).toHaveBeenCalledTimes(1);
+    } finally {
+      unbind();
+    }
   });
 });
 

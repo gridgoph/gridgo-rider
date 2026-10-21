@@ -2,22 +2,25 @@ import {
   ApiError,
   createPrivacyRequest,
   fileAccountDeletionRequest,
+  getAccountDeletionRequest,
   revokeAppleAuthorization,
 } from "@/lib/api";
 import { reauthorizeWithApple } from "@/lib/appleReauthorize";
 import {
   APPLE_BUSY_RETRIES,
+  APPLE_CHECK_FAILED,
   APPLE_FILE_FAILED,
   APPLE_NOT_CONFIRMED,
   APPLE_SIGN_IN_FAILED,
   appleRevocationFailure,
 } from "@/lib/appleRevocation";
-import { useAccountDeletion } from "@/store/accountDeletion";
+import { forgetAppleRevocation, useAccountDeletion } from "@/store/accountDeletion";
 
 jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   createPrivacyRequest: jest.fn(),
   fileAccountDeletionRequest: jest.fn(),
+  getAccountDeletionRequest: jest.fn(),
   revokeAppleAuthorization: jest.fn(),
 }));
 jest.mock("@/lib/appleReauthorize", () => ({ reauthorizeWithApple: jest.fn() }));
@@ -25,6 +28,7 @@ jest.mock("@/lib/appleReauthorize", () => ({ reauthorizeWithApple: jest.fn() }))
 const send = createPrivacyRequest as jest.Mock;
 const file = fileAccountDeletionRequest as jest.Mock;
 const revoke = revokeAppleAuthorization as jest.Mock;
+const pending = getAccountDeletionRequest as jest.Mock;
 const askApple = reauthorizeWithApple as jest.Mock;
 
 const REVOKED = { clientId: "ph.gridgo.rider", status: "revoked", revokedAt: "2026-10-21T02:00:00.000Z", error: null };
@@ -37,15 +41,23 @@ function session() {
   };
 }
 
-async function deleteAccount(appleLinked: boolean) {
+const RIDER = "user_apple_rider";
+
+/** `appleLinked` stands for the screen naming the Clerk user as the owner. */
+async function deleteAccount(appleLinked: boolean, owner = RIDER) {
   useAccountDeletion.getState().setSecret("secret-pass");
-  await useAccountDeletion.getState().submit("password", session(), appleLinked);
+  await useAccountDeletion.getState().submit("password", session(), appleLinked ? owner : null);
 }
+
+/** Leaving the screen: its cleanup is `reset`. */
+const leave = () => useAccountDeletion.getState().reset();
 
 let codes = 0;
 beforeEach(() => {
   jest.useRealTimers();
   useAccountDeletion.getState().reset();
+  forgetAppleRevocation();
+  pending.mockReset().mockResolvedValue({ id: "adr_1", appleRevocations: [] });
   send.mockReset().mockImplementation(async () => {
     return { id: "pr_1", kind: "deletion", status: "pending", requestedAt: "2026-10-21T02:00:00.000Z", dueAt: "2026-11-20T02:00:00.000Z" };
   });
@@ -238,3 +250,163 @@ describe("every other account", () => {
     expect(useAccountDeletion.getState()).toMatchObject({ sent: true, apple: "none" });
   });
 });
+
+describe("leaving the screen and coming back", () => {
+  it("never asks Apple again after a disconnect, even on a second visit", async () => {
+    await deleteAccount(true);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+    leave();
+
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
+  it("believes GRIDGO's record of a disconnect when this phone has none", async () => {
+    // A restarted app: nothing in memory, the server holds the result.
+    pending.mockResolvedValue({
+      id: "adr_1",
+      appleRevocations: [{ ...REVOKED, attemptedAt: "2026-10-21T02:00:00.000Z" }],
+    });
+    await deleteAccount(true);
+
+    expect(askApple).not.toHaveBeenCalled();
+    expect(revoke).not.toHaveBeenCalled();
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
+  it("does not count another app's disconnect as this one's", async () => {
+    pending.mockResolvedValue({
+      id: "adr_1",
+      appleRevocations: [{ ...REVOKED, clientId: "ph.gridgo.client" }],
+    });
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledWith("ph.gridgo.rider", expect.any(String));
+  });
+
+  it("does not ask Apple when it cannot read GRIDGO's record first", async () => {
+    pending.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+
+    expect(askApple).not.toHaveBeenCalled();
+    expect(useAccountDeletion.getState()).toMatchObject({ apple: "failed", appleError: APPLE_CHECK_FAILED, appleRetry: "same" });
+    await useAccountDeletion.getState().revokeApple();
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
+  it("trusts its own disconnect when GRIDGO's record cannot be read", async () => {
+    await deleteAccount(true);
+    leave();
+    pending.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
+  it("replays a lost answer's code on the next visit instead of asking Apple", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    const first = revoke.mock.calls[0][1];
+    leave();
+
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(revoke.mock.calls[1][1]).toBe(first);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
+  it("sends a code Apple returned after the screen closed, rather than asking again", async () => {
+    let answer!: (value: unknown) => void;
+    askApple.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
+    const running = deleteAccount(true);
+    await waitUntil(() => useAccountDeletion.getState().apple === "asking");
+    leave();
+    answer({ status: "ok", authorizationCode: "late-code" });
+    await running;
+    expect(revoke).not.toHaveBeenCalled();
+
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledWith("ph.gridgo.rider", "late-code");
+  });
+
+  it("starts over for a new deletion request", async () => {
+    await deleteAccount(true);
+    leave();
+    // Operations finished the first request; this is a new one.
+    pending.mockResolvedValue({ id: "adr_2", appleRevocations: [] });
+    await deleteAccount(true);
+    expect(askApple).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts over for another account, and when the account changes", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    const first = revoke.mock.calls[0][1];
+    leave();
+
+    await deleteAccount(true, "user_someone_else");
+    expect(askApple).toHaveBeenCalledTimes(2);
+    expect(revoke.mock.calls[1][1]).not.toBe(first);
+    leave();
+
+    forgetAppleRevocation();
+    await deleteAccount(true, "user_someone_else");
+    expect(askApple).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("a screen closed while the request is on its way", () => {
+  it("never opens Apple's sheet for a privacy request answered after leaving", async () => {
+    let finish!: (value: unknown) => void;
+    send.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const running = deleteAccount(true);
+    await waitUntil(() => useAccountDeletion.getState().busy === "sending");
+    leave();
+    finish({ id: "pr_1", kind: "deletion", status: "pending", requestedAt: "x", dueAt: "x" });
+    await running;
+
+    expect(file).not.toHaveBeenCalled();
+    expect(askApple).not.toHaveBeenCalled();
+    // The next visit is not repopulated by the old submission.
+    expect(useAccountDeletion.getState()).toMatchObject({ sent: false, busy: null, apple: "none" });
+  });
+
+  it("never sends for a confirmation answered after leaving", async () => {
+    let confirm!: (value: unknown) => void;
+    const s = session();
+    s.attemptFirstFactorVerification.mockImplementationOnce(
+      () => new Promise((resolve) => { confirm = resolve; }) as never,
+    );
+    useAccountDeletion.getState().setSecret("secret-pass");
+    const running = useAccountDeletion.getState().submit("password", s, RIDER);
+    await waitUntil(() => typeof confirm === "function");
+    leave();
+    confirm({ status: "complete" });
+    await running;
+
+    expect(send).not.toHaveBeenCalled();
+    expect(askApple).not.toHaveBeenCalled();
+    expect(useAccountDeletion.getState()).toMatchObject({ confirmedAt: null, busy: null });
+  });
+
+  it("stops a busy wait when the screen closes", async () => {
+    jest.useFakeTimers();
+    revoke.mockRejectedValue(new ApiError(409, { error: "apple_revocation_in_progress" }));
+    const running = deleteAccount(true);
+    await jest.advanceTimersByTimeAsync(10);
+    leave();
+    await jest.advanceTimersByTimeAsync(60_000);
+    await running;
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(useAccountDeletion.getState().apple).toBe("none");
+  });
+});
+
+async function waitUntil(condition: () => boolean) {
+  for (let n = 0; n < 50 && !condition(); n += 1) await Promise.resolve();
+  expect(condition()).toBe(true);
+}

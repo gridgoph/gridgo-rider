@@ -8,6 +8,7 @@ import {
   appleRevocationApplies,
   appleRevocationFailure,
   appleRevocationRefusal,
+  appleRevokedOnServer,
   hasAppleAccount,
 } from "@/lib/appleRevocation";
 
@@ -76,5 +77,21 @@ describe("every refusal in GRIDGO's table", () => {
     expect(appleRetryLabel("same")).toBe("Try again");
     expect(appleRetryLabel("fresh")).toBe("Sign in with Apple again");
     expect(appleRetryLabel(null)).toBeNull();
+  });
+});
+
+describe("GRIDGO's record of an earlier disconnect", () => {
+  const attempt = (clientId: string, status: string) => ({ clientId, status, revokedAt: null, error: null });
+
+  it("counts only this app's revoked attempt", () => {
+    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.rider", "revoked")] })).toBe(true);
+    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.rider", "retry_required")] })).toBe(false);
+    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [attempt("ph.gridgo.client", "revoked")] })).toBe(false);
+  });
+
+  it("reads an empty or missing record as unknown, never as done", () => {
+    expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [] })).toBe(false);
+    expect(appleRevokedOnServer({ id: "adr_1" })).toBe(false);
+    expect(appleRevokedOnServer(null)).toBe(false);
   });
 });

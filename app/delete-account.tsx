@@ -55,6 +55,7 @@ export default function DeleteAccountScreen() {
   const { session } = useClerkSession();
   const method = deletionConfirmMethod(clerkUser);
   const appleLinked = appleRevocationApplies(clerkUser, Platform.OS);
+  const appleOwner = appleLinked ? (clerkUser?.id ?? null) : null;
 
   const secret = useAccountDeletion((s) => s.secret);
   const codeSent = useAccountDeletion((s) => s.codeSent);
@@ -72,6 +73,8 @@ export default function DeleteAccountScreen() {
   const appleError = useAccountDeletion((s) => s.appleError);
   const appleRetry = useAccountDeletion((s) => s.appleRetry);
   const revokeApple = useAccountDeletion((s) => s.revokeApple);
+  const appleSessionEnded = useAccountDeletion((s) => s.appleSessionEnded);
+  const endSession = useAccountDeletion((s) => s.endSession);
 
   // Leaving drops what was typed, so the next visit starts a fresh flow.
   useEffect(() => () => useAccountDeletion.getState().reset(), []);
@@ -146,6 +149,9 @@ export default function DeleteAccountScreen() {
                   onPress={() => void revokeApple()}
                 />
               ) : null}
+              {apple === "failed" && appleSessionEnded ? (
+                <SecondaryButton label="Sign in again" onPress={endSession} />
+              ) : null}
             </View>
           ) : null}
           <SecondaryButton
@@ -207,7 +213,7 @@ export default function DeleteAccountScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="go"
-                onSubmitEditing={() => void submit(method, session, appleLinked)}
+                onSubmitEditing={() => void submit(method, session, appleOwner)}
                 editable={busy == null}
                 visibilityLabel="your password"
               />
@@ -267,7 +273,7 @@ export default function DeleteAccountScreen() {
                       : "Delete my account"
               }
               disabled={busy != null}
-              onPress={() => void submit(method, session, appleLinked)}
+              onPress={() => void submit(method, session, appleOwner)}
             />
           )}
           <SecondaryButton
