@@ -347,6 +347,43 @@ describe("leaving the screen and coming back", () => {
     expect(useAccountDeletion.getState().apple).toBe("cancelled");
   });
 
+  it("never lets a replayed success outrank a newer failure on the same request", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    const held = revoke.mock.calls[0][1];
+    leave();
+
+    // 02:00 revoked (answer lost); another sign-in's revoke failed at 03:00.
+    pending.mockResolvedValue({ id: "adr_1", appleRevocations: [{
+      ...REVOKED, status: "retry_required", revokedAt: null,
+      attemptedAt: "2026-10-21T03:00:00.000Z", error: "apple_revocation_failed",
+    }] });
+    revoke.mockResolvedValueOnce({ ...REVOKED, requestId: "adr_1", attemptedAt: "2026-10-21T02:00:00.000Z" });
+    askApple.mockResolvedValueOnce({ status: "cancelled" });
+    await deleteAccount(true);
+
+    expect(revoke.mock.calls[1][1]).toBe(held);
+    expect(askApple).toHaveBeenCalledTimes(2);
+    expect(useAccountDeletion.getState().apple).toBe("cancelled");
+  });
+
+  it("counts a held code's answer that is newer than the recorded failure", async () => {
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await deleteAccount(true);
+    leave();
+
+    // The held code never reached GRIDGO; sending it now is a new attempt.
+    pending.mockResolvedValue({ id: "adr_1", appleRevocations: [{
+      ...REVOKED, status: "retry_required", revokedAt: null,
+      attemptedAt: "2026-10-21T03:00:00.000Z", error: "apple_revocation_failed",
+    }] });
+    revoke.mockResolvedValueOnce({ ...REVOKED, requestId: "adr_1", attemptedAt: "2026-10-21T04:00:00.000Z" });
+    await deleteAccount(true);
+
+    expect(askApple).toHaveBeenCalledTimes(1);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
   it("never counts an earlier request's replayed disconnect as the current one's", async () => {
     revoke.mockRejectedValueOnce(new TypeError("Network request failed"));
     await deleteAccount(true);

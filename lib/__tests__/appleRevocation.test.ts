@@ -8,6 +8,7 @@ import {
   appleRevocationApplies,
   appleRevocationFailure,
   appleRevocationRefusal,
+  appleReplayOutdated,
   appleRevokedOnServer,
   hasAppleAccount,
 } from "@/lib/appleRevocation";
@@ -93,5 +94,26 @@ describe("GRIDGO's record of an earlier disconnect", () => {
     expect(appleRevokedOnServer({ id: "adr_1", appleRevocations: [] })).toBeNull();
     expect(appleRevokedOnServer({ id: "adr_1" })).toBeNull();
     expect(appleRevokedOnServer(null)).toBeNull();
+  });
+});
+
+describe("a held code's answer against GRIDGO's latest attempt", () => {
+  const at = (status: string, attemptedAt?: string) => ({ clientId: "ph.gridgo.rider", status, attemptedAt, revokedAt: null, error: null });
+
+  it("is outdated only by a newer failure", () => {
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T02:00:00Z"), at("retry_required", "2026-10-21T03:00:00Z"))).toBe(true);
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T04:00:00Z"), at("retry_required", "2026-10-21T03:00:00Z"))).toBe(false);
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T02:00:00Z"), at("revoked", "2026-10-21T03:00:00Z"))).toBe(false);
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T02:00:00Z"), null)).toBe(false);
+  });
+
+  it("reads GRIDGO's microsecond times", () => {
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T02:00:00.123Z"), at("retry_required", "2026-10-21T03:00:00.123456+00:00"))).toBe(true);
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T04:00:00.123Z"), at("retry_required", "2026-10-21T03:00:00.123456+00:00"))).toBe(false);
+  });
+
+  it("is not trusted over a failure when either time is missing", () => {
+    expect(appleReplayOutdated(at("revoked"), at("retry_required", "2026-10-21T03:00:00Z"))).toBe(true);
+    expect(appleReplayOutdated(at("revoked", "2026-10-21T04:00:00Z"), at("retry_required"))).toBe(true);
   });
 });

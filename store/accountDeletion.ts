@@ -17,6 +17,7 @@ import {
   fileAccountDeletionRequest,
   getAccountDeletionRequest,
   revokeAppleAuthorization,
+  type AppleRevocation,
   type PrivacyRequest,
 } from "@/lib/api";
 import { reauthorizeWithApple } from "@/lib/appleReauthorize";
@@ -29,6 +30,8 @@ import {
   APPLE_NOT_CONFIRMED,
   APPLE_SIGN_IN_FAILED,
   appleRevocationFailure,
+  appleAttemptOnServer,
+  appleReplayOutdated,
   appleRevocationRefusal,
   appleRevokedOnServer,
   type AppleRetry,
@@ -185,10 +188,15 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
     const elsewhere = (requestId: unknown, current: string | null) =>
       typeof requestId === "string" && current != null && requestId !== current;
     /**
-     * Send `code` until GRIDGO answers. "elsewhere" is an earlier request's
-     * recorded result: the code is settled, and the current request is not.
+     * Send `code` until GRIDGO answers. "elsewhere" is a recorded result that
+     * is not the current request's latest (an earlier request, or older than
+     * `latest`): the code is settled, and the current request is not.
      */
-    const send = async (code: string, current: string | null): Promise<"revoked" | "elsewhere" | "stop"> => {
+    const send = async (
+      code: string,
+      current: string | null,
+      latest: AppleRevocation | null,
+    ): Promise<"revoked" | "elsewhere" | "stop"> => {
       set({ busy: "revoking", apple: "sending" });
       for (let tries = 0; ; tries += 1) {
         try {
@@ -196,6 +204,7 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
           // Spent either way: a recorded result is all this code can return now.
           a.code = null;
           if (elsewhere(result?.requestId, current)) return "elsewhere";
+          if (result && appleReplayOutdated(result, latest)) return "elsewhere";
           if (result?.status === "revoked") {
             a.revoked = true;
             return "revoked";
@@ -242,10 +251,12 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
       // disconnect this phone saw earlier.
       set({ busy: "revoking", apple: "sending" });
       let current: string | null;
+      let latest: AppleRevocation | null;
       try {
         const pending = await getAccountDeletionRequest();
         if (!live()) return;
         current = pending?.id ?? null;
+        latest = appleAttemptOnServer(pending);
         // No attempt on record is unknown: this phone's own disconnect for the
         // same request still stands.
         a.revoked = appleRevokedOnServer(pending) ?? (a.revoked && a.requestId === current);
@@ -264,7 +275,7 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
       // app again, and its answer settles it. Only an answer for the current
       // request says anything about this disconnect.
       if (a.code) {
-        const settled = await send(a.code, current);
+        const settled = await send(a.code, current, latest);
         if (settled === "stop" || !live()) return;
         if (settled === "revoked") {
           set({ apple: "revoked" });
@@ -290,7 +301,8 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
         fail(APPLE_SIGN_IN_FAILED, "fresh");
         return;
       }
-      const settled = await send(a.code, current);
+      // A code Apple just issued has no earlier result to be outdated by.
+      const settled = await send(a.code, current, null);
       if (!live()) return;
       if (settled === "revoked") set({ apple: "revoked" });
       // A fresh code cannot belong to an earlier request; never call it done.

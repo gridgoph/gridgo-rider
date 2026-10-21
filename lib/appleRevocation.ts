@@ -1,4 +1,4 @@
-import { ApiError, apiErrorCode, type PendingAccountDeletion } from "@/lib/api";
+import { ApiError, apiErrorCode, type AppleRevocation, type PendingAccountDeletion } from "@/lib/api";
 
 /**
  * Disconnecting Sign in with Apple when an account deletion is requested
@@ -47,8 +47,28 @@ export function hasAppleAccount(user: AppleLinkedUser | null | undefined): boole
  * record (unknown, never "not required").
  */
 export function appleRevokedOnServer(pending: PendingAccountDeletion | null): boolean | null {
-  const latest = pending?.appleRevocations?.find((attempt) => attempt.clientId === APPLE_CLIENT_ID);
+  const latest = appleAttemptOnServer(pending);
   return latest ? latest.status === "revoked" : null;
+}
+
+/** This app's latest recorded attempt on the pending request, if any. */
+export function appleAttemptOnServer(pending: PendingAccountDeletion | null): AppleRevocation | null {
+  return pending?.appleRevocations?.find((attempt) => attempt.clientId === APPLE_CLIENT_ID) ?? null;
+}
+
+/**
+ * Whether a held code's answer is older than a failure GRIDGO recorded since.
+ * A replay returns the code's original result, so a success from 02:00 says
+ * nothing about a failed attempt at 03:00. Without both times it is not trusted.
+ */
+export function appleReplayOutdated(answer: AppleRevocation, latest: AppleRevocation | null): boolean {
+  if (!latest || latest.status === "revoked") return false;
+  return !(attemptTime(answer.attemptedAt) > attemptTime(latest.attemptedAt));
+}
+
+/** GRIDGO's record carries microseconds; not every engine parses past three digits. */
+function attemptTime(at: string | null | undefined): number {
+  return Date.parse((at ?? "").replace(/(\.\d{3})\d+/, "$1"));
 }
 
 /** Only an iPhone can ask Apple again; Android and the web keep today's flow. */
