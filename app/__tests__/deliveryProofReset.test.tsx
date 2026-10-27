@@ -74,6 +74,7 @@ const atDoor = {
 } as unknown as Order;
 
 const confirm = () => screen.getByRole("button", { name: /confirm delivery/i });
+const reminded = () => screen.getByRole("checkbox", { name: "I reminded the client" });
 
 it("clears saved proof when the same delivery screen switches orders", async () => {
   api.health.mockResolvedValue({});
@@ -83,6 +84,8 @@ it("clears saved proof when the same delivery screen switches orders", async () 
   await screen.findByText("No evidence yet");
   await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
   await screen.findByText("Saved on the server");
+  expect(confirm()).toBeDisabled();
+  await fireEvent.press(reminded());
   expect(confirm()).toBeEnabled();
 
   mockOrderId = "ord_2";
@@ -96,8 +99,12 @@ it("clears saved proof when the same delivery screen switches orders", async () 
 
   await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
   await screen.findByText("Saved on the server");
+  // The previous job's tick does not carry over to this client.
+  expect(reminded()).not.toBeChecked();
+  await fireEvent.press(reminded());
   await fireEvent.press(confirm());
   await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith("ord_2", {
     evidenceFileId: "fil_ord_2", evidenceType: "photo",
+    handoffReminderVersion: 1, remindedClient: true, clientAgreedToPhoto: false,
   }));
 });

@@ -30,6 +30,7 @@ jest.mock("@/components/BlockingOverlay", () => ({ BlockingOverlay: "BlockingOve
 jest.mock("@/components/DeliveryPinDetails", () => ({ DeliveryPinDetails: "DeliveryPinDetails" }));
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: "EvidenceCapture" }));
 jest.mock("@/components/HandoverCodeCard", () => ({ HandoverCodeCard: "HandoverCodeCard" }));
+jest.mock("@/components/HandoffReminderCard", () => ({ HandoffReminderCard: "HandoffReminderCard" }));
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
 jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));
 jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptReminder" }));
@@ -111,10 +112,14 @@ it.each(["confirmed", "legacy_confirmed", "not_required"])("%s unlocks capture a
   await act(async () => { warning().props.onAction(); });
   expect(warning()).toBeUndefined();
   expect(view.root.findByType("EvidenceCapture").props.disabled).toBe(false);
+  // The door photo is in, so the reminder card asks for its tick before closing.
+  expect(view.root.findByType("PrimaryButton").props.disabled).toBe(true);
+  await act(async () => { view.root.findByType("HandoffReminderCard").props.onReminded(true); });
   expect(view.root.findByType("PrimaryButton").props.disabled).toBe(false);
   await act(async () => { view.root.findByType("PrimaryButton").props.onPress(); });
   expect(api.recordDelivery).toHaveBeenCalledWith("order-test", {
     evidenceFileId: "file-door", evidenceType: "photo",
+    handoffReminderVersion: 1, remindedClient: true, clientAgreedToPhoto: false,
   });
 });
 

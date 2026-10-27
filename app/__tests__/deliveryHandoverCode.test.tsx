@@ -52,6 +52,15 @@ jest.mock("@/components/EvidenceCapture", () => ({
   },
 }));
 
+// The reminder card has its own suite (deliveryReminder); here it is ticked so
+// the gate under test is the only one left.
+jest.mock("@/components/HandoffReminderCard", () => ({
+  HandoffReminderCard: ({ onReminded }: { onReminded: (value: boolean) => void }) => {
+    jest.requireActual<typeof import("react")>("react").useEffect(() => onReminded(true), [onReminded]);
+    return null;
+  },
+}));
+
 // The screen is imported after its native pieces are mocked above.
 // eslint-disable-next-line import/first
 import DeliveryProofScreen from "@/app/trip/delivery";
@@ -139,6 +148,7 @@ describe("the spoken handover code at the door", () => {
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
       evidenceFileId: "fil_door", evidenceType: "photo", otp: "012345",
+      handoffReminderVersion: 1, remindedClient: true, clientAgreedToPhoto: false,
     });
   });
 
@@ -156,6 +166,7 @@ describe("the spoken handover code at the door", () => {
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenLastCalledWith("ord_1", {
       evidenceFileId: "fil_door", evidenceType: "photo", otp: "001234",
+      handoffReminderVersion: 1, remindedClient: true, clientAgreedToPhoto: false,
     });
   });
 
@@ -241,6 +252,7 @@ describe("the spoken handover code at the door", () => {
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
       evidenceFileId: "fil_door", evidenceType: "photo",
+      handoffReminderVersion: 1, remindedClient: true, clientAgreedToPhoto: false,
     });
   });
 
@@ -265,6 +277,7 @@ describe("the spoken handover code at the door", () => {
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
       evidenceFileId: "fil_door", evidenceType: "photo",
+      handoffReminderVersion: 1,
     });
   });
 });

@@ -6,6 +6,7 @@ import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
+import { HandoffReminderCard } from "@/components/HandoffReminderCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { HandoverCodeCard } from "@/components/HandoverCodeCard";
 import { InlineNotice } from "@/components/InlineNotice";
@@ -23,7 +24,12 @@ import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import { receiptDeliveryHold } from "@/lib/acknowledgementReceipt";
 import * as api from "@/lib/api";
-import { DELIVERY_TARGETS } from "@/lib/attachments";
+import { DELIVERY_TARGETS, PACKAGE_PHOTO_TARGETS } from "@/lib/attachments";
+import {
+  handoffReminderBlockReason,
+  handoffReminderFields,
+  isPackagePhotoRefusal,
+} from "@/lib/handoffReminder";
 import {
   HANDOVER_ESCALATION_REASON,
   handoverBlockReason,
@@ -76,6 +82,12 @@ import { useActiveTrip } from "@/store/activeTrip";
  * The client reads their code aloud and the rider types it. Only the server
  * verifies it, together with the evidence. A job with no requirement delivers
  * with evidence alone; GRIDGO Office never asks the rider for a client code.
+ *
+ * Once the door photo is taken, the reminder card asks the rider to thank the
+ * client and ask for a rating and a share (`lib/handoffReminder.ts`). Its tick
+ * is required to close a door delivery; the client-agreed package photo is
+ * optional. A refusal of that photo removes it and keeps the door photo, so
+ * the rider confirms again without retaking anything.
  */
 export default function DeliveryProofScreen() {
   const router = useRouter();
@@ -95,6 +107,8 @@ export default function DeliveryProofScreen() {
   const [escalated, setEscalated] = useState(false);
   const [escalating, setEscalating] = useState(false);
   const [escalateError, setEscalateError] = useState<string | null>(null);
+  const [reminded, setReminded] = useState(false);
+  const [photoConsent, setPhotoConsent] = useState(false);
 
   // Tell the rider up front when this server cannot hold files, rather than
   // letting them photograph a doorway and discover it on the upload.
@@ -115,6 +129,12 @@ export default function DeliveryProofScreen() {
     orderId: id ?? "",
     step: "delivery",
     targets: DELIVERY_TARGETS,
+  });
+
+  const packagePhoto = useProofEvidence({
+    orderId: id ?? "",
+    step: "package",
+    targets: PACKAGE_PHOTO_TARGETS,
   });
 
   const uploadRefusal = refusalAction(
@@ -164,6 +184,25 @@ export default function DeliveryProofScreen() {
     setEscalated(false);
     setEscalateError(null);
     setSubmitError(null);
+    setReminded(false);
+    setPhotoConsent(false);
+  }
+
+  // The card follows the door photo: by then the package is in the client's
+  // hands, which is when the lines are said.
+  const reminderCard = Boolean(order && !toOffice && evidence.evidence);
+  const reminderBlock = handoffReminderBlockReason({
+    toOffice,
+    reminded,
+    photoConsent,
+    packageEvidence: packagePhoto.evidence,
+    packageUpload: packagePhoto.upload,
+  });
+
+  function changePhotoConsent(value: boolean) {
+    setPhotoConsent(value);
+    // Unticking withdraws the photo too; nothing the client declined is sent.
+    if (!value) packagePhoto.clear();
   }
 
   const blocked = !order
@@ -176,7 +215,7 @@ export default function DeliveryProofScreen() {
           toOffice
             ? "Photograph the package where you left it at the office. If the camera will not open, capture a signature instead."
             : "Photograph the package at the door. If the camera will not open, capture a signature instead.",
-        );
+        ) ?? reminderBlock;
 
   async function confirmDelivery() {
     if (!order || busy || escalating || blocked || !evidenceFileId) return;
@@ -187,6 +226,12 @@ export default function DeliveryProofScreen() {
         evidenceFileId,
         evidenceType: evidence.evidence?.kind === "signature" ? "signature" : "photo",
         ...(handover.load.status === "ready" ? { otp } : {}),
+        ...handoffReminderFields({
+          toOffice,
+          reminded,
+          photoConsent,
+          packagePhotoFileId: packagePhoto.stored.delivery_package_photo ?? null,
+        }),
       });
       // Adopted here as well, so the receipt is gone before the screen is.
       adoptOrder(updated);
@@ -198,6 +243,7 @@ export default function DeliveryProofScreen() {
         setOtp("");
         return;
       }
+      if (isPackagePhotoRefusal(api.apiErrorCode(e))) packagePhoto.clear();
       setSubmitError(
         api.tripRefusal(
           e,
@@ -376,6 +422,17 @@ export default function DeliveryProofScreen() {
               }
               disabled={busy || balanceHeld || codeHeld}
             />
+
+            {reminderCard ? (
+              <HandoffReminderCard
+                reminded={reminded}
+                onReminded={setReminded}
+                photoConsent={photoConsent}
+                onPhotoConsent={changePhotoConsent}
+                packagePhoto={packagePhoto}
+                disabled={busy || balanceHeld || codeHeld}
+              />
+            ) : null}
 
             {submitError ? (
               <InlineNotice

@@ -48,12 +48,16 @@ import {
  *
  * The fourth is the packed job on a `rider_packs` handover: photographed by
  * the rider after the unpacked check, and bound by the server to that check.
+ *
+ * The fifth is the optional package photo at the door, taken only when the
+ * client agreed to it (`lib/handoffReminder.ts`).
  */
 export type EvidencePurpose =
   | "delivery_photo"
   | "fulfilment_proof"
   | "handoff_signature"
-  | "packing_photo";
+  | "packing_photo"
+  | "delivery_package_photo";
 
 export type EvidenceTarget = {
   purpose: EvidencePurpose;
@@ -80,6 +84,11 @@ export const HANDOFF_SIGNATURE_TARGETS: readonly EvidenceTarget[] = [
 /** What the packed job is stored as before the shop can sign (`rider_packs`). */
 export const PACKING_PHOTO_TARGETS: readonly EvidenceTarget[] = [
   { purpose: "packing_photo" },
+];
+
+/** What the client-agreed package photo is stored as. Never the delivery proof. */
+export const PACKAGE_PHOTO_TARGETS: readonly EvidenceTarget[] = [
+  { purpose: "delivery_package_photo" },
 ];
 
 /** Contract limit for `delivery_photo` — the smaller of the two, so it governs. */
@@ -189,6 +198,7 @@ function isRetryable(code: string | undefined, status: number): boolean {
     case "forbidden":
     case "order_not_found":
     case "delivery_photo_upload_not_allowed":
+    case "package_photo_upload_not_allowed":
     case "unpacked_inspection_required":
     case "packing_photo_required":
     case "pickup_held":
