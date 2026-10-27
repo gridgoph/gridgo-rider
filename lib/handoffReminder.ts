@@ -1,4 +1,4 @@
-import type { EvidenceUpload, ProofEvidence } from "@/lib/proofEvidence";
+import type { ProofEvidence } from "@/lib/proofEvidence";
 
 /**
  * The reminder card at the client's door (gridgo-rider#157).
@@ -65,35 +65,37 @@ export function handoffReminderFields({
 /**
  * Why the reminder holds the confirm button, or null.
  *
- * A package photo the rider has taken must either reach the server or be
- * removed: closing while it is still sending would quietly drop something the
- * client agreed to. Not taking one never holds anything.
+ * Only the spoken reminder holds a door delivery. The package photo never
+ * does: the client's agreement and the file reaching the server are different
+ * facts, and a slow upload must not keep a rider at the door
+ * (`packagePhotoUnfinished` names what the button does instead).
  */
 export function handoffReminderBlockReason({
   toOffice,
   reminded,
-  photoConsent,
-  packageEvidence,
-  packageUpload,
 }: {
   toOffice: boolean;
   reminded: boolean;
+}): string | null {
+  if (toOffice || reminded) return null;
+  return `Read the card to the client, then tick "${REMINDED_TICK_LABEL}".`;
+}
+
+/**
+ * True when the client agreed and a package photo was taken, but the server
+ * has not confirmed it. Confirming then closes the job without it — the
+ * unfinished upload is dropped and its id is never sent.
+ */
+export function packagePhotoUnfinished({
+  photoConsent,
+  packageEvidence,
+  packagePhotoFileId,
+}: {
   photoConsent: boolean;
   packageEvidence: ProofEvidence | null;
-  packageUpload: EvidenceUpload;
-}): string | null {
-  if (toOffice) return null;
-  if (!reminded) return `Read the card to the client, then tick "${REMINDED_TICK_LABEL}".`;
-  if (!photoConsent || !packageEvidence) return null;
-  switch (packageUpload.phase) {
-    case "sending":
-    case "processing":
-      return `Wait for the package photo to save, or untick "${PHOTO_CONSENT_TICK_LABEL}" to close without it.`;
-    case "failed":
-      return `The package photo did not save. Send it again, or untick "${PHOTO_CONSENT_TICK_LABEL}" to close without it.`;
-    default:
-      return null;
-  }
+  packagePhotoFileId: string | null;
+}): boolean {
+  return photoConsent && packageEvidence !== null && !packagePhotoFileId;
 }
 
 /** Refusals that mean the package photo on file is unusable; the delivery photo is not touched. */

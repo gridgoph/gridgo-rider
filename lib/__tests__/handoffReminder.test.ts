@@ -2,6 +2,7 @@ import {
   handoffReminderBlockReason,
   handoffReminderFields,
   isPackagePhotoRefusal,
+  packagePhotoUnfinished,
 } from "@/lib/handoffReminder";
 import type { ProofEvidence } from "@/lib/proofEvidence";
 
@@ -39,21 +40,19 @@ describe("handoffReminderFields", () => {
 });
 
 describe("handoffReminderBlockReason", () => {
-  const base = { toOffice: false, reminded: true, photoConsent: true, packageEvidence: photo };
-
-  it("holds a door delivery until the reminder is ticked", () => {
-    expect(handoffReminderBlockReason({ ...base, reminded: false, packageUpload: { phase: "idle" } }))
-      .toMatch(/I reminded the client/);
-    expect(handoffReminderBlockReason({ ...base, toOffice: true, reminded: false, packageUpload: { phase: "idle" } }))
-      .toBeNull();
+  it("holds a door delivery only until the reminder is ticked", () => {
+    expect(handoffReminderBlockReason({ toOffice: false, reminded: false })).toMatch(/I reminded the client/);
+    expect(handoffReminderBlockReason({ toOffice: false, reminded: true })).toBeNull();
+    expect(handoffReminderBlockReason({ toOffice: true, reminded: false })).toBeNull();
   });
+});
 
-  it("waits for a package photo in flight or failed, never for one not taken", () => {
-    expect(handoffReminderBlockReason({ ...base, packageUpload: { phase: "processing" } })).toMatch(/Wait/);
-    expect(handoffReminderBlockReason({ ...base, packageUpload: { phase: "failed", message: "x", retryable: true } }))
-      .toMatch(/did not save/);
-    expect(handoffReminderBlockReason({ ...base, packageUpload: { phase: "stored", fileId: "fil_p" } })).toBeNull();
-    expect(handoffReminderBlockReason({ ...base, packageEvidence: null, packageUpload: { phase: "idle" } })).toBeNull();
+describe("packagePhotoUnfinished", () => {
+  it("is true only for an agreed photo the server has not confirmed", () => {
+    expect(packagePhotoUnfinished({ photoConsent: true, packageEvidence: photo, packagePhotoFileId: null })).toBe(true);
+    expect(packagePhotoUnfinished({ photoConsent: true, packageEvidence: photo, packagePhotoFileId: "fil_p" })).toBe(false);
+    expect(packagePhotoUnfinished({ photoConsent: true, packageEvidence: null, packagePhotoFileId: null })).toBe(false);
+    expect(packagePhotoUnfinished({ photoConsent: false, packageEvidence: photo, packagePhotoFileId: null })).toBe(false);
   });
 });
 

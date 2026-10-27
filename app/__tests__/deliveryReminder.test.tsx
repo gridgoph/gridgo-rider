@@ -1,16 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import { ApiError, type Order } from "@/lib/api";
 import type { EvidenceTarget } from "@/lib/attachments";
 import type { EvidenceUpload } from "@/lib/proofEvidence";
 
+let mockOrderId = "ord_1";
 const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn() };
 
 jest.mock("expo-router", () => ({
   useFocusEffect: (callback: () => void) => {
     jest.requireActual<typeof import("react")>("react").useEffect(callback, [callback]);
   },
-  useLocalSearchParams: () => ({ orderId: "ord_1" }),
+  useLocalSearchParams: () => ({ orderId: mockOrderId }),
   useRouter: () => mockRouter,
 }));
 
@@ -35,8 +36,16 @@ jest.mock("@/lib/proofPhoto", () => ({
   })),
 }));
 
-/** What the package photo upload does next; the door photo always stores. */
-let mockPackageUpload: EvidenceUpload = { phase: "stored", fileId: "fil_package" };
+/**
+ * What the package photo upload does next; the door photo always stores.
+ * `late` holds the upload open and hands the test its callbacks.
+ */
+let mockPackageUpload: EvidenceUpload | "late" = { phase: "stored", fileId: "fil_package" };
+let mockLate: {
+  onPhase: (phase: EvidenceUpload) => void;
+  resolve: (ids: object) => void;
+  cancel: jest.Mock;
+} | null = null;
 
 jest.mock("@/lib/attachments", () => ({
   ...jest.requireActual("@/lib/attachments"),
@@ -45,6 +54,14 @@ jest.mock("@/lib/attachments", () => ({
     onPhase: (phase: EvidenceUpload) => void;
   }) => {
     if (targets[0]!.purpose === "delivery_package_photo") {
+      if (mockPackageUpload === "late") {
+        onPhase({ phase: "sending", sentBytes: 0, totalBytes: 2048 });
+        const cancel = jest.fn();
+        return {
+          cancel,
+          result: new Promise((resolve) => { mockLate = { onPhase, resolve, cancel }; }),
+        };
+      }
       onPhase(mockPackageUpload);
       return {
         cancel: jest.fn(),
@@ -116,9 +133,11 @@ async function photographPackage() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockOrderId = "ord_1";
+  mockLate = null;
   mockPackageUpload = { phase: "stored", fileId: "fil_package" };
   api.health.mockResolvedValue({});
-  api.getOrder.mockResolvedValue(atDoor);
+  api.getOrder.mockImplementation((id: string) => Promise.resolve({ ...atDoor, id }));
   api.recordDelivery.mockResolvedValue({ ...atDoor, state: "issue_window_open" });
 });
 
@@ -182,18 +201,53 @@ describe("the reminder card after the door photo", () => {
     });
   });
 
-  it("waits for a package photo still sending, and unticking drops it", async () => {
-    mockPackageUpload = { phase: "sending", sentBytes: 512, totalBytes: 2048 };
+  it.each([
+    ["still sending", { phase: "sending", sentBytes: 512, totalBytes: 2048 }, "Sending photo"],
+    ["still saving", { phase: "processing" }, "Sent — the server is still saving it"],
+    ["failed", { phase: "failed", message: "No connection while sending.", retryable: true }, "Not sent"],
+  ] as const)("never holds the job for a package photo %s, and closes without its id", async (_name, phase, status) => {
+    mockPackageUpload = phase;
     await photographDoor();
     await fireEvent.press(reminded());
     await photographPackage();
-    await screen.findByText("Sending photo");
-    expect(confirm()).toBeDisabled();
-    expect(screen.getByText(/Wait for the package photo to save/)).toBeTruthy();
+    await screen.findByText(status);
+
+    const closeWithout = screen.getByRole("button", { name: "Confirm delivery without the package photo" });
+    expect(closeWithout).toBeEnabled();
+    // The client's agreement stays as it was; nobody has to untick it.
+    expect(consent()).toBeChecked();
+    await fireEvent.press(closeWithout);
+
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+    expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
+      ...DOOR_PHOTO, ...REMINDED, clientAgreedToPhoto: true,
+    });
+  });
+
+  it("still sends a failed package photo once it is sent again and saves", async () => {
+    mockPackageUpload = { phase: "failed", message: "No connection while sending.", retryable: true };
+    await photographDoor();
+    await fireEvent.press(reminded());
+    await photographPackage();
+    await screen.findByText("Not sent");
+
+    mockPackageUpload = { phase: "stored", fileId: "fil_package" };
+    await fireEvent.press(screen.getByRole("button", { name: "Send it again" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm delivery" })).toBeEnabled());
+    await fireEvent.press(confirm());
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
+      ...DOOR_PHOTO, ...REMINDED, clientAgreedToPhoto: true, packagePhotoFileId: "fil_package",
+    }));
+  });
+
+  it("drops a saved package photo when the rider unticks the client's agreement", async () => {
+    await photographDoor();
+    await fireEvent.press(reminded());
+    await photographPackage();
+    await waitFor(() => expect(screen.getAllByText("Saved on the server")).toHaveLength(2));
 
     await fireEvent.press(consent());
     expect(screen.queryByText("PACKAGE PHOTO")).toBeNull();
-    expect(confirm()).toBeEnabled();
     await fireEvent.press(confirm());
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
@@ -201,21 +255,78 @@ describe("the reminder card after the door photo", () => {
     });
   });
 
-  it("holds a package photo that failed until it is sent again", async () => {
-    mockPackageUpload = { phase: "failed", message: "No connection while sending.", retryable: true };
+  it("ignores a package upload that finishes after the rider unticked", async () => {
+    mockPackageUpload = "late";
     await photographDoor();
     await fireEvent.press(reminded());
     await photographPackage();
-    await screen.findByText("Not sent");
-    expect(confirm()).toBeDisabled();
-    expect(screen.getByText(/The package photo did not save\. Send it again/)).toBeTruthy();
+    await screen.findByText("Sending photo");
+    await fireEvent.press(consent());
 
-    mockPackageUpload = { phase: "stored", fileId: "fil_package" };
-    await fireEvent.press(screen.getByRole("button", { name: "Send it again" }));
-    await waitFor(() => expect(confirm()).toBeEnabled());
+    await act(async () => {
+      mockLate!.onPhase({ phase: "stored", fileId: "fil_late" });
+      mockLate!.resolve({ delivery_package_photo: "fil_late" });
+    });
+    // Ticking again starts afresh: the late file is not adopted.
+    await fireEvent.press(consent());
+    expect(await screen.findByText("No evidence yet")).toBeTruthy();
+    expect(screen.getAllByText("Saved on the server")).toHaveLength(1);
+
     await fireEvent.press(confirm());
-    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
-      ...DOOR_PHOTO, ...REMINDED, clientAgreedToPhoto: true, packagePhotoFileId: "fil_package",
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+    expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
+      ...DOOR_PHOTO, ...REMINDED, clientAgreedToPhoto: true,
+    });
+    expect(JSON.stringify(api.recordDelivery.mock.calls)).not.toContain("fil_late");
+  });
+
+  it("ignores a package upload that finishes after the job closed without it", async () => {
+    mockPackageUpload = "late";
+    await photographDoor();
+    await fireEvent.press(reminded());
+    await photographPackage();
+    await screen.findByText("Sending photo");
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm delivery without the package photo" }));
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+    // The unfinished transfer is stopped before the delivery is sent.
+    expect(mockLate!.cancel).toHaveBeenCalled();
+    expect(mockLate!.cancel.mock.invocationCallOrder[0]).toBeLessThan(
+      api.recordDelivery.mock.invocationCallOrder[0]!,
+    );
+
+    await act(async () => {
+      mockLate!.onPhase({ phase: "stored", fileId: "fil_late" });
+      mockLate!.resolve({ delivery_package_photo: "fil_late" });
+    });
+    expect(api.recordDelivery).toHaveBeenCalledTimes(1);
+    expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
+      ...DOOR_PHOTO, ...REMINDED, clientAgreedToPhoto: true,
+    });
+  });
+
+  it("starts the next order with no ticks and no package photo", async () => {
+    const view = await render(<DeliveryProofScreen />);
+    await screen.findByText("No evidence yet");
+    await fireEvent.press(cameraButtons()[0]!);
+    await screen.findByText("Before you close the job");
+    await fireEvent.press(reminded());
+    await photographPackage();
+    await waitFor(() => expect(screen.getAllByText("Saved on the server")).toHaveLength(2));
+
+    mockOrderId = "ord_2";
+    await view.rerender(<DeliveryProofScreen />);
+    await screen.findByText("No evidence yet");
+    expect(screen.queryByText("Before you close the job")).toBeNull();
+    await fireEvent.press(cameraButtons()[0]!);
+    await screen.findByText("Before you close the job");
+    expect(reminded()).not.toBeChecked();
+    expect(consent()).not.toBeChecked();
+    expect(screen.queryByText("PACKAGE PHOTO")).toBeNull();
+
+    await fireEvent.press(reminded());
+    await fireEvent.press(confirm());
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith("ord_2", {
+      ...DOOR_PHOTO, ...REMINDED, clientAgreedToPhoto: false,
     }));
   });
 

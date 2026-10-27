@@ -29,6 +29,7 @@ import {
   handoffReminderBlockReason,
   handoffReminderFields,
   isPackagePhotoRefusal,
+  packagePhotoUnfinished,
 } from "@/lib/handoffReminder";
 import {
   HANDOVER_ESCALATION_REASON,
@@ -191,13 +192,13 @@ export default function DeliveryProofScreen() {
   // The card follows the door photo: by then the package is in the client's
   // hands, which is when the lines are said.
   const reminderCard = Boolean(order && !toOffice && evidence.evidence);
-  const reminderBlock = handoffReminderBlockReason({
-    toOffice,
-    reminded,
-    photoConsent,
-    packageEvidence: packagePhoto.evidence,
-    packageUpload: packagePhoto.upload,
-  });
+  const reminderBlock = handoffReminderBlockReason({ toOffice, reminded });
+  // Only an id the server confirmed is ever sent. A photo still sending, or
+  // one that failed, never holds the job; the button says it closes without it.
+  const packagePhotoFileId = packagePhoto.stored.delivery_package_photo ?? null;
+  const withoutPackagePhoto =
+    !toOffice &&
+    packagePhotoUnfinished({ photoConsent, packageEvidence: packagePhoto.evidence, packagePhotoFileId });
 
   function changePhotoConsent(value: boolean) {
     setPhotoConsent(value);
@@ -221,6 +222,9 @@ export default function DeliveryProofScreen() {
     if (!order || busy || escalating || blocked || !evidenceFileId) return;
     setBusy(true);
     setSubmitError(null);
+    // Drop unfinished optional work first, so a late upload cannot land on a
+    // job that has already closed without it.
+    if (withoutPackagePhoto) packagePhoto.clear();
     try {
       const updated = await api.recordDelivery(order.id, {
         evidenceFileId,
@@ -230,7 +234,7 @@ export default function DeliveryProofScreen() {
           toOffice,
           reminded,
           photoConsent,
-          packagePhotoFileId: packagePhoto.stored.delivery_package_photo ?? null,
+          packagePhotoFileId,
         }),
       });
       // Adopted here as well, so the receipt is gone before the screen is.
@@ -451,7 +455,13 @@ export default function DeliveryProofScreen() {
         {order ? (
           <PrimaryButton
             label={
-              busy ? "Recording…" : toOffice ? "Confirm drop-off" : "Confirm delivery"
+              busy
+                ? "Recording…"
+                : toOffice
+                  ? "Confirm drop-off"
+                  : withoutPackagePhoto
+                    ? "Confirm delivery without the package photo"
+                    : "Confirm delivery"
             }
             onPress={() => void confirmDelivery()}
             disabled={busy || escalating || Boolean(blocked)}
