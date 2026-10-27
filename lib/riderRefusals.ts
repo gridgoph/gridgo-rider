@@ -231,6 +231,48 @@ const REFUSALS: Record<string, Entry> = {
     step: null,
   },
 
+  // The reminder card at the door and its optional package photo
+  // (gridgo-api `docs/SHARING_AND_REMINDERS_API.md` → *Rider delivery completion*).
+  unsupported_handoff_reminder_version: {
+    message:
+      "GRIDGO's server does not recognise this app's door reminder, so nothing was recorded. Keep the package, update the app, and call Operations if it keeps happening.",
+    step: null,
+  },
+  client_reminder_required: {
+    message:
+      "GRIDGO needs your tick that you reminded the client. Say the lines on the card, tick it, then confirm again.",
+    step: null,
+  },
+  invalid_photo_consent: {
+    message:
+      "The client's photo answer did not reach the server in one piece. Tick or untick the photo box again, then confirm again.",
+    step: null,
+  },
+  invalid_package_photo: {
+    message:
+      "The package photo did not reach the server in one piece, so it was removed. Take it again, or confirm without it.",
+    step: null,
+  },
+  package_photo_consent_required: {
+    message:
+      "A package photo needs the client's agreement. Tick that the client agreed, or confirm without the photo.",
+    step: null,
+  },
+  package_photo_required: {
+    message:
+      "The package photo is not on this job, so it was removed. Take it again, or confirm without it.",
+    step: null,
+  },
+  package_photo_upload_not_allowed: {
+    message: `The package photo can only be added while you are delivering to the client's door. ${TRIP}`,
+    step: "trip",
+  },
+  delivery_reminder_not_available: {
+    message:
+      "This job ends at GRIDGO Office, so there is no client to remind. Go back to the trip and open the drop-off again.",
+    step: "trip",
+  },
+
   // The acknowledgement receipt, prepared at the door and issued again by the
   // delivery itself when it was not (gridgo-api ACKNOWLEDGEMENT_RECEIPTS_API.md).
   acknowledgement_not_available: {

@@ -63,6 +63,17 @@ const DOCUMENTED: Record<string, string[]> = {
     "handover_otp_mismatch",
     "handover_attempts_exceeded",
   ],
+  // gridgo-api `docs/SHARING_AND_REMINDERS_API.md` → "Rider delivery completion".
+  "delivery reminder": [
+    "unsupported_handoff_reminder_version",
+    "client_reminder_required",
+    "invalid_photo_consent",
+    "invalid_package_photo",
+    "package_photo_consent_required",
+    "package_photo_required",
+    "delivery_reminder_not_available",
+  ],
+  "attach delivery_package_photo": ["package_photo_upload_not_allowed"],
   // gridgo-api `docs/ACKNOWLEDGEMENT_RECEIPTS_API.md` → "Errors and rollout":
   // preparing the receipt at the door, and the delivery that issues it too.
   "acknowledgement-receipt": [
@@ -79,6 +90,7 @@ const ATTACH = [
   ...DOCUMENTED["attach packing_photo"]!,
   ...DOCUMENTED["attach handoff_signature"]!,
   ...DOCUMENTED["attach delivery_photo"]!,
+  ...DOCUMENTED["attach delivery_package_photo"]!,
 ];
 
 describe("every documented rider refusal reads as a reason and a next step", () => {
