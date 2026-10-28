@@ -155,7 +155,7 @@ export function evidenceBlockReason(
 
 /** File name for a capture: readable in a bucket listing, unique per second. */
 export function evidenceFileName(
-  step: "pickup" | "packing" | "delivery" | "failed-attempt",
+  step: "pickup" | "packing" | "delivery" | "package" | "failed-attempt",
   kind: EvidenceKind,
   atMs: number,
   extension: string,

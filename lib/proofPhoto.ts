@@ -8,7 +8,7 @@ import {
   type ProofEvidence,
 } from "@/lib/proofEvidence";
 
-export type CaptureStep = "pickup" | "packing" | "delivery" | "failed-attempt";
+export type CaptureStep = "pickup" | "packing" | "delivery" | "package" | "failed-attempt";
 
 /**
  * Why a capture produced nothing. The rider needs a different next step for

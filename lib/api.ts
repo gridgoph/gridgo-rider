@@ -10,6 +10,7 @@ import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
 import { parseOrderCall, parseOrderCalls, type CallPair, type OrderCall } from "@/lib/orderCalls";
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 import type { AcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
+import type { HandoffReminderFields } from "@/lib/handoffReminder";
 
 /**
  * GRIDGO demo API client.
@@ -1280,7 +1281,11 @@ export async function prepareAcknowledgementReceipt(orderId: string): Promise<Ac
  */
 export async function recordDelivery(
   orderId: string,
-  evidence: { evidenceFileId: string; evidenceType: "photo" | "signature"; otp?: string },
+  evidence: {
+    evidenceFileId: string;
+    evidenceType: "photo" | "signature";
+    otp?: string;
+  } & HandoffReminderFields,
 ): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {
     method: "POST",
