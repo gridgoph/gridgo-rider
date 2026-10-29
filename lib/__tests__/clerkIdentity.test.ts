@@ -94,35 +94,43 @@ describe("the name on the sign-in", () => {
 
 describe("passwordProblems", () => {
   it("passes a real change", () => {
-    const draft = { current: "oldpassword", next: "newpassword", confirm: "newpassword" };
+    const draft = {
+      current: "old-rider-password-1",
+      next: "new-rider-password-2",
+      confirm: "new-rider-password-2",
+    };
     expect(passwordProblems(draft)).toEqual({});
     expect(passwordReady(draft)).toBe(true);
   });
 
   it("asks for the current password before anything else", () => {
     expect(
-      passwordProblems({ current: "", next: "newpassword", confirm: "newpassword" }).current,
+      passwordProblems({ current: "", next: "new-rider-password-2", confirm: "new-rider-password-2" })
+        .current,
     ).toMatch(/sign in with now/i);
   });
 
   it("holds the new one to sign-up's own bar, in sign-up's own words", () => {
     expect(
-      passwordProblems({ current: "oldpassword", next: "short", confirm: "short" }).next,
-    ).toMatch(/at least 8 characters/i);
+      passwordProblems({ current: "old-rider-password-1", next: "short", confirm: "short" }).next,
+    ).toMatch(/at least 15 characters/i);
   });
 
   it("refuses the password the rider already has", () => {
     expect(
-      passwordProblems({ current: "samepassword", next: "samepassword", confirm: "samepassword" })
-        .next,
+      passwordProblems({
+        current: "same-rider-password",
+        next: "same-rider-password",
+        confirm: "same-rider-password",
+      }).next,
     ).toMatch(/already have/i);
   });
 
   it("catches a typo in the confirmation, on the confirmation", () => {
     const problems = passwordProblems({
-      current: "oldpassword",
-      next: "newpassword",
-      confirm: "newpasswrod",
+      current: "old-rider-password-1",
+      next: "new-rider-password-2",
+      confirm: "new-rider-pasword-2",
     });
     expect(problems.confirm).toMatch(/do not match/i);
     expect(problems.next).toBeUndefined();
@@ -130,14 +138,18 @@ describe("passwordProblems", () => {
 });
 
 describe("changeSignInPassword", () => {
-  const draft = { current: "oldpassword", next: "newpassword", confirm: "newpassword" };
+  const draft = {
+    current: "old-rider-password-1",
+    next: "new-rider-password-2",
+    confirm: "new-rider-password-2",
+  };
 
   it("signs every other session out, and does not offer not to", async () => {
     const user = { updatePassword: jest.fn(async () => undefined) };
     expect(await changeSignInPassword(user, draft)).toEqual({ status: "ok" });
     expect(user.updatePassword).toHaveBeenCalledWith({
-      currentPassword: "oldpassword",
-      newPassword: "newpassword",
+      currentPassword: "old-rider-password-1",
+      newPassword: "new-rider-password-2",
       signOutOfOtherSessions: true,
     });
   });

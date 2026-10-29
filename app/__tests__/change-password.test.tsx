@@ -48,18 +48,18 @@ describe("changing the sign-in password", () => {
     const view = await render(<ChangePasswordScreen />);
 
     expect(screen.getByText("Change your password")).toBeTruthy();
-    expect(screen.getByText(/At least 8 characters/)).toBeTruthy();
+    expect(screen.getByText("At least 15 characters.")).toBeTruthy();
     expect(screen.getByLabelText("Show current password")).toBeTruthy();
     expect(screen.getByLabelText("Show new password")).toBeTruthy();
     expect(screen.getByLabelText("Show confirm new password")).toBeTruthy();
 
     await type("New password", "short");
-    expect(screen.getByText("Use at least 8 characters.")).toBeTruthy();
+    expect(screen.getByText("Use at least 15 characters.")).toBeTruthy();
 
     fireEvent.press(screen.getByText("Change password"));
 
     expect(await screen.findByText("Enter the password you sign in with now.")).toBeTruthy();
-    expect(screen.getByText("Use at least 8 characters.")).toBeTruthy();
+    expect(screen.getByText("Use at least 15 characters.")).toBeTruthy();
     expect(mockUpdatePassword).not.toHaveBeenCalled();
     await view.unmount();
   });
@@ -71,16 +71,16 @@ describe("changing the sign-in password", () => {
       screen.getByText(/signs you out everywhere else you are signed in/i),
     ).toBeTruthy();
 
-    await type("Current password", "oldpassword");
-    await type("New password", "newpassword");
-    await type("Confirm new password", "newpassword");
+    await type("Current password", "old-rider-password-1");
+    await type("New password", "new-rider-password-2");
+    await type("Confirm new password", "new-rider-password-2");
 
     fireEvent.press(screen.getByText("Change password"));
 
     await waitFor(() =>
       expect(mockUpdatePassword).toHaveBeenCalledWith({
-        currentPassword: "oldpassword",
-        newPassword: "newpassword",
+        currentPassword: "old-rider-password-1",
+        newPassword: "new-rider-password-2",
         signOutOfOtherSessions: true,
       }),
     );

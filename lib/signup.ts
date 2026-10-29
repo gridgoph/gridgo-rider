@@ -10,8 +10,26 @@
 
 import type { RiderEnrollment } from "@/lib/api";
 
-/** The API's floor. Said on the field, not after a rejected submission. */
-export const MIN_PASSWORD_LENGTH = 8;
+/**
+ * Clerk's password policy, restated so a rider hears it on the field instead
+ * of from Clerk after pressing the button. Production and development both set
+ * `auth_password.min_length` to 15; this app saying 8 let a rider fill in the
+ * whole form and then be refused (gridgo-supplier#215 found the same in the
+ * shop app). Change it here when the policy changes — the policy itself is the
+ * captain's call, not this app's.
+ */
+export const MIN_PASSWORD_LENGTH = 15;
+
+/** The rule, said before the rider types — on every screen that sets a password. */
+export const PASSWORD_RULE = `At least ${MIN_PASSWORD_LENGTH} characters.`;
+
+/** The same rule, said when a password falls short of it. */
+export const PASSWORD_TOO_SHORT = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+
+/** `null` when the password is long enough for Clerk to take it. */
+export function passwordLengthProblem(password: string): string | null {
+  return password.length < MIN_PASSWORD_LENGTH ? PASSWORD_TOO_SHORT : null;
+}
 
 export const VEHICLE_TYPES = [
   {
@@ -86,13 +104,10 @@ export function checkSignupField(
             ok: false,
             reason: "Enter a number Operations can reach you on.",
           };
-    case "password":
-      return fields.password.length >= MIN_PASSWORD_LENGTH
-        ? ok
-        : {
-            ok: false,
-            reason: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
-          };
+    case "password": {
+      const reason = passwordLengthProblem(fields.password);
+      return reason ? { ok: false, reason } : ok;
+    }
     case "confirmation":
       if (!fields.confirmation) {
         return { ok: false, reason: "Repeat the password so it is not mistyped." };
