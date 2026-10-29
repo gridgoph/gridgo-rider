@@ -6,11 +6,13 @@ import { Text, TextInput, View } from "react-native";
 import { FormScroll } from "@/components/FormScroll";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
+import { PasswordRule } from "@/components/PasswordRule";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { fieldInputStyle } from "@/constants/theme";
 import { useThemeColors } from "@/hooks/useTheme";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
+import { passwordLengthProblem } from "@/lib/signup";
 import { useSession } from "@/store/session";
 
 type Step = "email" | "code" | "password";
@@ -26,6 +28,9 @@ export default function ResetPasswordScreen() {
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The shortfall is said once the rider has left the field or pressed the
+  // button, not on every keystroke while they are still typing.
+  const [checkedPassword, setCheckedPassword] = useState(false);
   const confirmationField = useRef<TextInput>(null);
 
   if (user) return <Redirect href="/(tabs)/active" />;
@@ -64,8 +69,9 @@ export default function ResetPasswordScreen() {
 
   async function savePassword() {
     if (fetchStatus === "fetching" || busy) return;
-    if (password.length < 8) {
-      setError("Use at least 8 characters for your password.");
+    setCheckedPassword(true);
+    if (passwordLengthProblem(password)) {
+      setError(null);
       return;
     }
     if (password !== confirmation) {
@@ -146,11 +152,13 @@ export default function ResetPasswordScreen() {
                   value={password}
                   onChangeText={setPassword}
                   autoComplete="new-password"
-                  placeholder="At least 8 characters"
+                  placeholder="Choose a new password"
                   accessibilityLabel="New password"
                   returnKeyType="next"
+                  onBlur={() => setCheckedPassword((checked) => checked || password.length > 0)}
                   onSubmitEditing={() => confirmationField.current?.focus()}
                 />
+                <PasswordRule problem={checkedPassword ? passwordLengthProblem(password) : null} />
               </View>
               <View className="gap-2">
                 <Text className="text-overline text-text-muted">CONFIRM PASSWORD</Text>

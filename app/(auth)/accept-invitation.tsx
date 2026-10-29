@@ -7,9 +7,11 @@ import { FormScroll } from "@/components/FormScroll";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PasswordField } from "@/components/PasswordField";
+import { PasswordRule } from "@/components/PasswordRule";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { clerkErrorMessage } from "@/lib/clerkAuth";
+import { passwordLengthProblem } from "@/lib/signup";
 import { useSession } from "@/store/session";
 
 export default function AcceptInvitationScreen() {
@@ -22,14 +24,18 @@ export default function AcceptInvitationScreen() {
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The shortfall is said once the rider has left the field or pressed the
+  // button, not on every keystroke while they are still typing.
+  const [checkedPassword, setCheckedPassword] = useState(false);
   const confirmationField = useRef<TextInput>(null);
 
   if (user) return <Redirect href="/(tabs)/active" />;
 
   async function acceptInvitation() {
     if (fetchStatus === "fetching" || !ticket || busy) return;
-    if (password.length < 8) {
-      setError("Use at least 8 characters for your password.");
+    setCheckedPassword(true);
+    if (passwordLengthProblem(password)) {
+      setError(null);
       return;
     }
     if (password !== confirmation) {
@@ -92,11 +98,13 @@ export default function AcceptInvitationScreen() {
                 value={password}
                 onChangeText={setPassword}
                 autoComplete="new-password"
-                placeholder="At least 8 characters"
+                placeholder="Choose a password"
                 accessibilityLabel="Password"
                 returnKeyType="next"
+                onBlur={() => setCheckedPassword((checked) => checked || password.length > 0)}
                 onSubmitEditing={() => confirmationField.current?.focus()}
               />
+              <PasswordRule problem={checkedPassword ? passwordLengthProblem(password) : null} />
             </View>
 
             <View className="gap-2">
