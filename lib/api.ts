@@ -9,6 +9,7 @@ import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryCha
 import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
 import { parseOrderCall, parseOrderCalls, type CallPair, type OrderCall } from "@/lib/orderCalls";
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
+import { MIN_PASSWORD_LENGTH } from "@/lib/signup";
 import type { AcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
 import type { HandoffReminderFields } from "@/lib/handoffReminder";
 
@@ -1658,7 +1659,7 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       case "application_already_exists":
         return "Your application is already on file. Sign out and sign back in to see where it stands.";
       case "invalid_password":
-        return "Use a password with at least 8 characters.";
+        return `Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`;
       case "invalid_email":
         return "Enter a complete email address.";
       case "name_required":

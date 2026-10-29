@@ -11,6 +11,7 @@ import { InlineNotice } from "@/components/InlineNotice";
 import { SignupConsentFields } from "@/components/legal/SignupConsentFields";
 import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { PasswordField } from "@/components/PasswordField";
+import { PasswordRule } from "@/components/PasswordRule";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { fieldInputStyle } from "@/constants/theme";
@@ -37,6 +38,7 @@ import {
   canSubmitSignup,
   enrollmentIdempotencyKey,
   firstSignupProblem,
+  passwordLengthProblem,
   toEnrollRequest,
   type SignupFields,
   type VehicleType,
@@ -83,6 +85,9 @@ export default function SignupScreen() {
 
   const [fields, setFields] = useState<SignupFields>(EMPTY_SIGNUP);
   const [localError, setLocalError] = useState<string | null>(null);
+  // The shortfall is said under the password once the rider has left it or
+  // tried to send, not on every keystroke while they are still typing.
+  const [checkedPassword, setCheckedPassword] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -219,6 +224,7 @@ export default function SignupScreen() {
 
   async function submit() {
     if (loading || busy) return;
+    setCheckedPassword(true);
     const problem =
       firstSignupProblem(fields, { identityExists: Boolean(isSignedIn) }) ?? consentProblem;
     if (problem) {
@@ -526,10 +532,14 @@ export default function SignupScreen() {
               value={fields.password}
               onChangeText={(password) => patch({ password })}
               autoComplete="new-password"
-              placeholder="At least 8 characters"
+              placeholder="Choose a password"
               accessibilityLabel="Password"
               returnKeyType="next"
+              onBlur={() => setCheckedPassword((checked) => checked || fields.password.length > 0)}
               onSubmitEditing={() => confirmationField.current?.focus()}
+            />
+            <PasswordRule
+              problem={checkedPassword ? passwordLengthProblem(fields.password) : null}
             />
           </View>
 
