@@ -67,9 +67,9 @@ A Google Play build ignores that tap's download and leaves the push in the inbox
 The side-load APK is unchanged: every push to `main` still builds it, puts it on the
 download page, publishes the GitHub Release and broadcasts the release push. The Play
 bundle is an extra build that you start by hand. You upload it to Play Console yourself,
-or let the run upload it to internal testing (see below).
+or let the run upload it to internal or closed testing (see below).
 
-1. In GitHub, open **Actions → Android release APK → Run workflow**. Choose `main`,
+1. In GitHub, open **Actions → Android release APK or Play testing bundle → Run workflow**. Choose `main`,
    select **play_bundle**, and run it.
 2. When the run is green, open its summary and download the `gridgo-rider-<version>-<sha>-play`
    artifact. The zip holds `gridgo-rider-<version>-<sha>.aab`. The summary also shows the versionCode.
@@ -100,13 +100,15 @@ a newer one. A **Re-run** keeps the original run's number, so start a new run in
 GitHub restarts the count if the workflow file is renamed or replaced, so keep the file
 where it is.
 
-**Upload to the internal testing track automatically.** Select **submit_to_play** as well
+**Upload to a testing track automatically.** Select **submit_to_play** as well
 as **play_bundle** when you run the workflow. The run builds and verifies the bundle as
 above and keeps the artifact. Then [EAS Submit](https://docs.expo.dev/submit/android/)
-uploads that same `.aab` to Play's **internal testing** track with release status
-`completed` (`eas.json`, profile `production`). The run summary says when the bundle was
-submitted. **submit_to_play** does nothing without **play_bundle**, and the APK path is
-unchanged.
+uploads that same `.aab` to **internal testing** by default (`eas.json`, profile
+`production`). Choose **play_track: closed** for **closed testing** (profile `closed`,
+Play track `alpha`). Both use release status `completed`: Google still reviews closed
+releases before testers can access them, while a draft would require a manual Play
+Console step each time. The run summary names the selected track. **submit_to_play**
+does nothing without **play_bundle**, and the APK path is unchanged.
 
 - The build still runs in GitHub Actions with the upload key. EAS only uploads the file.
   No keystore goes to Expo.

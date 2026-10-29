@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Release notes for a Play internal testing upload.
+ * Release notes for a Play testing upload.
  *
  * `eas submit` uploads the bundle but carries no release notes, so testers saw
  * a release with nothing to say what changed. After the submit, the release
