@@ -64,12 +64,49 @@ describe("OfferCard accept control", () => {
     expect(screen.queryByRole("button", { name: "Accept this job" })).toBeNull();
   });
 
+  it("turns Accept into a confirmation once the job is accepted", async () => {
+    await render(<OfferCard offer={offer} accepted onAccept={jest.fn()} />);
+
+    expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("says why the last accept did not go through, above Accept", async () => {
+    await render(
+      <OfferCard
+        offer={offer}
+        acceptError="Check this phone’s connection, then try again."
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Check this phone’s connection, then try again.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Accept this job" })).toBeTruthy();
+  });
+
   it("keeps Accept this job when the rider already has a trip", async () => {
     await render(<OfferCard offer={offer} disabled onAccept={jest.fn()} />);
 
     const button = screen.getByRole("button", { name: "Accept this job" });
     expect(button.props.accessibilityState?.disabled).toBe(true);
     expect(screen.queryByRole("button", { name: "Accepting…" })).toBeNull();
+  });
+});
+
+describe("OfferCard decision copy", () => {
+  it("states the six checks and pre-accept location sharing once, before Accept", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    const statement = screen.getByText(/run all six pickup checks with the supplier/);
+    expect(statement.props.children).toMatch(/shares your position with the shop until pickup/);
+    expect(screen.queryByText(/Once you accept/)).toBeNull();
+    expect(screen.getAllByText("Matina Crossing, Davao City").length).toBeGreaterThan(0);
+  });
+
+  it("shortens the older-order pin note to one line", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("An older order. Deliver to the address as shown.")).toBeTruthy();
   });
 });
 
