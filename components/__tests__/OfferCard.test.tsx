@@ -73,6 +73,23 @@ describe("OfferCard accept control", () => {
   });
 });
 
+describe("OfferCard decision copy", () => {
+  it("states the six checks and pre-accept location sharing once, before Accept", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    const statement = screen.getByText(/run all six pickup checks with the supplier/);
+    expect(statement.props.children).toMatch(/shares your position with the shop until pickup/);
+    expect(screen.queryByText(/Once you accept/)).toBeNull();
+    expect(screen.getAllByText("Matina Crossing, Davao City").length).toBeGreaterThan(0);
+  });
+
+  it("shortens the older-order pin note to one line", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("An older order. Deliver to the address as shown.")).toBeTruthy();
+  });
+});
+
 describe("OfferCard earnings", () => {
   it("leads with the rider's share and names the gross fee under it", async () => {
     await render(

@@ -10,7 +10,7 @@ import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
-import { routeSummaryLabel } from "@/lib/osrm";
+import { routeNoteBesideSummary, routeSummaryLabel } from "@/lib/osrm";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
 import { riderPay, riderPayDetail } from "@/lib/riderPay";
 import { tripDestination } from "@/lib/tripNav";
@@ -55,6 +55,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
   const { route, loading: routeLoading } = useRoute({ from: pickup, to: dropoff });
   const pay = riderPay(offer);
   const payDetail = riderPayDetail(pay);
+  const routeNote = routeNoteBesideSummary(route);
 
   return (
     <View className="gg-card gap-4">
@@ -102,9 +103,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
         compact
       />
 
-      {route?.statusLabel ? (
-        <Text className="text-caption text-text-muted">{route.statusLabel}</Text>
-      ) : null}
+      {routeNote ? <Text className="text-caption text-text-muted">{routeNote}</Text> : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
 
@@ -115,13 +114,14 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
         </View>
       ) : null}
 
+      {/*
+        What the tap commits to, in one statement and before the tap, because
+        the tap is what starts location sharing. It used to be two paragraphs
+        that pushed Accept under the tab bar on a 390 x 844 phone.
+      */}
       <Text className="text-body text-text-secondary">
-        Accept, travel to the shop, then run all six pickup checks together with the supplier
-        before carrying the package.
-      </Text>
-      {/* Said before the tap, because the tap is what starts it. */}
-      <Text className="text-caption text-text-muted">
-        Once you accept, the shop can see your position on the way there, until you collect the job.
+        Accepting shares your position with the shop until pickup. There, run all six pickup
+        checks with the supplier before carrying the package.
       </Text>
 
       <PrimaryButton

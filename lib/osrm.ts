@@ -154,3 +154,18 @@ export function routeSummaryLabel(route: RouteResult | null): string {
   }
   return `${dist} · ${formatDurationSeconds(route.durationSeconds)}`;
 }
+
+/**
+ * The route note to print under a map that already sits beside
+ * `routeSummaryLabel`, or null when that summary has said it.
+ *
+ * "1.7 km direct · travel time unavailable" already tells the rider the line
+ * is not a road route, so repeating it underneath only pushes the decision down
+ * the screen. With no distance at all the summary reads "Distance unknown",
+ * which does not say why, so the note stays.
+ */
+export function routeNoteBesideSummary(route: RouteResult | null): string | null {
+  if (!route?.statusLabel) return null;
+  if (!route.routed && route.distanceMetres > 0) return null;
+  return route.statusLabel;
+}
