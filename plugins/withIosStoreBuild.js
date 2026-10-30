@@ -5,8 +5,8 @@
  * - **No background audio.** expo-audio's plugin adds `UIBackgroundModes:
  *   audio` by default, and App Review refuses a background mode the app does
  *   not use (guideline 2.5.4). GRIDGO plays its sounds in the foreground only.
- *   The plugin's own `enableBackgroundPlayback: false` would also remove an
- *   Android service and permission, so the mode is taken out here instead.
+ *   `app.json` disables background playback on both platforms; this also keeps
+ *   the iOS mode absent if another plugin adds it.
  * - **Dynamic frameworks.** `@react-native-firebase` resolves the Firebase iOS
  *   SDK through Swift Package Manager, which needs `use_frameworks! :linkage
  *   => :dynamic` (https://rnfirebase.io/ios-spm). Set through

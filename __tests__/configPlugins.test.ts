@@ -49,6 +49,19 @@ function packageName(module: string): string {
 
 const plugins = Array.isArray(appJson.expo?.plugins) ? appJson.expo.plugins : [];
 
+it("keeps audio playback in the foreground without disabling the call microphone", () => {
+  const audio = plugins.find(
+    (entry): entry is [string, Record<string, unknown>] =>
+      Array.isArray(entry) && entry[0] === "expo-audio",
+  );
+
+  // The plugin defaults background playback on, adding Android media-playback
+  // service permissions and the iOS audio background mode. GRIDGO needs neither.
+  expect(audio?.[1].enableBackgroundPlayback).toBe(false);
+  expect(audio?.[1].recordAudioAndroid).not.toBe(false);
+  expect(audio?.[1].microphonePermission).not.toBe(false);
+});
+
 describe("expo.plugins names only packages this app installs", () => {
   it("finds plugins to check", () => {
     expect(plugins.length).toBeGreaterThan(0);

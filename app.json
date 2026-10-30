@@ -46,7 +46,12 @@
     "plugins": [
       "expo-router",
       "expo-asset",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false
+        }
+      ],
       [
         "expo-font",
         {
