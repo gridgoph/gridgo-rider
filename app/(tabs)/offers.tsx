@@ -141,6 +141,9 @@ export default function OffersScreen() {
     setAcceptError(null);
     try {
       setOrder(await api.acceptOffer(id));
+      // A pool read already in flight would answer without this job and take
+      // the card, confirmation and all, off the screen. Retire it.
+      nextRead();
       setAcceptedId(id);
       acceptedTimerRef.current = setTimeout(() => {
         acceptedTimerRef.current = null;
@@ -155,6 +158,10 @@ export default function OffersScreen() {
           ? ACCEPT_CONNECTION_FAILED
           : api.apiErrorMessage(e, "That job could not be accepted. Pull down to refresh and take another.");
       await reload();
+      // One answer to one tap: if the follow-up refresh failed too (a phone
+      // that is fully offline), its own notice would repeat the failure with
+      // the platform's raw text. The accept line says what to do.
+      setError(null);
       setAcceptError({ id, body: message });
     } finally {
       acceptingIdRef.current = null;
