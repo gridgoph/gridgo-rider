@@ -64,6 +64,26 @@ describe("OfferCard accept control", () => {
     expect(screen.queryByRole("button", { name: "Accept this job" })).toBeNull();
   });
 
+  it("turns Accept into a confirmation once the job is accepted", async () => {
+    await render(<OfferCard offer={offer} accepted onAccept={jest.fn()} />);
+
+    expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("says why the last accept did not go through, above Accept", async () => {
+    await render(
+      <OfferCard
+        offer={offer}
+        acceptError="Check this phone’s connection, then try again."
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Check this phone’s connection, then try again.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Accept this job" })).toBeTruthy();
+  });
+
   it("keeps Accept this job when the rider already has a trip", async () => {
     await render(<OfferCard offer={offer} disabled onAccept={jest.fn()} />);
 

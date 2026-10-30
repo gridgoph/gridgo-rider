@@ -1,7 +1,7 @@
 import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
 import { AlertsButton } from "@/components/AlertsButton";
@@ -21,6 +21,16 @@ import { approvalPresentation } from "@/lib/riderApproval";
 import { selectOffers } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
+
+/** Long enough to read "Job accepted" on the card, short enough not to wait on. */
+const ACCEPTED_BEAT_MS = 900;
+
+/**
+ * The plain line for an accept that never reached GRIDGO: the app's own
+ * connection copy, short enough to sit on one line above the button. The red
+ * icon and the unchanged "Accept this job" say it did not go through.
+ */
+const ACCEPT_CONNECTION_FAILED = "Check this phone’s connection, then try again.";
 
 /**
  * The open dispatch pool.
@@ -43,15 +53,27 @@ export default function OffersScreen() {
   const [offers, setOffers] = useState<api.Order[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const acceptingIdRef = useRef<string | null>(null);
+  /*
+    The accepted card holds for one beat before Active opens, so the tap gets
+    an answer on the card it was made on. Reloads wait it out: the pool would
+    otherwise drop the card, and the "job in hand" notice would take its place.
+  */
+  const [acceptedId, setAcceptedId] = useState<string | null>(null);
+  const acceptedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
+  /** A refused accept: said on its own card while that card is still listed. */
+  const [acceptError, setAcceptError] = useState<{ id: string; body: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const hasActive = Boolean(activeTrip);
+  const showJobInHand = hasActive && !acceptedId;
   const visibleOffers = selectedId ? offers?.filter(job => job.id === selectedId) : offers;
+  const acceptErrorOnCard = Boolean(acceptError && visibleOffers?.some((job) => job.id === acceptError.id));
   const approval = approvalPresentation(user);
 
   const nextRead = useReadVersion();
   const reload = useCallback(async () => {
+    if (acceptedTimerRef.current) return;
     const current = nextRead();
     // Every dispatch route answers 403 for an unapproved rider. Asking anyway
     // would turn a state the app already knows into an error it has to explain.
@@ -88,6 +110,7 @@ export default function OffersScreen() {
   */
   const pullToRefresh = useCallback(async () => {
     setRefreshing(true);
+    setAcceptError(null);
     try {
       await reload();
     } finally {
@@ -103,21 +126,36 @@ export default function OffersScreen() {
     }, [reload]),
   );
 
+  useEffect(
+    () => () => {
+      if (acceptedTimerRef.current) clearTimeout(acceptedTimerRef.current);
+    },
+    [],
+  );
+
   async function accept(id: string) {
-    if (hasActive || acceptingIdRef.current) return;
+    if (hasActive || acceptingIdRef.current || acceptedTimerRef.current) return;
     acceptingIdRef.current = id;
     setBusyId(id);
     setError(null);
+    setAcceptError(null);
     try {
       setOrder(await api.acceptOffer(id));
-      router.push("/(tabs)/active");
+      setAcceptedId(id);
+      acceptedTimerRef.current = setTimeout(() => {
+        acceptedTimerRef.current = null;
+        setAcceptedId(null);
+        router.push("/(tabs)/active");
+      }, ACCEPTED_BEAT_MS);
     } catch (e) {
-      const message = api.apiErrorMessage(
-        e,
-        "That job could not be accepted. Pull down to refresh and take another.",
-      );
+      // A fetch that never reached GRIDGO throws a bare TypeError whose text
+      // ("Network request failed") is the browser's, not ours.
+      const message =
+        e instanceof TypeError
+          ? ACCEPT_CONNECTION_FAILED
+          : api.apiErrorMessage(e, "That job could not be accepted. Pull down to refresh and take another.");
       await reload();
-      setError({ title: "Could not accept this job", body: message });
+      setAcceptError({ id, body: message });
     } finally {
       acceptingIdRef.current = null;
       setBusyId(null);
@@ -155,7 +193,7 @@ export default function OffersScreen() {
 
         <PushEnableCard />
 
-        {selectedId && approval.canWork && offers !== null && !error ? (
+        {selectedId && approval.canWork && offers !== null && !error && !acceptError ? (
           <InlineNotice
             tone="info"
             icon="info"
@@ -171,7 +209,7 @@ export default function OffersScreen() {
           rule is the whole answer, so it fills the screen rather than sitting
           as a notice above 600px of nothing.
         */}
-        {approval.canWork && hasActive && offers?.length === 0 ? (
+        {approval.canWork && showJobInHand && offers?.length === 0 ? (
           <EmptyState
             icon="trip"
             title="You already have a job in hand"
@@ -179,7 +217,7 @@ export default function OffersScreen() {
             actionLabel="Open my trip"
             onAction={() => router.push("/(tabs)/active")}
           />
-        ) : approval.canWork && hasActive ? (
+        ) : approval.canWork && showJobInHand ? (
           <InlineNotice
             tone="info"
             icon="info"
@@ -201,6 +239,20 @@ export default function OffersScreen() {
           />
         ) : null}
 
+        {acceptError && !acceptErrorOnCard ? (
+          <InlineNotice
+            tone="error"
+            icon="circle-x"
+            title="Could not accept this job"
+            body={acceptError.body}
+            actionLabel="Try again"
+            onAction={() => {
+              setAcceptError(null);
+              void reload();
+            }}
+          />
+        ) : null}
+
         {offers === null && approval.canWork ? <OfferListSkeleton /> : null}
 
         {visibleOffers?.length && approval.canWork ? (
@@ -210,6 +262,8 @@ export default function OffersScreen() {
                 key={job.id}
                 offer={job}
                 accepting={busyId === job.id}
+                accepted={acceptedId === job.id}
+                acceptError={acceptError?.id === job.id ? acceptError.body : null}
                 disabled={hasActive || (busyId != null && busyId !== job.id)}
                 onAccept={() => void accept(job.id)}
               />
@@ -222,7 +276,7 @@ export default function OffersScreen() {
           and offers the next step, so an empty state repeating it would be a
           second invitation to the same place.
         */}
-        {approval.canWork && offers !== null && !offers.length && !error && !hasActive && !selectedId ? (
+        {approval.canWork && offers !== null && !offers.length && !error && !acceptError && !hasActive && !selectedId ? (
           <EmptyState
             icon="offers"
             title="No open offers"
