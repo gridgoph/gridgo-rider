@@ -124,7 +124,7 @@ export function deliveryPinView(order: PinFields, now: Date | number = Date.now(
   return {
     status: "none",
     title: "No pin confirmation on this order",
-    detail: "It was placed before clients confirmed their pin. Deliver to the address as shown.",
+    detail: "An older order. Deliver to the address as shown.",
     confirmedAt: null,
     receiverName: null,
     notes: null,

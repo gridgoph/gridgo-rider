@@ -68,6 +68,7 @@ describe("the client's drop-off pin, as the rider reads it", () => {
     expect(deliveryPinView(order(), NOW)).toMatchObject({
       status: "none",
       title: "No pin confirmation on this order",
+      detail: "An older order. Deliver to the address as shown.",
       receiverName: null,
       notes: null,
     });

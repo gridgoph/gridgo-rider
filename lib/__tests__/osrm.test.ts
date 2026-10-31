@@ -1,6 +1,7 @@
 import {
   fallbackRoute,
   parseOsrmResponse,
+  routeNoteBesideSummary,
   routeSummaryLabel,
   type OsrmRouteResponse,
 } from "@/lib/osrm";
@@ -83,6 +84,27 @@ describe("routeSummaryLabel", () => {
       statusLabel: null,
     });
     expect(label).toBe("3.9 km · 9 min");
+  });
+});
+
+describe("routeNoteBesideSummary", () => {
+  it("drops the fallback note the summary already says", () => {
+    const fallback = fallbackRoute(pickup, dropoff);
+    expect(routeSummaryLabel(fallback)).toMatch(/direct · travel time unavailable/);
+    expect(routeNoteBesideSummary(fallback)).toBeNull();
+  });
+
+  it("keeps the note when the summary cannot say why", () => {
+    const noCoordinates = {
+      routed: false,
+      distanceMetres: 0,
+      durationSeconds: null,
+      coordinates: [],
+      statusLabel: "This job has no map coordinates. Use the addresses below.",
+    };
+    expect(routeSummaryLabel(noCoordinates)).toBe("Distance unknown");
+    expect(routeNoteBesideSummary(noCoordinates)).toBe(noCoordinates.statusLabel);
+    expect(routeNoteBesideSummary(null)).toBeNull();
   });
 });
 

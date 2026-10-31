@@ -207,6 +207,115 @@ describe("Offers accept button", () => {
     expect(screen.queryByRole("button", { name: "Accepting…" })).toBeNull();
   });
 
+  it("confirms the accept on its card before opening Active", async () => {
+    const router = jest.requireMock("expo-router").router as { push: jest.Mock };
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+
+    expect(api.acceptOffer).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Accept this job" })).toBeNull();
+    // The beat is the card's: the "job in hand" notice does not cut in.
+    expect(screen.queryByText("You already have a job in hand")).toBeNull();
+    expect(router.push).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(tabs)/active"), { timeout: 2000 });
+    expect(api.acceptOffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("says a dropped connection plainly on the card it happened on", async () => {
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    api.acceptOffer.mockRejectedValue(new TypeError("Network request failed"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+
+    expect(await screen.findByText("Check this phone’s connection, then try again.")).toBeTruthy();
+    expect(screen.queryByText(/Network request failed/)).toBeNull();
+    expect(screen.queryByText("Could not accept this job")).toBeNull();
+    const accept = screen.getByRole("button", { name: "Accept this job" });
+    expect(accept.props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it("says one plain line when the phone is fully offline, then accepts on retry", async () => {
+    const router = jest.requireMock("expo-router").router as { push: jest.Mock };
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    const offline = new TypeError("Network request failed");
+    api.acceptOffer.mockRejectedValueOnce(offline);
+    api.listOffers.mockRejectedValueOnce(offline);
+    api.listOrders.mockRejectedValueOnce(offline);
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+
+    expect(await screen.findByText("Check this phone’s connection, then try again.")).toBeTruthy();
+    expect(screen.queryByText(/Network request failed/)).toBeNull();
+    expect(screen.queryByText("Offers did not load")).toBeNull();
+    expect(screen.queryByText("Could not accept this job")).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+
+    expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
+    expect(screen.queryByText("Check this phone’s connection, then try again.")).toBeNull();
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(tabs)/active"), { timeout: 2000 });
+    expect(api.acceptOffer).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the confirmation when a pool read already in flight answers", async () => {
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    let finishRefresh: (value: Order[]) => void = () => undefined;
+    api.listOffers.mockImplementationOnce(
+      () =>
+        new Promise<Order[]>((resolve) => {
+          finishRefresh = resolve;
+        }),
+    );
+    await act(async () => { invalidate("dispatch"); });
+    await waitFor(() => expect(api.listOffers).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+    expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
+
+    await act(async () => { finishRefresh([]); });
+    expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
+  });
+
+  it("still shows a standalone refresh failure", async () => {
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    api.listOffers.mockRejectedValueOnce(new Error("offline"));
+
+    await act(async () => { invalidate("dispatch"); });
+
+    expect(await screen.findByText("Offers did not load")).toBeTruthy();
+  });
+
+  it("says a taken job on its card while the card is still listed", async () => {
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    api.acceptOffer.mockRejectedValue(new ApiError(409, { error: "not_offerable" }));
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+
+    expect(await screen.findByText(/This job is no longer available/)).toBeTruthy();
+    expect(screen.queryByText("Could not accept this job")).toBeNull();
+  });
+
   it("does not leave a second card on Accepting while one accept is in flight", async () => {
     let finishFirst: (value: Order) => void = () => undefined;
     api.listOffers.mockResolvedValue([offer, otherOffer]);

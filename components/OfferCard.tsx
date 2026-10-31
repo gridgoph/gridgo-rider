@@ -1,4 +1,4 @@
-import { Route } from "lucide-react-native";
+import { CircleCheck, CircleX, Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
@@ -10,7 +10,7 @@ import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
-import { routeSummaryLabel } from "@/lib/osrm";
+import { routeNoteBesideSummary, routeSummaryLabel } from "@/lib/osrm";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
 import { riderPay, riderPayDetail } from "@/lib/riderPay";
 import { tripDestination } from "@/lib/tripNav";
@@ -22,6 +22,10 @@ type Props = {
   offer: Order;
   /** True only while this card's accept request is in flight. */
   accepting?: boolean;
+  /** GRIDGO has assigned this job to the rider; Active opens next. */
+  accepted?: boolean;
+  /** Why the last accept on this card did not go through, in one plain line. */
+  acceptError?: string | null;
   /** Already carrying a job, or another card is accepting. */
   disabled?: boolean;
   onAccept: () => void;
@@ -47,7 +51,14 @@ type Props = {
  * share of the fee, the gross sits underneath in the caption voice, so the
  * split is stated rather than discovered on the earnings tab.
  */
-export function OfferCard({ offer, accepting = false, disabled = false, onAccept }: Props) {
+export function OfferCard({
+  offer,
+  accepting = false,
+  accepted = false,
+  acceptError = null,
+  disabled = false,
+  onAccept,
+}: Props) {
   const colors = useThemeColors();
   const pickup = stopLatLng(offer.pickup);
   const destination = tripDestination(offer);
@@ -55,6 +66,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
   const { route, loading: routeLoading } = useRoute({ from: pickup, to: dropoff });
   const pay = riderPay(offer);
   const payDetail = riderPayDetail(pay);
+  const routeNote = routeNoteBesideSummary(route);
 
   return (
     <View className="gg-card gap-4">
@@ -102,9 +114,7 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
         compact
       />
 
-      {route?.statusLabel ? (
-        <Text className="text-caption text-text-muted">{route.statusLabel}</Text>
-      ) : null}
+      {routeNote ? <Text className="text-caption text-text-muted">{routeNote}</Text> : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
 
@@ -115,21 +125,49 @@ export function OfferCard({ offer, accepting = false, disabled = false, onAccept
         </View>
       ) : null}
 
+      {/*
+        What the tap commits to, in one statement and before the tap, because
+        the tap is what starts location sharing. It used to be two paragraphs
+        that pushed Accept under the tab bar on a 390 x 844 phone.
+      */}
       <Text className="text-body text-text-secondary">
-        Accept, travel to the shop, then run all six pickup checks together with the supplier
-        before carrying the package.
-      </Text>
-      {/* Said before the tap, because the tap is what starts it. */}
-      <Text className="text-caption text-text-muted">
-        Once you accept, the shop can see your position on the way there, until you collect the job.
+        Accepting shares your position with the shop until pickup. There, run all six pickup
+        checks with the supplier before carrying the package.
       </Text>
 
-      <PrimaryButton
-        label={accepting ? "Accepting…" : "Accept this job"}
-        onPress={onAccept}
-        disabled={accepting || disabled}
-        size="large"
-      />
+      {/*
+        The answer to the tap lands where the tap was. Accepted: the button's
+        place becomes the confirmation, in the button's height so nothing jumps.
+        Refused: one line sits on the button it is about, and the button is the
+        retry.
+      */}
+      {accepted ? (
+        <View
+          className="min-h-14 flex-row items-center justify-center gap-2 rounded-field border border-outline"
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <CircleCheck size={20} color={colors.success} strokeWidth={2} />
+          <Text className="text-body-lg font-bold text-success">Job accepted. Opening your trip…</Text>
+        </View>
+      ) : (
+        <View className="gap-2">
+          {acceptError ? (
+            <View className="flex-row items-start gap-2" accessibilityRole="alert">
+              <View className="pt-0.5">
+                <CircleX size={16} color={colors.error} strokeWidth={2} />
+              </View>
+              <Text className="min-w-0 flex-1 text-body text-error">{acceptError}</Text>
+            </View>
+          ) : null}
+          <PrimaryButton
+            label={accepting ? "Accepting…" : "Accept this job"}
+            onPress={onAccept}
+            disabled={accepting || disabled}
+            size="large"
+          />
+        </View>
+      )}
     </View>
   );
 }
