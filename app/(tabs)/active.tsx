@@ -3,7 +3,6 @@ import { ProductionSpecifications } from "@/components/ProductionSpecifications"
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
 
 import { AlertsButton } from "@/components/AlertsButton";
 import { ChatButton } from "@/components/ChatButton";
@@ -14,13 +13,13 @@ import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EmptyState } from "@/components/EmptyState";
 import { ForcedByGridgo } from "@/components/ForcedByGridgo";
 import { InlineNotice } from "@/components/InlineNotice";
+import { JobHeader } from "@/components/JobHeader";
 import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
 import { LocationHealthCard } from "@/components/LocationHealthCard";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { NavigateButton } from "@/components/NavigateButton";
-import { PrimaryButton } from "@/components/PrimaryButton";
 import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -31,7 +30,6 @@ import { TripMap } from "@/components/TripMap";
 import { TripContacts } from "@/components/TripContacts";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useOrderCalls } from "@/hooks/useOrderCalls";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useTripLocation } from "@/store/tripLocation";
 import { useRoute } from "@/hooks/useRoute";
@@ -43,6 +41,7 @@ import type { TripChatParty } from "@/lib/tripChat";
 import { classifyLocation } from "@/lib/locationFreshness";
 import { useLocationHealth } from "@/hooks/useLocationHealth";
 import { routeSummaryLabel } from "@/lib/osrm";
+import { jobProgress } from "@/lib/jobProgress";
 import { checklistSummary } from "@/lib/pickupChecklist";
 import { approvalPresentation } from "@/lib/riderApproval";
 import {
@@ -80,9 +79,9 @@ const MAP_HEIGHT = Math.min(520, Math.max(320, Math.round(Dimensions.get("window
 /**
  * The trip in hand.
  *
- * Reading order is the order a rider needs it in: where you are going, how far,
- * the step that gets it done, then the map, then what the job is, then its
- * history. Every proof step is its own pushed screen, so this screen never
+ * Reading order is the order a rider needs it in: both stops and the step that
+ * gets it done, then where you are going right now and how far, then the map,
+ * then what the job is, then its history. Every proof step is its own pushed screen, so this screen never
  * grows a second yellow button and never asks for anything.
  *
  * Two states outrank the ladder, and both replace the step rather than sitting
@@ -93,7 +92,6 @@ const MAP_HEIGHT = Math.min(520, Math.max(320, Math.round(Dimensions.get("window
 export default function ActiveScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const reducedMotion = useReducedMotion();
   const user = useSession((s) => s.user);
 
   const trip = useActiveTrip((s) => s.order);
@@ -308,6 +306,93 @@ export default function ActiveScreen() {
 
         {trip && approval.canWork ? (
           <>
+            {/*
+              Where it is collected, where it goes, the one step that is next,
+              and that step's move — above everything else (#163). Transport
+              refused is the step refused with it: no move is offered while a
+              failed check is with Operations.
+            */}
+            <JobHeader
+              pickup={shop?.label ?? "Shop"}
+              dropoff={destination?.label ?? "Client"}
+              progress={jobProgress(trip, phase)}
+              action={cta ? { label: cta, onPress: openPrimary } : null}
+            >
+              {phase === "pickup_checks" && ridersPack(trip) ? (
+                <InlineNotice
+                  tone="info"
+                  icon="info"
+                  title="Check it before it is packed"
+                  body="At the shop, count and check every piece unpacked, together with the shop. Then they pack it in front of you, you photograph it, and they sign."
+                />
+              ) : phase === "pickup_checks" ? (
+                <InlineNotice
+                  tone="info"
+                  icon="info"
+                  title="Check together at the shop"
+                  body="Travel to the supplier, then run all six pickup checks together at the counter. Keep the package there until every check passes."
+                />
+              ) : null}
+
+              {phase === "pickup_pack" ? (
+                <InlineNotice
+                  tone="info"
+                  icon="info"
+                  title="Watch them pack it"
+                  body="Your check is recorded. Stay at the counter while the shop packs the pieces you checked, then photograph the packed job."
+                />
+              ) : null}
+
+              {phase === "pickup_sign" ? (
+                <InlineNotice
+                  tone="info"
+                  icon="info"
+                  title="The shop signs next"
+                  body="The packed photo is saved. Hand your phone to the shop to sign — then the package is yours to carry."
+                />
+              ) : null}
+
+              {phase === "pickup_blocked" ? (
+                <InlineNotice
+                  tone="error"
+                  icon="circle-x"
+                  title="Pickup blocked. Operations has been alerted."
+                  body={`${checklistSummary(trip) ?? "A pickup check failed."} GRIDGO has logged it against the supplier and raised it with Operations and the founder. Leave the package at the shop and wait — you will get an alert here with what to do next.`}
+                />
+              ) : null}
+
+              {phase === "complete" ? (
+                <InlineNotice
+                  tone="success"
+                  icon="circle-check"
+                  title="Delivered"
+                  body={`The client has ${issueWindowLabel(issueWindowHours)} to raise an issue. Nothing else is needed from you.`}
+                  actionLabel="Browse offers"
+                  onAction={() => router.push("/(tabs)/offers")}
+                />
+              ) : null}
+
+              {/*
+                The trained sign-off, for as long as it is owed. Not a phase: no
+                server record clears it, and a step only this phone could tick
+                would sit there forever.
+              */}
+              {signOff ? (
+                <View className="gap-3 rounded-card border-2 border-accent bg-surface p-4">
+                  <Text className="text-overline text-text-muted">
+                    SAY THIS TO THE SUPPLIER BEFORE YOU RIDE
+                  </Text>
+                  <Text className="text-h3 text-text-primary">{signOff}</Text>
+                  <SecondaryButton
+                    label="Show me the checkpoint again"
+                    onPress={() =>
+                      router.push({ pathname: "/trip/sign-off", params: { orderId: trip.id } })
+                    }
+                  />
+                </View>
+              ) : null}
+            </JobHeader>
+
             {/* Time-sensitive, so above the route: they may still be waiting. */}
             {missedCall ? (
               <MissedCallCard
@@ -355,88 +440,6 @@ export default function ActiveScreen() {
                   <NavigateButton order={trip} stopKind={heading.cardKind} />
                 ) : null}
               </NextStopCard>
-            ) : null}
-
-            {/*
-              Transport is refused, so the step is refused with it. A yellow
-              button here would be the app offering a move the business has
-              already stopped.
-            */}
-            {phase === "pickup_checks" && ridersPack(trip) ? (
-              <InlineNotice
-                tone="info"
-                icon="info"
-                title="Check it before it is packed"
-                body="At the shop, count and check every piece unpacked, together with the shop. Then they pack it in front of you, you photograph it, and they sign."
-              />
-            ) : phase === "pickup_checks" ? (
-              <InlineNotice
-                tone="info"
-                icon="info"
-                title="Check together at the shop"
-                body="Travel to the supplier, then run all six pickup checks together at the counter. Keep the package there until every check passes."
-              />
-            ) : null}
-
-            {phase === "pickup_pack" ? (
-              <InlineNotice
-                tone="info"
-                icon="info"
-                title="Watch them pack it"
-                body="Your check is recorded. Stay at the counter while the shop packs the pieces you checked, then photograph the packed job."
-              />
-            ) : null}
-
-            {phase === "pickup_sign" ? (
-              <InlineNotice
-                tone="info"
-                icon="info"
-                title="The shop signs next"
-                body="The packed photo is saved. Hand your phone to the shop to sign — then the package is yours to carry."
-              />
-            ) : null}
-
-            {phase === "pickup_blocked" ? (
-              <InlineNotice
-                tone="error"
-                icon="circle-x"
-                title="Pickup blocked. Operations has been alerted."
-                body={`${checklistSummary(trip) ?? "A pickup check failed."} GRIDGO has logged it against the supplier and raised it with Operations and the founder. Leave the package at the shop and wait — you will get an alert here with what to do next.`}
-              />
-            ) : null}
-
-            {/*
-              The step sits directly under where the rider is going, above the
-              fold on every phone. Status is the chip; this button is the move.
-            */}
-            {cta ? (
-              <Animated.View
-                key={phase}
-                entering={reducedMotion ? undefined : FadeIn.duration(200)}
-                className="gap-2"
-              >
-                <PrimaryButton label={cta} onPress={openPrimary} size="large" />
-              </Animated.View>
-            ) : null}
-
-            {/*
-              The trained sign-off, for as long as it is owed. Not a phase: no
-              server record clears it, and a step only this phone could tick
-              would sit there forever.
-            */}
-            {signOff ? (
-              <View className="gap-3 rounded-card border-2 border-accent bg-surface p-4">
-                <Text className="text-overline text-text-muted">
-                  SAY THIS TO THE SUPPLIER BEFORE YOU RIDE
-                </Text>
-                <Text className="text-h3 text-text-primary">{signOff}</Text>
-                <SecondaryButton
-                  label="Show me the checkpoint again"
-                  onPress={() =>
-                    router.push({ pathname: "/trip/sign-off", params: { orderId: trip.id } })
-                  }
-                />
-              </View>
             ) : null}
 
             <TripContacts trip={trip} onCall={call} />
@@ -496,17 +499,6 @@ export default function ActiveScreen() {
               freshness={locationBlocked && freshness?.level === "off" ? null : freshness}
               audience={audience}
             />
-
-            {phase === "complete" ? (
-              <InlineNotice
-                tone="success"
-                icon="circle-check"
-                title="Delivered"
-                body={`The client has ${issueWindowLabel(issueWindowHours)} to raise an issue. Nothing else is needed from you.`}
-                actionLabel="Browse offers"
-                onAction={() => router.push("/(tabs)/offers")}
-              />
-            ) : null}
 
             {/* The job itself — reference, not the headline. */}
             <View className="gap-3">
