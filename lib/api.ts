@@ -322,7 +322,16 @@ export type Order = {
    * rider's unread count. Read it through `pickupChatOf` (`lib/pickupChat.ts`).
    */
   pickupChat?: PickupChatSummary | null;
+  /**
+   * The client's promise date. Never shown in this app — see `readyBy`.
+   */
   promisedDate: string | null;
+  /**
+   * When the shop will have the job ready: its own deadline, not the client's
+   * padded promise. Read it through `pickupReadyLabel` (`lib/pickupReady.ts`).
+   * Absent from an API that does not project it.
+   */
+  readyBy?: string | null;
   artworkName: string | null;
   artworkFileIds?: string[];
   mockupFileIds?: string[];

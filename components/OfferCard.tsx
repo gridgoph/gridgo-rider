@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, Route } from "lucide-react-native";
+import { CircleCheck, CircleX, Clock, Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
@@ -11,6 +11,7 @@ import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { routeNoteBesideSummary, routeSummaryLabel } from "@/lib/osrm";
+import { pickupReadyLabel } from "@/lib/pickupReady";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
 import { riderPay, riderPayDetail } from "@/lib/riderPay";
 import { tripDestination } from "@/lib/tripNav";
@@ -67,6 +68,7 @@ export function OfferCard({
   const pay = riderPay(offer);
   const payDetail = riderPayDetail(pay);
   const routeNote = routeNoteBesideSummary(route);
+  const readyLabel = pickupReadyLabel(offer);
 
   return (
     <View className="gg-card gap-4">
@@ -117,6 +119,14 @@ export function OfferCard({
       {routeNote ? <Text className="text-caption text-text-muted">{routeNote}</Text> : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
+
+      {/* The shop's ready time, said as a pickup time. Never the client's date. */}
+      {readyLabel ? (
+        <View className="flex-row items-center gap-2">
+          <Clock size={16} color={colors.textMuted} strokeWidth={2} />
+          <Text className="shrink text-body text-text-secondary">{readyLabel}</Text>
+        </View>
+      ) : null}
 
       {/* Who meets the rider, before they commit to the ride. */}
       {destination.kind === "client" ? (
