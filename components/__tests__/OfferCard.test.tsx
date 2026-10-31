@@ -189,3 +189,34 @@ describe("OfferCard unanswered pin", () => {
     expect(screen.queryByText("Hand it to")).toBeNull();
   });
 });
+
+describe("OfferCard pickup time", () => {
+  it("shows the shop's ready time as a pickup time", async () => {
+    await render(<OfferCard offer={{ ...offer, readyBy: "2099-01-15T06:30:00.000Z" }} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("Ready for pickup by Thu, Jan 15, 2:30 PM")).toBeTruthy();
+  });
+
+  it("says ready now when the ready time has passed", async () => {
+    await render(<OfferCard offer={{ ...offer, readyBy: "2020-01-15T06:30:00.000Z" }} onAccept={jest.fn()} />);
+
+    expect(screen.getByText("Ready for pickup now")).toBeTruthy();
+  });
+
+  it("never falls back to the client's promise date or the deadline", async () => {
+    await render(
+      <OfferCard
+        offer={{
+          ...offer,
+          readyBy: null,
+          promisedDate: "2099-01-20T06:30:00.000Z",
+          deadline: "2099-01-21T06:30:00.000Z",
+        }}
+        onAccept={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/Ready for pickup/)).toBeNull();
+    expect(screen.queryByText(/Jan 20|Jan 21/)).toBeNull();
+  });
+});
