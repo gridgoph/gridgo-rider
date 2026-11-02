@@ -323,7 +323,9 @@ export default function DeliveryProofScreen() {
           tone="error"
           icon={refusal.kind === "locked" ? "clock" : "circle-x"}
           title={refusal.kind === "locked" ? "Code check locked" : "That code does not match"}
-          body={`${refusal.message} Keep the package with you. Ask the client to read the code again, or escalate to Operations.`}
+          body={`${refusal.detail ? `${refusal.detail} ` : ""}Keep the package with you. ${
+            refusal.kind === "locked" ? "Wait until then" : "Ask the client to read the code again"
+          }, or escalate to Operations.`}
         />
       ) : null}
 

@@ -36,7 +36,7 @@ describe("spoken handover code rules", () => {
 
   it("distinguishes mismatch and lockout, ignoring unrelated errors", () => {
     expect(handoverRefusal(new ApiError(409, { error: "handover_otp_mismatch" }))).toEqual({
-      kind: "mismatch", message: "That code does not match.", retryAtMs: null,
+      kind: "mismatch", message: "That code does not match.", detail: "", retryAtMs: null,
     });
     const retryAfter = "2026-10-08T09:15:00.000Z";
     expect(handoverRefusal(new ApiError(429, { error: "handover_attempts_exceeded", retryAfter })))

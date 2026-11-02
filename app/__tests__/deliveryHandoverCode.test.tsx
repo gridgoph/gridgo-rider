@@ -169,7 +169,7 @@ describe("the spoken handover code at the door", () => {
     await openDelivery();
     await refuseCode();
     // The prompt is back up for the client to read the code again.
-    expect(screen.getByText(/That code does not match\. Keep the package/)).toBeTruthy();
+    expect(screen.getByText(/^Keep the package with you\. Ask the client to read the code again/)).toBeTruthy();
     expect(screen.queryByText(/tries remaining/)).toBeNull();
     expect(codeInput().props.value).toBe("");
     expect(isDisabled(proceed())).toBe(true);
@@ -207,6 +207,7 @@ describe("the spoken handover code at the door", () => {
         month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit",
       });
       expect(screen.getAllByText(`Too many attempts. Try again at ${retryLabel}.`).length).toBeGreaterThan(0);
+      expect(screen.getByText(/Keep the package with you\. Wait until then, or escalate to Operations\.$/)).toBeTruthy();
       await enterCode("001234");
       await fireEvent.press(proceed());
       expect(isDisabled(confirm())).toBe(true);

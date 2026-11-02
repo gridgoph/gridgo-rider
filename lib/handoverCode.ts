@@ -12,6 +12,8 @@ export type HandoverCodeLoad =
 export type HandoverRefusal = {
   kind: "mismatch" | "locked";
   message: string;
+  /** What the notice adds under its title, without repeating the title. */
+  detail: string;
   retryAtMs: number | null;
 };
 
@@ -55,9 +57,14 @@ export function handoverRefusal(error: unknown): HandoverRefusal | null {
   if (code === "handover_otp_mismatch") {
     const remaining = "remainingAttempts" in error.body ? error.body.remainingAttempts : null;
     const tries = typeof remaining === "number" && Number.isInteger(remaining) && remaining >= 0
-      ? ` ${remaining} ${remaining === 1 ? "try" : "tries"} remaining.`
+      ? `${remaining} ${remaining === 1 ? "try" : "tries"} remaining.`
       : "";
-    return { kind: "mismatch", message: `That code does not match.${tries}`, retryAtMs: null };
+    return {
+      kind: "mismatch",
+      message: tries ? `That code does not match. ${tries}` : "That code does not match.",
+      detail: tries,
+      retryAtMs: null,
+    };
   }
   if (code === "handover_attempts_exceeded") {
     const retryAfter = "retryAfter" in error.body ? error.body.retryAfter : null;
@@ -68,7 +75,7 @@ export function handoverRefusal(error: unknown): HandoverRefusal | null {
       : `Try again at ${new Date(retryAtMs).toLocaleString("en-PH", {
           month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit",
         })}.`;
-    return { kind: "locked", message: `Too many attempts. ${when}`, retryAtMs };
+    return { kind: "locked", message: `Too many attempts. ${when}`, detail: `Too many attempts. ${when}`, retryAtMs };
   }
   return null;
 }
