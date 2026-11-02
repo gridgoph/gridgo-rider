@@ -89,6 +89,18 @@ describe("Past jobs", () => {
     });
   });
 
+  it("says which of a shop's separate deliveries a past job was", async () => {
+    api.listOrders.mockResolvedValue([
+      order({ id: "ord_split", state: "completed", title: "Split flyers", deliveryNumber: 2, shopDeliveryCount: 2 }),
+      order({ id: "ord_single", state: "completed", title: "Single flyers" }),
+    ]);
+    await render(<PastJobsScreen />);
+
+    expect(await screen.findByText("Split flyers")).toBeTruthy();
+    expect(screen.getAllByText(/Delivery 2 of 2$/)).toHaveLength(1);
+    expect(screen.queryByText(/Delivery 1 of/)).toBeNull();
+  });
+
   it("invites a new rider to take a job when the ledger is empty", async () => {
     api.listOrders.mockResolvedValue([]);
     await render(<PastJobsScreen />);

@@ -9,6 +9,7 @@ import { PastJobDetailSkeleton } from "@/components/SkeletonScreens";
 import { RiderPayRows } from "@/components/RiderPayRows";
 import { SpecRow } from "@/components/SpecRow";
 import { OrderReference } from "@/components/OrderReference";
+import { DeliveryPart } from "@/components/DeliveryPart";
 import { StatusChip } from "@/components/StatusChip";
 import { TripTimeline } from "@/components/TripTimeline";
 import { useTripOrder } from "@/hooks/useTripOrder";
@@ -62,6 +63,7 @@ export default function PastJobScreen() {
                 <View className="min-w-0 flex-1 gap-1">
                   <Text className="text-h3 text-text-primary">{order.title}</Text>
                   <OrderReference id={order.id} />
+                  <DeliveryPart order={order} />
                 </View>
                 {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>

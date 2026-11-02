@@ -220,3 +220,19 @@ describe("OfferCard pickup time", () => {
     expect(screen.queryByText(/Jan 20|Jan 21/)).toBeNull();
   });
 });
+
+describe("OfferCard split delivery", () => {
+  it("says which of the shop's deliveries this job is", async () => {
+    await render(
+      <OfferCard offer={{ ...offer, deliveryNumber: 1, shopDeliveryCount: 2 }} onAccept={jest.fn()} />,
+    );
+
+    expect(screen.getByText("Delivery 1 of 2")).toBeTruthy();
+  });
+
+  it("says nothing extra on a single delivery", async () => {
+    await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
+
+    expect(screen.queryByText(/^Delivery \d+ of \d+$/)).toBeNull();
+  });
+});

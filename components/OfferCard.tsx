@@ -2,6 +2,7 @@ import { CircleCheck, CircleX, Clock, Route } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
+import { DeliveryPart } from "@/components/DeliveryPart";
 import { EarningAmount } from "@/components/EarningAmount";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { OrderReference } from "@/components/OrderReference";
@@ -75,6 +76,7 @@ export function OfferCard({
       <View className="gap-1">
         <Text className="text-h3 text-text-primary">{offer.title}</Text>
         <OrderReference id={offer.id} />
+        <DeliveryPart order={offer} />
         <Text className="text-caption text-text-muted">
           {offer.size} · {offer.material} · {offer.quantity} pcs
         </Text>

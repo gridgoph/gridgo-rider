@@ -156,7 +156,7 @@ function PastJobRow({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${entry.title}, ${entry.statusLabel}, ${when}, ${api.formatPhp(entry.feeMinor)}`}
+      accessibilityLabel={`${entry.title}${entry.deliveryPart ? `, ${entry.deliveryPart}` : ""}, ${entry.statusLabel}, ${when}, ${api.formatPhp(entry.feeMinor)}`}
       accessibilityHint="Opens this job's trail"
       className={
         last
@@ -172,7 +172,9 @@ function PastJobRow({
         <Text className="text-body text-text-secondary" numberOfLines={1}>
           {entry.pickup} → {entry.dropoff}
         </Text>
-        <Text className="text-caption text-text-muted">{when}</Text>
+        <Text className="text-caption text-text-muted">
+          {entry.deliveryPart ? `${when} · ${entry.deliveryPart}` : when}
+        </Text>
       </View>
       <View className="items-end gap-0.5">
         {failed ? (

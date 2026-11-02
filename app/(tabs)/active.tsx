@@ -9,6 +9,7 @@ import { ChatButton } from "@/components/ChatButton";
 import { MissedCallCard } from "@/components/MissedCallCard";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
+import { DeliveryPart } from "@/components/DeliveryPart";
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EmptyState } from "@/components/EmptyState";
 import { ForcedByGridgo } from "@/components/ForcedByGridgo";
@@ -506,6 +507,8 @@ export default function ActiveScreen() {
                 <Text className="min-w-0 flex-1 text-h3 text-text-primary">{trip.title}</Text>
                 {chip ? <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} /> : null}
               </View>
+
+              <DeliveryPart order={trip} />
 
               <ForcedByGridgo order={trip} />
 

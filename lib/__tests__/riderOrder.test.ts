@@ -1,6 +1,7 @@
 import {
   ACTIVE_TRIP_STATES,
   activeStopKind,
+  deliveryPartLabel,
   dropoffLabel,
   endsAtOffice,
   feeDistanceLabel,
@@ -503,5 +504,20 @@ describe("a collected job", () => {
   it("asks the rider to confirm a drop-off, not a delivery", () => {
     expect(primaryActionLabel("delivery_proof", true)).toBe("Confirm drop-off");
     expect(primaryActionLabel("delivery_proof")).toBe("Confirm delivery");
+  });
+});
+
+describe("deliveryPartLabel", () => {
+  it("names which of a shop's separate deliveries this job is", () => {
+    expect(deliveryPartLabel({ deliveryNumber: 1, shopDeliveryCount: 2 })).toBe("Delivery 1 of 2");
+    expect(deliveryPartLabel({ deliveryNumber: 3, shopDeliveryCount: 3 })).toBe("Delivery 3 of 3");
+  });
+
+  it("says nothing for a single delivery or a reading that does not add up", () => {
+    expect(deliveryPartLabel({})).toBeNull();
+    expect(deliveryPartLabel({ deliveryNumber: 1, shopDeliveryCount: 1 })).toBeNull();
+    expect(deliveryPartLabel({ deliveryNumber: 3, shopDeliveryCount: 2 })).toBeNull();
+    expect(deliveryPartLabel({ deliveryNumber: 0, shopDeliveryCount: 2 })).toBeNull();
+    expect(deliveryPartLabel({ deliveryNumber: 1.5, shopDeliveryCount: 2 })).toBeNull();
   });
 });
