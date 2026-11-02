@@ -48,6 +48,9 @@ import {
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 import { useActiveTrip } from "@/store/activeTrip";
 
+const FILL = { flex: 1 } as const;
+const HIDDEN = { display: "none" } as const;
+
 /**
  * Delivery proof at the door — the hard gate.
  *
@@ -91,9 +94,6 @@ import { useActiveTrip } from "@/store/activeTrip";
  * optional. A refusal of that photo removes it and keeps the door photo, so
  * the rider confirms again without retaking anything.
  */
-const FILL = { flex: 1 } as const;
-const HIDDEN = { display: "none" } as const;
-
 export default function DeliveryProofScreen() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
