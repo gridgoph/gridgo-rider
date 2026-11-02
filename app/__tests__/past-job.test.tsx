@@ -98,6 +98,18 @@ describe("a past job", () => {
     expect(screen.getByText("Matina Crossing")).toBeTruthy();
   });
 
+  it("says nothing extra on a single delivery", async () => {
+    await render(<PastJobScreen />);
+    expect(await screen.findByText("Flyers x500")).toBeTruthy();
+    expect(screen.queryByText("Delivery 1 of 2")).toBeNull();
+  });
+
+  it("shows Delivery 1 of 2 on a split delivery", async () => {
+    api.getOrder.mockResolvedValue({ ...completed, deliveryNumber: 1, shopDeliveryCount: 2 });
+    await render(<PastJobScreen />);
+    expect(await screen.findByText("Delivery 1 of 2")).toBeTruthy();
+  });
+
   it("offers no messages once the API has removed them", async () => {
     await render(<PastJobScreen />);
     expect(await screen.findByText("Flyers x500")).toBeTruthy();

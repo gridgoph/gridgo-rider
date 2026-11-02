@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 
 import { ForcedByGridgo } from "@/components/ForcedByGridgo";
+import { DeliveryPart } from "@/components/DeliveryPart";
 import { OrderReference } from "@/components/OrderReference";
 import { NavigateButton } from "@/components/NavigateButton";
 import type { Order } from "@/lib/api";
@@ -36,6 +37,7 @@ export function TripStepHeader({ order, stopLabel, stopKind, navigate = false }:
       </Text>
       <Text className="text-h2 text-text-primary">{order.title}</Text>
       <OrderReference id={order.id} />
+      <DeliveryPart order={order} />
       <Text className="text-body-lg text-text-secondary">{stopLabel}</Text>
       {order.forcedByGridgo ? (
         <View className="mt-2">

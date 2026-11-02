@@ -251,6 +251,14 @@ export type Order = {
   material: string;
   finish?: string;
   deadline: string | null;
+  /**
+   * Set only when the client split this shop's products into separate
+   * deliveries (gridgo-api `docs/SHOP_DELIVERIES_API.md`): this order is
+   * delivery `deliveryNumber` of `shopDeliveryCount` from the same shop.
+   * Absent on an ordinary single delivery.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
   address: string;
   zone: string;
   /**
