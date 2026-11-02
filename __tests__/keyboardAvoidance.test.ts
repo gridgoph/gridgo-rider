@@ -81,7 +81,11 @@ describe("a field a rider is typing into stays visible", () => {
   it("keeps delivery code entry above the keyboard and action bar", () => {
     const source = readFileSync(join(__dirname, "..", "app", "trip", "delivery.tsx"), "utf8");
     expect(source).toMatch(/<FormScroll[^>]*stickyActionHeight=\{actionBarHeight\}/);
-    expect(source).toMatch(/<StickyActionBar onHeight=\{setActionBarHeight\}/);
+    expect(source).toMatch(/<StickyActionBar\s+onHeight=\{setActionBarHeight\}/);
+    // The full-screen code prompt scrolls its field clear of the same bar.
+    expect(source).toMatch(/<HandoverCodePrompt[^>]*stickyActionHeight=\{actionBarHeight\}/);
+    const prompt = readFileSync(join(__dirname, "..", "components", "HandoverCodePrompt.tsx"), "utf8");
+    expect(prompt).toMatch(/<FormScroll[^>]*stickyActionHeight=\{stickyActionHeight\}/);
   });
 
   it("keeps conversation details inside the chat's keyboard-aware caller", () => {

@@ -1,11 +1,27 @@
 import { ApiError } from "@/lib/api";
-import { handoverBlockReason, handoverRefusal, riderChecksHandoverCode } from "@/lib/handoverCode";
+import {
+  handoverBlockReason,
+  handoverPromptDue,
+  handoverRefusal,
+  riderChecksHandoverCode,
+} from "@/lib/handoverCode";
 
 describe("spoken handover code rules", () => {
   it("asks at the client's door, never GRIDGO Office", () => {
     expect(riderChecksHandoverCode({ fulfillmentMode: "delivery" })).toBe(true);
     expect(riderChecksHandoverCode({ fulfillmentMode: null })).toBe(true);
     expect(riderChecksHandoverCode({ fulfillmentMode: "pickup" })).toBe(false);
+  });
+
+  it("prompts full screen only at the drop-off of a code-governed delivery", () => {
+    expect(handoverPromptDue({ status: "ready" }, "at_door")).toBe(true);
+    // An API older than arrival tracking: opening the step is arriving.
+    expect(handoverPromptDue({ status: "ready" }, "paper_only")).toBe(true);
+    expect(handoverPromptDue({ status: "ready" }, "before_arrival")).toBe(false);
+    expect(handoverPromptDue({ status: "ready" }, "none")).toBe(false);
+    for (const load of [{ status: "none" }, { status: "loading" }, { status: "error", message: "offline" }] as const) {
+      expect(handoverPromptDue(load, "at_door")).toBe(false);
+    }
   });
 
   it("requires six digits only when the server requires a code", () => {

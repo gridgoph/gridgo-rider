@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { BackHandler, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
@@ -8,7 +8,7 @@ import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
 import { HandoffReminderCard } from "@/components/HandoffReminderCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
-import { HandoverCodeCard } from "@/components/HandoverCodeCard";
+import { HandoverCodePrompt, HandoverCodeRow } from "@/components/HandoverCodePrompt";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ReceiptReminder } from "@/components/ReceiptReminder";
@@ -22,7 +22,7 @@ import { useHandoverCode } from "@/hooks/useHandoverCode";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useTripOrder } from "@/hooks/useTripOrder";
-import { receiptDeliveryHold } from "@/lib/acknowledgementReceipt";
+import { receiptDeliveryHold, receiptStage } from "@/lib/acknowledgementReceipt";
 import * as api from "@/lib/api";
 import { DELIVERY_TARGETS, PACKAGE_PHOTO_TARGETS } from "@/lib/attachments";
 import {
@@ -34,6 +34,7 @@ import {
 import {
   HANDOVER_ESCALATION_REASON,
   handoverBlockReason,
+  handoverPromptDue,
   handoverRefusal,
   riderChecksHandoverCode,
   type HandoverRefusal,
@@ -90,6 +91,9 @@ import { useActiveTrip } from "@/store/activeTrip";
  * optional. A refusal of that photo removes it and keeps the door photo, so
  * the rider confirms again without retaking anything.
  */
+const FILL = { flex: 1 } as const;
+const HIDDEN = { display: "none" } as const;
+
 export default function DeliveryProofScreen() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
@@ -110,6 +114,8 @@ export default function DeliveryProofScreen() {
   const [escalateError, setEscalateError] = useState<string | null>(null);
   const [reminded, setReminded] = useState(false);
   const [photoConsent, setPhotoConsent] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptOpenedFor, setPromptOpenedFor] = useState<string | null>(null);
 
   // Tell the rider up front when this server cannot hold files, rather than
   // letting them photograph a doorway and discover it on the upload.
@@ -149,6 +155,26 @@ export default function DeliveryProofScreen() {
   const handover = useHandoverCode(order && riderChecksHandoverCode(order) ? order.id : null);
   const codeBlock = refusal?.message ?? handoverBlockReason(handover.load, otp);
   const codeHeld = refusal !== null;
+  const codeComplete = /^\d{6}$/.test(otp);
+
+  // The full-screen code prompt opens by itself once per job, when the rider
+  // arrives at the drop-off; after that only the rider or a refusal opens it.
+  const promptDue = order ? handoverPromptDue(handover.load, receiptStage(order)) : false;
+  if (promptDue && id && promptOpenedFor !== id) {
+    setPromptOpenedFor(id);
+    setPromptOpen(true);
+  }
+  const promptShown = promptOpen && handover.load.status === "ready";
+
+  // Android's back closes the prompt rather than leaving the delivery step.
+  useEffect(() => {
+    if (!promptShown) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setPromptOpen(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [promptShown]);
 
   useEffect(() => {
     if (refusal?.kind !== "locked" || refusal.retryAtMs === null) return;
@@ -187,6 +213,7 @@ export default function DeliveryProofScreen() {
     setSubmitError(null);
     setReminded(false);
     setPhotoConsent(false);
+    setPromptOpen(false);
   }
 
   // The card follows the door photo: by then the package is in the client's
@@ -245,6 +272,8 @@ export default function DeliveryProofScreen() {
       if (codeRefusal) {
         setRefusal(codeRefusal);
         setOtp("");
+        // The client is still there: ask them to read it again, full screen.
+        setPromptOpen(true);
         return;
       }
       if (isPackagePhotoRefusal(api.apiErrorCode(e))) packagePhoto.clear();
@@ -286,173 +315,201 @@ export default function DeliveryProofScreen() {
     setSubmitError(null);
   }
 
+  // Drawn in the prompt while it is open, on the delivery screen otherwise.
+  const codeNotices = (
+    <>
+      {refusal ? (
+        <InlineNotice
+          tone="error"
+          icon={refusal.kind === "locked" ? "clock" : "circle-x"}
+          title={refusal.kind === "locked" ? "Code check locked" : "That code does not match"}
+          body={`${refusal.message} Keep the package with you. Ask the client to read the code again, or escalate to Operations.`}
+        />
+      ) : null}
+
+      {escalated ? (
+        <InlineNotice
+          tone="warning"
+          icon="clock"
+          title="Operations has been alerted"
+          body="Keep the package and stay near the drop-off. Operations will call you or send an alert here. This does not complete the delivery."
+        />
+      ) : null}
+
+      {handover.load.status === "ready" && !escalated ? (
+        <SecondaryButton
+          label={escalating ? "Alerting Operations…" : "Escalate to Operations"}
+          onPress={() => void escalateMismatch()}
+          disabled={busy || escalating}
+        />
+      ) : null}
+
+      {escalateError ? (
+        <InlineNotice
+          tone="error"
+          icon="circle-x"
+          title="Operations was not alerted"
+          body={escalateError}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <Screen edges={[]}>
-      <FormScroll contentClassName="gg-page gap-8 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
-        {loading ? <ProofStepSkeleton /> : null}
+      {promptShown ? (
+        <HandoverCodePrompt
+          stickyActionHeight={actionBarHeight}
+          otp={otp}
+          onChange={changeCode}
+          onClose={() => setPromptOpen(false)}
+          disabled={busy || escalating}
+        >
+          {codeNotices}
+        </HandoverCodePrompt>
+      ) : null}
 
-        {loadError ? (
-          <InlineNotice
-            tone="error"
-            icon="circle-x"
-            title="This job did not load"
-            body={loadError}
-          />
-        ) : null}
+      {/* Hidden, not unmounted, under the prompt: nothing the rider has done here is lost. */}
+      <View style={promptShown ? HIDDEN : FILL}>
+        <FormScroll contentClassName="gg-page gap-8 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
+          {loading ? <ProofStepSkeleton /> : null}
 
-        {order ? (
-          <>
-            <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} navigate />
-
-            {tripDestination(order).kind === "client" ? (
-              <View className="gg-card">
-                <DeliveryPinDetails order={order} />
-              </View>
-            ) : null}
-
-            {balanceHeld ? (
-              <InlineNotice
-                tone="warning"
-                icon="triangle-alert"
-                title="The client's balance is not confirmed yet"
-                body="GRIDGO cannot close a delivery with a balance due until Operations has confirmed it. Do not hand the package over — call Operations, and check again once they have."
-                actionLabel="Check again"
-                onAction={() => void reload()}
-              />
-            ) : null}
-
-            {receiptCard ? (
-              <ReceiptReminder
-                stage={receipt.stage}
-                load={receipt.load}
-                onRetry={() => void receipt.retry()}
-                onArrive={() => void receipt.arrive()}
-                arriving={receipt.arriving}
-                arrivalError={receipt.arrivalError}
-                handedOver={receiptHandedOver}
-                onToggle={() => setReceiptHandedOver((v) => !v)}
-                disabled={busy}
-              />
-            ) : null}
-
-            {handover.load.status === "ready" ? (
-              <HandoverCodeCard
-                otp={otp}
-                onChange={changeCode}
-                disabled={busy || escalating}
-              />
-            ) : null}
-
-            {handover.load.status === "error" ? (
-              <InlineNotice
-                tone="error"
-                icon="circle-x"
-                title="The handover requirement did not load"
-                body={`${handover.load.message} Do not hand the package over until the requirement loads.`}
-                actionLabel="Try again"
-                onAction={() => void handover.retry()}
-              />
-            ) : null}
-
-            {refusal ? (
-              <InlineNotice
-                tone="error"
-                icon={refusal.kind === "locked" ? "clock" : "circle-x"}
-                title={refusal.kind === "locked" ? "Code check locked" : "That code does not match"}
-                body={`${refusal.message} Keep the package with you. Ask the client to read the code again, or escalate to Operations.`}
-              />
-            ) : null}
-
-            {escalated ? (
-              <InlineNotice
-                tone="warning"
-                icon="clock"
-                title="Operations has been alerted"
-                body="Keep the package with you and stay near the drop-off point. Operations will call you or send an alert here. Escalation does not verify the code or complete delivery."
-              />
-            ) : null}
-
-            {handover.load.status === "ready" && !escalated ? (
-              <SecondaryButton
-                label={escalating ? "Alerting Operations…" : "Escalate to Operations"}
-                onPress={() => void escalateMismatch()}
-                disabled={busy || escalating}
-              />
-            ) : null}
-
-            {escalateError ? (
-              <InlineNotice
-                tone="error"
-                icon="circle-x"
-                title="Operations was not alerted"
-                body={escalateError}
-              />
-            ) : null}
-
-            {storage === "unavailable" ? (
-              <InlineNotice
-                tone="error"
-                icon="circle-x"
-                title="Photo storage is offline"
-                body={
-                  toOffice
-                    ? "Evidence cannot reach the server, so this drop-off cannot be proven yet. Do not leave the package — tell Operations."
-                    : "Evidence cannot reach the server, so this delivery cannot be proven yet. Do not hand the package over — tell Operations."
-                }
-              />
-            ) : null}
-
-            <EvidenceCapture
-              key={id}
-              title={toOffice ? "Evidence at the office" : "Evidence at the door"}
-              purpose="GRIDGO keeps this with the job as the record that the package was handed over."
-              instruction={
-                toOffice
-                  ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."
-                  : "Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
-              }
-              evidence={evidence.evidence}
-              upload={evidence.upload}
-              captureError={evidence.captureError}
-              cameraBlocked={evidence.cameraBlocked}
-              onTakePhoto={() => void evidence.takePhoto()}
-              onRetry={evidence.retry}
-              onClear={evidence.clear}
-              onSignature={evidence.attachSignature}
-              failureAction={
-                uploadRefusal.actionLabel && uploadRefusal.onAction
-                  ? { label: uploadRefusal.actionLabel, onPress: uploadRefusal.onAction }
-                  : null
-              }
-              disabled={busy || balanceHeld || codeHeld}
+          {loadError ? (
+            <InlineNotice
+              tone="error"
+              icon="circle-x"
+              title="This job did not load"
+              body={loadError}
             />
+          ) : null}
 
-            {reminderCard ? (
-              <HandoffReminderCard
-                reminded={reminded}
-                onReminded={setReminded}
-                photoConsent={photoConsent}
-                onPhotoConsent={changePhotoConsent}
-                packagePhoto={packagePhoto}
+          {order ? (
+            <>
+              <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} navigate />
+
+              {tripDestination(order).kind === "client" ? (
+                <View className="gg-card">
+                  <DeliveryPinDetails order={order} />
+                </View>
+              ) : null}
+
+              {balanceHeld ? (
+                <InlineNotice
+                  tone="warning"
+                  icon="triangle-alert"
+                  title="The client's balance is not confirmed yet"
+                  body="GRIDGO cannot close a delivery with a balance due until Operations has confirmed it. Do not hand the package over — call Operations, and check again once they have."
+                  actionLabel="Check again"
+                  onAction={() => void reload()}
+                />
+              ) : null}
+
+              {receiptCard ? (
+                <ReceiptReminder
+                  stage={receipt.stage}
+                  load={receipt.load}
+                  onRetry={() => void receipt.retry()}
+                  onArrive={() => void receipt.arrive()}
+                  arriving={receipt.arriving}
+                  arrivalError={receipt.arrivalError}
+                  handedOver={receiptHandedOver}
+                  onToggle={() => setReceiptHandedOver((v) => !v)}
+                  disabled={busy}
+                />
+              ) : null}
+
+              {handover.load.status === "ready" ? (
+                <HandoverCodeRow otp={otp} onOpen={() => setPromptOpen(true)} />
+              ) : null}
+
+              {handover.load.status === "error" ? (
+                <InlineNotice
+                  tone="error"
+                  icon="circle-x"
+                  title="Could not check for a handover code"
+                  body={`${handover.load.message} Keep the package until this loads.`}
+                  actionLabel="Try again"
+                  onAction={() => void handover.retry()}
+                />
+              ) : null}
+
+              {promptShown ? null : codeNotices}
+
+              {storage === "unavailable" ? (
+                <InlineNotice
+                  tone="error"
+                  icon="circle-x"
+                  title="Photo storage is offline"
+                  body={
+                    toOffice
+                      ? "Evidence cannot reach the server, so this drop-off cannot be proven yet. Do not leave the package — tell Operations."
+                      : "Evidence cannot reach the server, so this delivery cannot be proven yet. Do not hand the package over — tell Operations."
+                  }
+                />
+              ) : null}
+
+              <EvidenceCapture
+                key={id}
+                title={toOffice ? "Evidence at the office" : "Evidence at the door"}
+                purpose="GRIDGO keeps this with the job as the record that the package was handed over."
+                instruction={
+                  toOffice
+                    ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."
+                    : "Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
+                }
+                evidence={evidence.evidence}
+                upload={evidence.upload}
+                captureError={evidence.captureError}
+                cameraBlocked={evidence.cameraBlocked}
+                onTakePhoto={() => void evidence.takePhoto()}
+                onRetry={evidence.retry}
+                onClear={evidence.clear}
+                onSignature={evidence.attachSignature}
+                failureAction={
+                  uploadRefusal.actionLabel && uploadRefusal.onAction
+                    ? { label: uploadRefusal.actionLabel, onPress: uploadRefusal.onAction }
+                    : null
+                }
                 disabled={busy || balanceHeld || codeHeld}
               />
-            ) : null}
 
-            {submitError ? (
-              <InlineNotice
-                tone="error"
-                icon="circle-x"
-                title={toOffice ? "Drop-off not recorded" : "Delivery not recorded"}
-                body={submitError.message}
-                {...refusalAction(submitError)}
-              />
-            ) : null}
-          </>
-        ) : null}
-      </FormScroll>
+              {reminderCard ? (
+                <HandoffReminderCard
+                  reminded={reminded}
+                  onReminded={setReminded}
+                  photoConsent={photoConsent}
+                  onPhotoConsent={changePhotoConsent}
+                  packagePhoto={packagePhoto}
+                  disabled={busy || balanceHeld || codeHeld}
+                />
+              ) : null}
 
-      <StickyActionBar onHeight={setActionBarHeight} note={order ? blocked : null}>
-        {order ? (
+              {submitError ? (
+                <InlineNotice
+                  tone="error"
+                  icon="circle-x"
+                  title={toOffice ? "Drop-off not recorded" : "Delivery not recorded"}
+                  body={submitError.message}
+                  {...refusalAction(submitError)}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </FormScroll>
+      </View>
+
+      <StickyActionBar
+        onHeight={setActionBarHeight}
+        note={promptShown ? (codeComplete ? null : codeBlock) : order ? blocked : null}
+      >
+        {promptShown ? (
+          <PrimaryButton
+            label="Continue"
+            onPress={() => setPromptOpen(false)}
+            disabled={!codeComplete || busy || escalating}
+            size="large"
+          />
+        ) : order ? (
           <PrimaryButton
             label={
               busy

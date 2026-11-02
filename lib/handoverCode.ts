@@ -1,3 +1,4 @@
+import type { ReceiptStage } from "@/lib/acknowledgementReceipt";
 import { ApiError, apiErrorCode, type Order } from "@/lib/api";
 import { endsAtOffice } from "@/lib/riderOrder";
 
@@ -28,10 +29,23 @@ export function handoverBlockReason(load: HandoverCodeLoad, otp: string): string
     case "loading":
       return "Checking whether a handover code is required.";
     case "error":
-      return "The handover requirement did not load. Try again before you hand the package over.";
+      return "Could not check for a handover code. Try again before you hand the package over.";
     case "ready":
       return /^\d{6}$/.test(otp) ? null : "Enter the six-digit code the client reads aloud.";
   }
+}
+
+/**
+ * Whether the rider is at the drop-off of a code-governed delivery, so the
+ * full-screen code prompt opens by itself (issue report E68D0D98).
+ *
+ * Arrival is the rider's own "I'm at the client's door" (`at_door`). An API
+ * older than arrival tracking (`paper_only`) has no such step, so opening the
+ * delivery screen is the arrival. Codes off, or a job with no code issued,
+ * never prompts.
+ */
+export function handoverPromptDue(load: HandoverCodeLoad, stage: ReceiptStage): boolean {
+  return load.status === "ready" && (stage === "at_door" || stage === "paper_only");
 }
 
 /** Refusals never confirm delivery. Do not invent a remaining attempt count. */
