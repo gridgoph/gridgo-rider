@@ -18,7 +18,7 @@ it("reads otpRequired without exposing credentials, and preserves explicit no-co
 it.each([{}, { handover: {} }, { handover: { otp: "012345" } }])(
   "does not turn an unexpected response into an evidence-only delivery: %p", async (body) => {
     respond(body);
-    await expect(getHandover("ord_1")).rejects.toThrow(/requirement could not be read/);
+    await expect(getHandover("ord_1")).rejects.toThrow(/needs a handover code/);
   },
 );
 

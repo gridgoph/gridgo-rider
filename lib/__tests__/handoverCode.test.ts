@@ -1,11 +1,27 @@
 import { ApiError } from "@/lib/api";
-import { handoverBlockReason, handoverRefusal, riderChecksHandoverCode } from "@/lib/handoverCode";
+import {
+  handoverBlockReason,
+  handoverPromptDue,
+  handoverRefusal,
+  riderChecksHandoverCode,
+} from "@/lib/handoverCode";
 
 describe("spoken handover code rules", () => {
   it("asks at the client's door, never GRIDGO Office", () => {
     expect(riderChecksHandoverCode({ fulfillmentMode: "delivery" })).toBe(true);
     expect(riderChecksHandoverCode({ fulfillmentMode: null })).toBe(true);
     expect(riderChecksHandoverCode({ fulfillmentMode: "pickup" })).toBe(false);
+  });
+
+  it("prompts full screen only at the drop-off of a code-governed delivery", () => {
+    expect(handoverPromptDue({ status: "ready" }, "at_door")).toBe(true);
+    // An API older than arrival tracking: opening the step is arriving.
+    expect(handoverPromptDue({ status: "ready" }, "paper_only")).toBe(true);
+    expect(handoverPromptDue({ status: "ready" }, "before_arrival")).toBe(false);
+    expect(handoverPromptDue({ status: "ready" }, "none")).toBe(false);
+    for (const load of [{ status: "none" }, { status: "loading" }, { status: "error", message: "offline" }] as const) {
+      expect(handoverPromptDue(load, "at_door")).toBe(false);
+    }
   });
 
   it("requires six digits only when the server requires a code", () => {
@@ -20,7 +36,7 @@ describe("spoken handover code rules", () => {
 
   it("distinguishes mismatch and lockout, ignoring unrelated errors", () => {
     expect(handoverRefusal(new ApiError(409, { error: "handover_otp_mismatch" }))).toEqual({
-      kind: "mismatch", message: "That code does not match.", retryAtMs: null,
+      kind: "mismatch", message: "That code does not match.", detail: "", retryAtMs: null,
     });
     const retryAfter = "2026-10-08T09:15:00.000Z";
     expect(handoverRefusal(new ApiError(429, { error: "handover_attempts_exceeded", retryAfter })))

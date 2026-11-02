@@ -1452,7 +1452,7 @@ export async function getHandover(orderId: string): Promise<{ otpRequired: true 
   if (result.handover === null) return null;
   if (result.handover?.otpRequired === true) return { otpRequired: true };
   // An unexpected/older response must not silently bypass the code entry.
-  throw new Error("The handover requirement could not be read. Try again or contact Operations.");
+  throw new Error("Could not tell whether this delivery needs a handover code. Try again or call Operations.");
 }
 
 /**

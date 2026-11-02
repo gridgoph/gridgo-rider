@@ -94,21 +94,29 @@ const atDoor = {
 
 const button = (name: RegExp) => screen.getByRole("button", { name });
 const confirm = () => button(/confirm delivery/i);
+const proceed = () => button(/^continue$/i);
 const isDisabled = (node: { props: { accessibilityState?: { disabled?: boolean } } }) =>
   Boolean(node.props.accessibilityState?.disabled);
 
 const codeInput = () => screen.getByLabelText("Client's six-digit handover code");
 const enterCode = (code = "012345") => fireEvent.changeText(codeInput(), code);
 
+/** On an API without arrival tracking, opening the step is arriving: the prompt is up. */
 async function openDelivery() {
   await render(<DeliveryProofScreen />);
-  await screen.findByText("Handover code");
+  await screen.findByLabelText("Client's six-digit handover code");
+}
+
+/** Type the code in the prompt, go back to the delivery screen, confirm. */
+async function enterAndConfirm(code = "012345") {
+  await enterCode(code);
+  await fireEvent.press(proceed());
+  await fireEvent.press(confirm());
 }
 
 async function refuseCode(body: Record<string, unknown> = { error: "handover_otp_mismatch" }) {
   api.recordDelivery.mockRejectedValueOnce(new ApiError(409, body));
-  await enterCode();
-  await fireEvent.press(confirm());
+  await enterAndConfirm();
   await screen.findByText("That code does not match");
 }
 
@@ -131,8 +139,11 @@ describe("the spoken handover code at the door", () => {
     expect(screen.queryByLabelText(/Your handover code/)).toBeNull();
     expect(screen.queryByRole("button", { name: /codes match/i })).toBeNull();
     expect(api.getHandover).toHaveBeenCalledWith("ord_1");
-    expect(isDisabled(confirm())).toBe(true);
+    expect(isDisabled(proceed())).toBe(true);
     await enterCode("01234");
+    expect(isDisabled(proceed())).toBe(true);
+    await fireEvent.press(button(/^close$/i));
+    expect(screen.getByRole("button", { name: "Handover code, Not entered" })).toBeTruthy();
     expect(isDisabled(confirm())).toBe(true);
     await fireEvent.press(confirm());
     expect(api.recordDelivery).not.toHaveBeenCalled();
@@ -142,6 +153,8 @@ describe("the spoken handover code at the door", () => {
     await openDelivery();
     await enterCode("01x234567");
     expect(codeInput().props.value).toBe("012345");
+    await fireEvent.press(proceed());
+    expect(screen.getByRole("button", { name: "Handover code, 012345" })).toBeTruthy();
     expect(isDisabled(confirm())).toBe(false);
     expect(api.recordDelivery).not.toHaveBeenCalled();
     await fireEvent.press(confirm());
@@ -155,14 +168,17 @@ describe("the spoken handover code at the door", () => {
   it("holds a wrong code without guessing remaining tries and permits a corrected retry", async () => {
     await openDelivery();
     await refuseCode();
-    expect(screen.getAllByText("That code does not match.").length).toBeGreaterThan(0);
+    // The prompt is back up for the client to read the code again.
+    expect(screen.getByText(/^Keep the package with you\. Ask the client to read the code again/)).toBeTruthy();
     expect(screen.queryByText(/tries remaining/)).toBeNull();
     expect(codeInput().props.value).toBe("");
+    expect(isDisabled(proceed())).toBe(true);
+    await fireEvent.press(button(/^close$/i));
     expect(isDisabled(confirm())).toBe(true);
     expect(screen.getByText("evidence locked")).toBeTruthy();
     expect(mockRouter.back).not.toHaveBeenCalled();
-    await enterCode("001234");
-    await fireEvent.press(confirm());
+    await fireEvent.press(button(/^Handover code/));
+    await enterAndConfirm("001234");
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenLastCalledWith("ord_1", {
       evidenceFileId: "fil_door", evidenceType: "photo", otp: "001234",
@@ -185,14 +201,15 @@ describe("the spoken handover code at the door", () => {
         error: "handover_attempts_exceeded", retryAfter, canEscalate: true,
       }));
       await openDelivery();
-      await enterCode();
-      await fireEvent.press(confirm());
+      await enterAndConfirm();
       await screen.findByText("Code check locked");
       const retryLabel = new Date(retryAfter).toLocaleString("en-PH", {
         month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit",
       });
       expect(screen.getAllByText(`Too many attempts. Try again at ${retryLabel}.`).length).toBeGreaterThan(0);
+      expect(screen.getByText(/Keep the package with you\. Wait until then, or escalate to Operations\.$/)).toBeTruthy();
       await enterCode("001234");
+      await fireEvent.press(proceed());
       expect(isDisabled(confirm())).toBe(true);
       await fireEvent.press(confirm());
       expect(api.recordDelivery).toHaveBeenCalledTimes(1);
@@ -212,9 +229,12 @@ describe("the spoken handover code at the door", () => {
   it("escalates a refused code without completing delivery or clearing the code gate", async () => {
     await openDelivery();
     await refuseCode();
+    // From the prompt, where the refusal is shown.
     await fireEvent.press(button(/escalate to operations/i));
     await screen.findByText("Operations has been alerted");
     expect(api.escalateHandover).toHaveBeenCalledWith("ord_1", HANDOVER_ESCALATION_REASON);
+    await fireEvent.press(button(/^close$/i));
+    expect(screen.getByText("Operations has been alerted")).toBeTruthy();
     expect(isDisabled(confirm())).toBe(true);
     expect(mockRouter.back).not.toHaveBeenCalled();
     expect(api.recordDelivery).toHaveBeenCalledTimes(1);
@@ -228,17 +248,19 @@ describe("the spoken handover code at the door", () => {
     await screen.findByText("Operations was not alerted");
     expect(screen.getByText(/^Keep the package with you, check your connection and try again/)).toBeTruthy();
     expect(button(/escalate to operations/i)).toBeTruthy();
+    await fireEvent.press(button(/^close$/i));
     expect(isDisabled(confirm())).toBe(true);
   });
 
   it("does not mistake a network failure for a wrong code", async () => {
     api.recordDelivery.mockRejectedValueOnce(new Error("Network request failed"));
     await openDelivery();
-    await enterCode();
-    await fireEvent.press(confirm());
+    await enterAndConfirm();
     await screen.findByText("Delivery not recorded");
     expect(screen.queryByText("That code does not match")).toBeNull();
-    expect(codeInput().props.value).toBe("012345");
+    // The prompt stays closed and the code the rider typed is kept.
+    expect(screen.queryByLabelText("Client's six-digit handover code")).toBeNull();
+    expect(screen.getByRole("button", { name: "Handover code, 012345" })).toBeTruthy();
     expect(mockRouter.back).not.toHaveBeenCalled();
   });
 
@@ -248,6 +270,7 @@ describe("the spoken handover code at the door", () => {
     await screen.findByRole("button", { name: /confirm delivery/i });
     await waitFor(() => expect(isDisabled(confirm())).toBe(false));
     expect(screen.queryByText("Handover code")).toBeNull();
+    expect(screen.queryByLabelText("Client's six-digit handover code")).toBeNull();
     await fireEvent.press(confirm());
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
     expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", {
@@ -259,11 +282,11 @@ describe("the spoken handover code at the door", () => {
   it("blocks an unread requirement and retries without bypassing entry", async () => {
     api.getHandover.mockRejectedValueOnce(new Error("Network request failed"));
     await render(<DeliveryProofScreen />);
-    await screen.findByText("The handover requirement did not load");
+    await screen.findByText("Could not check for a handover code");
     expect(isDisabled(confirm())).toBe(true);
     await fireEvent.press(button(/try again/i));
-    await screen.findByText("Handover code");
-    expect(isDisabled(confirm())).toBe(true);
+    await screen.findByLabelText("Client's six-digit handover code");
+    expect(isDisabled(proceed())).toBe(true);
     expect(api.getHandover).toHaveBeenCalledTimes(2);
   });
 
