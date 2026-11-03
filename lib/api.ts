@@ -251,6 +251,14 @@ export type Order = {
   material: string;
   finish?: string;
   deadline: string | null;
+  /**
+   * Set only when the client split this shop's products into separate
+   * deliveries (gridgo-api `docs/SHOP_DELIVERIES_API.md`): this order is
+   * delivery `deliveryNumber` of `shopDeliveryCount` from the same shop.
+   * Absent on an ordinary single delivery.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
   address: string;
   zone: string;
   /**
@@ -322,7 +330,16 @@ export type Order = {
    * rider's unread count. Read it through `pickupChatOf` (`lib/pickupChat.ts`).
    */
   pickupChat?: PickupChatSummary | null;
+  /**
+   * The client's promise date. Never shown in this app — see `readyBy`.
+   */
   promisedDate: string | null;
+  /**
+   * When the shop will have the job ready: its own deadline, not the client's
+   * padded promise. Read it through `pickupReadyLabel` (`lib/pickupReady.ts`).
+   * Absent from an API that does not project it.
+   */
+  readyBy?: string | null;
   artworkName: string | null;
   artworkFileIds?: string[];
   mockupFileIds?: string[];
@@ -1435,7 +1452,7 @@ export async function getHandover(orderId: string): Promise<{ otpRequired: true 
   if (result.handover === null) return null;
   if (result.handover?.otpRequired === true) return { otpRequired: true };
   // An unexpected/older response must not silently bypass the code entry.
-  throw new Error("The handover requirement could not be read. Try again or contact Operations.");
+  throw new Error("Could not tell whether this delivery needs a handover code. Try again or call Operations.");
 }
 
 /**

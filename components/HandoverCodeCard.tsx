@@ -7,10 +7,12 @@ type Props = {
   otp: string;
   onChange: (otp: string) => void;
   disabled?: boolean;
+  /** Open the keypad at once, as the full-screen prompt does on arrival. */
+  autoFocus?: boolean;
 };
 
 /** One real field preserves leading zeroes and lets the rider correct any digit. */
-export function HandoverCodeCard({ otp, onChange, disabled = false }: Props) {
+export function HandoverCodeCard({ otp, onChange, disabled = false, autoFocus = false }: Props) {
   const colors = useThemeColors();
   return (
     <View className="gap-4 rounded-card border-2 border-accent bg-surface p-6">
@@ -19,7 +21,7 @@ export function HandoverCodeCard({ otp, onChange, disabled = false }: Props) {
         <Text className="text-h3 text-text-primary">Handover code</Text>
       </View>
       <Text className="text-body-lg text-text-secondary">
-        Ask the client to open GRIDGO and read their six-digit code aloud. Enter it below, then confirm delivery so GRIDGO can check it. Keep the package until delivery is recorded.
+        Ask the client to read their code aloud.
       </Text>
       <TextInput
         className="gg-field text-h2"
@@ -30,12 +32,16 @@ export function HandoverCodeCard({ otp, onChange, disabled = false }: Props) {
         maxLength={6}
         autoComplete="off"
         autoCorrect={false}
+        autoFocus={autoFocus}
         editable={!disabled}
         placeholder="Six-digit code"
         placeholderTextColor={colors.textMuted}
         accessibilityLabel="Client's six-digit handover code"
         accessibilityHint="Enter the code the client reads aloud. GRIDGO checks it when you confirm delivery."
       />
+      <Text className="text-caption text-text-muted">
+        They find it in their GRIDGO app. GRIDGO checks it when you confirm delivery. Keep the package until then.
+      </Text>
     </View>
   );
 }

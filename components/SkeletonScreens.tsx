@@ -102,32 +102,48 @@ export function OfferListSkeleton({ count = 2 }: { count?: number }) {
 /**
  * The Active screen while the job in hand loads.
  *
- * Same order as the real screen — next stop, the step, the map — so the one
- * control that matters does not arrive somewhere the eye was not already
- * looking.
+ * Same order as the real screen — both stops and the step rail, the step's
+ * button, then the next stop and the map — so the one control that matters
+ * does not arrive somewhere the eye was not already looking.
  */
 export function ActiveTripSkeleton() {
   return (
     <Loading label="Loading the job in hand">
+      <View className="gg-card gap-4">
+        <View className="gap-3">
+          <View className="gap-1">
+            <SkeletonText width={60} height={16} />
+            <SkeletonText width="70%" height={24} />
+          </View>
+          <View className="gap-1">
+            <SkeletonText width={70} height={16} />
+            <SkeletonText width="60%" height={24} />
+          </View>
+        </View>
+        <View className="gap-3 border-t border-outline-subtle pt-3">
+          <View className="gap-1">
+            <SkeletonText width={120} height={16} />
+            <SkeletonText width="45%" height={26} />
+          </View>
+          <View className="flex-row justify-between">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <SkeletonCircle key={index} size={28} />
+            ))}
+          </View>
+        </View>
+      </View>
+
+      <SkeletonButton />
+
       <View className="gg-card gap-3">
         <SkeletonText width={150} height={16} />
         <View className="gap-1">
           <SkeletonText width="85%" height={30} />
           <SkeletonText width="60%" height={20} />
         </View>
-        <View className="border-t border-outline-subtle pt-3">
-          <SkeletonText width="45%" height={24} />
-        </View>
       </View>
-
-      <SkeletonButton />
 
       <SkeletonBlock height={TRIP_MAP_HEIGHT} />
-
-      <View className="gg-card gap-2">
-        <SkeletonText width="40%" height={16} />
-        <SkeletonText width="75%" height={20} />
-      </View>
     </Loading>
   );
 }

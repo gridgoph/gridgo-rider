@@ -313,6 +313,21 @@ export function feeDistanceLabel(metres: number | null | undefined): string | nu
   return `${(metres / 1000).toFixed(1)} km apart`;
 }
 
+/**
+ * "Delivery 1 of 2" when the client split one shop's products into separate
+ * deliveries, so a rider at a counter holding two parcels for the same client
+ * knows which one is theirs. Null for an ordinary single delivery, and for any
+ * reading that does not make sense (the API sends the pair only when split).
+ */
+export function deliveryPartLabel(
+  order: Pick<Order, "deliveryNumber" | "shopDeliveryCount">,
+): string | null {
+  const { deliveryNumber: n, shopDeliveryCount: count } = order;
+  if (!Number.isInteger(n) || !Number.isInteger(count)) return null;
+  if ((count as number) < 2 || (n as number) < 1 || (n as number) > (count as number)) return null;
+  return `Delivery ${n} of ${count}`;
+}
+
 /** How long the client has to raise an issue, said the way a rider reads it. */
 export function issueWindowLabel(hours: number | null | undefined): string {
   if (hours == null || !Number.isFinite(hours) || hours <= 0) return "a short while";

@@ -1,5 +1,6 @@
 import type { Order } from "@/lib/api";
 import {
+  deliveryPartLabel,
   dropoffLabel,
   isActiveTripState,
   orderStateLabel,
@@ -20,6 +21,8 @@ import { riderPay } from "@/lib/riderPay";
 export type PastJobEntry = {
   orderId: string;
   title: string;
+  /** "Delivery 1 of 2" for one of a shop's separate deliveries, else null. */
+  deliveryPart: string | null;
   pickup: string;
   dropoff: string;
   /** When this job last moved, newest event on the trail. */
@@ -60,6 +63,7 @@ export function listPastJobs(orders: Order[], riderId: string | null): PastJobEn
     entries.push({
       orderId: order.id,
       title: order.title,
+      deliveryPart: deliveryPartLabel(order),
       pickup: pickupLabel(order),
       dropoff: dropoffLabel(order),
       at: pastJobAt(order),

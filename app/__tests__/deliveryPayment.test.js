@@ -10,6 +10,7 @@ jest.mock("react-native", () => ({
   ScrollView: "ScrollView",
   Text: "Text",
   View: "View",
+  BackHandler: { addEventListener: () => ({ remove: () => undefined }) },
   // jest-expo's preset reads Platform during setup, so a bare mock must still provide it.
   Platform: { OS: "android", select: (options) => options.android ?? options.default },
 }));
@@ -29,7 +30,7 @@ jest.mock("@/hooks/useProofEvidence", () => ({ useProofEvidence: jest.fn(() => (
 jest.mock("@/components/BlockingOverlay", () => ({ BlockingOverlay: "BlockingOverlay" }));
 jest.mock("@/components/DeliveryPinDetails", () => ({ DeliveryPinDetails: "DeliveryPinDetails" }));
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: "EvidenceCapture" }));
-jest.mock("@/components/HandoverCodeCard", () => ({ HandoverCodeCard: "HandoverCodeCard" }));
+jest.mock("@/components/HandoverCodePrompt", () => ({ HandoverCodePrompt: "HandoverCodePrompt", HandoverCodeRow: "HandoverCodeRow" }));
 jest.mock("@/components/HandoffReminderCard", () => ({ HandoffReminderCard: "HandoffReminderCard" }));
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
 jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));

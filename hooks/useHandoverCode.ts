@@ -41,7 +41,7 @@ export function useHandoverCode(orderId: string | null) {
           status: "error",
           message: api.apiErrorMessage(
             e,
-            "The handover requirement did not load. Check your connection and try again.",
+            "Check your connection and try again.",
           ),
         });
       });
