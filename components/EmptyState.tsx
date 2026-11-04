@@ -1,4 +1,4 @@
-import { Inbox, MapPinned, Wallet, type LucideIcon } from "lucide-react-native";
+import { Clock, Inbox, MapPinned, Wallet, type LucideIcon } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -9,6 +9,7 @@ const ICONS = {
   offers: Inbox,
   trip: MapPinned,
   earnings: Wallet,
+  closed: Clock,
 } satisfies Record<string, LucideIcon>;
 
 export type EmptyStateIcon = keyof typeof ICONS;
