@@ -1479,6 +1479,18 @@ export async function getSettings(): Promise<OperationalSettings> {
   return result.settings;
 }
 
+export type OperatingStatus = {
+  isOpenNow: boolean;
+  /** The next opening while closed. */
+  scheduledReviewAt: string | null;
+};
+
+/** GRIDGO's live schedule, the one that decides whether new jobs are offered. Null from an API without it. */
+export async function getOperatingStatus(): Promise<OperatingStatus | null> {
+  const { operatingStatus } = await request<{ operatingStatus?: OperatingStatus }>("/settings");
+  return typeof operatingStatus?.isOpenNow === "boolean" ? operatingStatus : null;
+}
+
 export type LocationPing = {
   id: string;
   orderId: string;

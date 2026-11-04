@@ -15,8 +15,10 @@ import { Screen } from "@/components/Screen";
 import { OfferListSkeleton } from "@/components/SkeletonScreens";
 import { OfferCard } from "@/components/OfferCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { useDispatchHours } from "@/hooks/useDispatchHours";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { closedFromRefusal, DISPATCH_CLOSED_TITLE, dispatchClosedSentence } from "@/lib/dispatchHours";
 import { approvalPresentation } from "@/lib/riderApproval";
 import { selectOffers } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
@@ -62,7 +64,7 @@ export default function OffersScreen() {
   const acceptedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   /** A refused accept: said on its own card while that card is still listed. */
-  const [acceptError, setAcceptError] = useState<{ id: string; body: string } | null>(null);
+  const [acceptError, setAcceptError] = useState<{ id: string; body: string; closed: boolean } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const hasActive = Boolean(activeTrip);
@@ -70,6 +72,13 @@ export default function OffersScreen() {
   const visibleOffers = selectedId ? offers?.filter(job => job.id === selectedId) : offers;
   const acceptErrorOnCard = Boolean(acceptError && visibleOffers?.some((job) => job.id === acceptError.id));
   const approval = approvalPresentation(user);
+  const hours = useDispatchHours();
+  const { refresh: refreshHours, adopt: adoptHours } = hours;
+  const opensLine = approval.canWork ? hours.opensLine : null;
+  // Refused for hours with the card gone: the closed notice already says it.
+  const acceptNotice = acceptError && !acceptErrorOnCard && !acceptError.closed ? acceptError : null;
+  const emptyPool =
+    approval.canWork && offers !== null && !offers.length && !error && !acceptNotice && !hasActive && !selectedId;
 
   const nextRead = useReadVersion();
   const reload = useCallback(async () => {
@@ -86,6 +95,7 @@ export default function OffersScreen() {
       const [list] = await Promise.all([
         api.listOffers(),
         refreshTrip(userId ?? null, "refresh"),
+        refreshHours(),
       ]);
       if (!current()) return;
       setOffers(selectOffers(list));
@@ -101,7 +111,7 @@ export default function OffersScreen() {
       });
       setOffers((current) => current ?? []);
     }
-  }, [nextRead, refreshTrip, userId, approval.canWork]);
+  }, [nextRead, refreshTrip, refreshHours, userId, approval.canWork]);
 
   /*
     `refreshing` is the pull gesture's, and only the pull gesture's. Everything
@@ -118,7 +128,7 @@ export default function OffersScreen() {
     }
   }, [reload]);
 
-  useLiveRefresh(["dispatch", "orders", "identity", "approvals"], reload);
+  useLiveRefresh(["dispatch", "orders", "identity", "approvals", "settings"], reload);
 
   useFocusEffect(
     useCallback(() => {
@@ -153,16 +163,19 @@ export default function OffersScreen() {
     } catch (e) {
       // A fetch that never reached GRIDGO throws a bare TypeError whose text
       // ("Network request failed") is the browser's, not ours.
-      const message =
-        e instanceof TypeError
+      const closed = closedFromRefusal(e);
+      const message = closed
+        ? dispatchClosedSentence(closed.scheduledReviewAt)
+        : e instanceof TypeError
           ? ACCEPT_CONNECTION_FAILED
           : api.apiErrorMessage(e, "That job could not be accepted. Pull down to refresh and take another.");
+      if (closed) adoptHours(closed);
       await reload();
       // One answer to one tap: if the follow-up refresh failed too (a phone
       // that is fully offline), its own notice would repeat the failure with
       // the platform's raw text. The accept line says what to do.
       setError(null);
-      setAcceptError({ id, body: message });
+      setAcceptError({ id, body: message, closed: Boolean(closed) });
     } finally {
       acceptingIdRef.current = null;
       setBusyId(null);
@@ -200,12 +213,32 @@ export default function OffersScreen() {
 
         <PushEnableCard />
 
+        {/*
+          With nothing else to show, closed is the whole answer and takes the
+          empty state's place below. Otherwise it sits above what is there.
+        */}
+        {opensLine && !emptyPool ? (
+          <InlineNotice tone="neutral" icon="clock" title={DISPATCH_CLOSED_TITLE} body={opensLine} />
+        ) : null}
+
         {selectedId && approval.canWork && offers !== null && !error && !acceptError ? (
           <InlineNotice
             tone="info"
             icon="info"
-            title={visibleOffers?.length ? "Job from your alert" : "This job is no longer available"}
-            body={visibleOffers?.length ? "Review the pickup and delivery before accepting." : "Another rider may have accepted it, or its availability changed."}
+            title={
+              visibleOffers?.length
+                ? "Job from your alert"
+                : opensLine
+                  ? "This job is not open right now"
+                  : "This job is no longer available"
+            }
+            body={
+              visibleOffers?.length
+                ? "Review the pickup and delivery before accepting."
+                : opensLine
+                  ? "Check again when dispatch opens."
+                  : "Another rider may have accepted it, or its availability changed."
+            }
             actionLabel="View all offers"
             onAction={() => router.setParams({ orderId: undefined })}
           />
@@ -220,7 +253,11 @@ export default function OffersScreen() {
           <EmptyState
             icon="trip"
             title="You already have a job in hand"
-            body="Close it out, and the next offers appear here straight away."
+            body={
+              opensLine
+                ? "Close it out, and the next offers appear here once dispatch opens."
+                : "Close it out, and the next offers appear here straight away."
+            }
             actionLabel="Open my trip"
             onAction={() => router.push("/(tabs)/active")}
           />
@@ -246,12 +283,12 @@ export default function OffersScreen() {
           />
         ) : null}
 
-        {acceptError && !acceptErrorOnCard ? (
+        {acceptNotice ? (
           <InlineNotice
             tone="error"
             icon="circle-x"
             title="Could not accept this job"
-            body={acceptError.body}
+            body={acceptNotice.body}
             actionLabel="Try again"
             onAction={() => {
               setAcceptError(null);
@@ -283,11 +320,13 @@ export default function OffersScreen() {
           and offers the next step, so an empty state repeating it would be a
           second invitation to the same place.
         */}
-        {approval.canWork && offers !== null && !offers.length && !error && !acceptError && !hasActive && !selectedId ? (
+        {emptyPool && opensLine ? (
+          <EmptyState icon="closed" title={DISPATCH_CLOSED_TITLE} body={opensLine} />
+        ) : emptyPool ? (
           <EmptyState
             icon="offers"
             title="No open offers"
-            body="A job appears here the moment a supplier marks it ready, with its route and what you earn. Pull down to check again."
+            body="A job appears here the moment a shop marks it ready, with its route and what you earn. Pull down to check again."
           />
         ) : null}
       </ScrollView>

@@ -13,7 +13,7 @@ import OffersScreen from "@/app/(tabs)/offers";
 let mockOrderId: string | undefined;
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ orderId: mockOrderId }),
-  router: { replace: jest.fn(), push: jest.fn(), setParams: jest.fn() },
+  router: { replace: jest.fn(), push: jest.fn(), setParams: jest.fn(), prefetch: jest.fn() },
   useRouter: () => jest.requireMock("expo-router").router,
   useFocusEffect: (callback: () => void) => {
     const { useEffect } = jest.requireActual<typeof import("react")>("react");
@@ -26,6 +26,7 @@ jest.mock("@/lib/api", () => ({
   listOffers: jest.fn(),
   listOrders: jest.fn(),
   acceptOffer: jest.fn(),
+  getOperatingStatus: jest.fn(),
 }));
 
 jest.mock("@/components/TripMap", () => ({
@@ -40,6 +41,7 @@ const api = jest.requireMock("@/lib/api") as {
   listOffers: jest.Mock;
   listOrders: jest.Mock;
   acceptOffer: jest.Mock;
+  getOperatingStatus: jest.Mock;
 };
 
 const rider = {
@@ -129,6 +131,7 @@ describe("Offers accept button", () => {
     api.listOffers.mockResolvedValue([offer]);
     api.listOrders.mockResolvedValue([]);
     api.acceptOffer.mockResolvedValue(activeJob);
+    api.getOperatingStatus.mockResolvedValue({ isOpenNow: true, scheduledReviewAt: "2026-11-04T02:00:00.000Z" });
   });
 
   afterEach(async () => {
@@ -314,6 +317,147 @@ describe("Offers accept button", () => {
 
     expect(await screen.findByText(/This job is no longer available/)).toBeTruthy();
     expect(screen.queryByText("Could not accept this job")).toBeNull();
+  });
+
+  describe("outside operating hours", () => {
+    const CLOSED = { isOpenNow: false, scheduledReviewAt: "2026-11-05T00:00:00.000Z" };
+    const OPENS = /^Opens 8:00 AM (today|tomorrow|[A-Z])/;
+
+    beforeEach(() => {
+      api.getOperatingStatus.mockResolvedValue(CLOSED);
+      api.listOffers.mockResolvedValue([]);
+    });
+
+    it("reads as closed, not as no jobs, when the list is empty", async () => {
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("Dispatch is closed")).toBeTruthy();
+      expect(screen.getByText(OPENS)).toBeTruthy();
+      expect(screen.queryByText("No open offers")).toBeNull();
+    });
+
+    it("shows nothing new while open", async () => {
+      api.getOperatingStatus.mockResolvedValue({ isOpenNow: true, scheduledReviewAt: CLOSED.scheduledReviewAt });
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("No open offers")).toBeTruthy();
+      expect(screen.queryByText("Dispatch is closed")).toBeNull();
+      expect(screen.queryByText(OPENS)).toBeNull();
+    });
+
+    it("clears on the next read once dispatch opens, and the list comes back", async () => {
+      view = await render(<OffersScreen />);
+      await screen.findByText("Dispatch is closed");
+      api.getOperatingStatus.mockResolvedValue({ isOpenNow: true, scheduledReviewAt: CLOSED.scheduledReviewAt });
+      api.listOffers.mockResolvedValue([offer]);
+      await act(async () => { invalidate("dispatch"); });
+      expect(await screen.findByText("Storefront tarpaulin")).toBeTruthy();
+      expect(screen.queryByText("Dispatch is closed")).toBeNull();
+    });
+
+    it("makes no claim from an API that does not say", async () => {
+      api.getOperatingStatus.mockResolvedValue(null);
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("No open offers")).toBeTruthy();
+      expect(screen.queryByText("Dispatch is closed")).toBeNull();
+    });
+
+    it("keeps the list and the same offers when the hours cannot be read", async () => {
+      api.getOperatingStatus.mockRejectedValue(new Error("offline"));
+      api.listOffers.mockResolvedValue([offer]);
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("Storefront tarpaulin")).toBeTruthy();
+      expect(screen.queryByText("Dispatch is closed")).toBeNull();
+      expect(screen.queryByText("Offers did not load")).toBeNull();
+    });
+
+    it("sits above an offer still listed, without touching it", async () => {
+      api.listOffers.mockResolvedValue([offer]);
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("Dispatch is closed")).toBeTruthy();
+      const accept = await screen.findByRole("button", { name: "Accept this job" });
+      expect(accept.props.accessibilityState?.disabled).toBe(false);
+    });
+
+    it("does not promise the next offer straight away with a job in hand", async () => {
+      useActiveTrip.setState({ order: activeJob, loaded: true });
+      api.listOrders.mockResolvedValue([activeJob]);
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("Dispatch is closed")).toBeTruthy();
+      expect(screen.getByText(/appear here once dispatch opens/)).toBeTruthy();
+      expect(screen.queryByText(/straight away/)).toBeNull();
+    });
+
+    it("does not call a job from an alert gone while dispatch is closed", async () => {
+      mockOrderId = "ord_tarpaulin";
+      view = await render(<OffersScreen />);
+      expect(await screen.findByText("This job is not open right now")).toBeTruthy();
+      expect(screen.queryByText("This job is no longer available")).toBeNull();
+    });
+
+    it("does not read the hours for a rider waiting on approval", async () => {
+      useSession.setState({ user: { ...rider, verificationStatus: "pending" as const } });
+      view = await render(<OffersScreen />);
+      await waitFor(() => expect(screen.queryByText("No open offers")).toBeNull());
+      expect(api.getOperatingStatus).not.toHaveBeenCalled();
+      expect(screen.queryByText("Dispatch is closed")).toBeNull();
+    });
+
+    describe("a refused accept", () => {
+      const refusal = new ApiError(409, {
+        error: "outside_operating_hours",
+        message: "Dispatch resumes during operating hours.",
+        scheduledReviewAt: CLOSED.scheduledReviewAt,
+      });
+
+      beforeEach(() => {
+        api.getOperatingStatus.mockResolvedValue({ isOpenNow: true, scheduledReviewAt: CLOSED.scheduledReviewAt });
+        api.listOffers.mockResolvedValue([offer]);
+        api.acceptOffer.mockRejectedValue(refusal);
+      });
+
+      it("says the plain line on the card still listed", async () => {
+        view = await render(<OffersScreen />);
+        await screen.findByText("Storefront tarpaulin");
+        api.getOperatingStatus.mockResolvedValue(CLOSED);
+
+        await act(async () => {
+          fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+        });
+
+        expect(await screen.findByText(/^Dispatch is closed\. Opens 8:00 AM .*\.$/)).toBeTruthy();
+        expect(screen.queryByText(/nothing was recorded/)).toBeNull();
+        expect(screen.queryByText(/operating_hours/)).toBeNull();
+      });
+
+      it("is the closed state, with no error on top, once the card has gone", async () => {
+        view = await render(<OffersScreen />);
+        await screen.findByText("Storefront tarpaulin");
+        api.getOperatingStatus.mockResolvedValue(CLOSED);
+        api.listOffers.mockResolvedValue([]);
+
+        await act(async () => {
+          fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+        });
+
+        expect(await screen.findByText("Dispatch is closed")).toBeTruthy();
+        expect(screen.getByText(OPENS)).toBeTruthy();
+        expect(screen.queryByText("Could not accept this job")).toBeNull();
+        expect(screen.queryByText("No open offers")).toBeNull();
+      });
+
+      it("trusts the refusal when the hours cannot be read again", async () => {
+        view = await render(<OffersScreen />);
+        await screen.findByText("Storefront tarpaulin");
+        api.getOperatingStatus.mockRejectedValue(new Error("offline"));
+        api.listOffers.mockResolvedValue([]);
+
+        await act(async () => {
+          fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+        });
+
+        expect(await screen.findByText("Dispatch is closed")).toBeTruthy();
+        expect(screen.getByText(OPENS)).toBeTruthy();
+      });
+    });
   });
 
   it("does not leave a second card on Accepting while one accept is in flight", async () => {
