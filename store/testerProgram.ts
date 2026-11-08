@@ -47,6 +47,8 @@ let sequence = 0;
 /** Counts every answer drawn from a read, so a button answer can tell it was overtaken. */
 let applied = 0;
 let checkInAttempt = 0;
+/** The read generation an accepted Check in answer moved to; reads older than it are stale. */
+let buttonGeneration = 0;
 
 /** What the check-in records as this build: `1.4.212 (212)`, or the platform for a dev build. */
 export function testerAppVersion(): string {
@@ -83,7 +85,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
         } catch {
           return;
         }
-        if (mine !== sequence) return;
+        if (mine !== sequence) return reconcile(userId);
         applied++;
         set({ program, readAt: Date.now() });
         // Opening the app is the check-in; the button is only the way back
@@ -94,7 +96,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
           } catch {
             // The card offers Check in; the reminders still follow the read.
           }
-          if (mine !== sequence) return;
+          if (mine !== sequence) return reconcile(userId);
           applied++;
           set({ program, readAt: Date.now() });
         }
@@ -125,6 +127,10 @@ export const useTesterProgram = create<TesterProgramStore>()(
             void get().load(owner);
             return;
           }
+          // Accepted: any read or automatic check-in still in flight is older
+          // than this answer and must not be drawn or scheduled over it.
+          buttonGeneration = ++sequence;
+          applied++;
           set({ program, readAt: Date.now() });
           void syncTesterReminders(reminderPlan(program, Date.now()));
         } catch {
@@ -160,6 +166,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
       reset: () => {
         sequence++;
         checkInAttempt++;
+        applied++;
         set({ owner: null, program: null, checkingIn: false, checkInFailed: false });
       },
       forget: () => {
@@ -174,6 +181,17 @@ export const useTesterProgram = create<TesterProgramStore>()(
     },
   ),
 );
+
+/**
+ * A read made stale only by an accepted Check in answer (no newer read since)
+ * may still know something newer than that answer, so ask GRIDGO again rather
+ * than trust either snapshot. A newer read or another account owns the answer
+ * otherwise.
+ */
+function reconcile(userId: string): void {
+  const store = useTesterProgram.getState();
+  if (sequence === buttonGeneration && store.owner === userId) void store.load(userId);
+}
 
 /**
  * Replace this phone's tester reminders with `plan`. Local notifications only

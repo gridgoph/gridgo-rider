@@ -337,3 +337,67 @@ describe("a read already pending at the tap", () => {
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });
+
+describe("an accepted Check in answer that observed a stop", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  const stops: [string, TesterProgramState][] = [
+    ["production approval", enrolled({ checkedInToday: true, stopped: true, productionApproved: true })],
+    ["the end of enrolment", { enrolled: false }],
+  ];
+
+  it.each(stops)("survives an older automatic-open answer (%s)", async (_label, stopped) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let resolveOpen!: (state: TesterProgramState) => void;
+    api.getTesterProgram.mockResolvedValueOnce(enrolled());
+    api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { resolveOpen = resolve; }));
+    // The open's read lands active; its automatic check-in answer is held.
+    const read = useTesterProgram.getState().load("u1");
+    await flush();
+    // The stop lands before the tap; the button's answer says so.
+    api.testerCheckIn.mockResolvedValueOnce(stopped);
+    await useTesterProgram.getState().checkIn();
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // GRIDGO, asked again, still says stopped.
+    api.getTesterProgram.mockResolvedValue(stopped);
+    resolveOpen(enrolled({ checkedInToday: true, streak: 4, productionApproved: false }));
+    await read;
+    await flush();
+    await flush();
+    expect(api.getTesterProgram).toHaveBeenCalledTimes(2);
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(stops)("survives an older read still pending when it lands (%s)", async (_label, stopped) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let resolveRead!: (state: TesterProgramState) => void;
+    // A foreground read is out before the tap and is held.
+    api.getTesterProgram.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const read = useTesterProgram.getState().load("u1");
+    // The button's answer lands first and says the run stopped.
+    api.testerCheckIn.mockResolvedValueOnce(stopped);
+    await useTesterProgram.getState().checkIn();
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // GRIDGO, asked again, still says stopped; the older read answers active.
+    api.getTesterProgram.mockResolvedValue(stopped);
+    api.testerCheckIn.mockResolvedValue(enrolled({ checkedInToday: true, streak: 4 }));
+    resolveRead(enrolled());
+    await read;
+    await flush();
+    await flush();
+    expect(api.getTesterProgram).toHaveBeenCalledTimes(2);
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
