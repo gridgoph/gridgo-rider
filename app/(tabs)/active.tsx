@@ -30,6 +30,7 @@ import { StatusChip } from "@/components/StatusChip";
 import { TripMap } from "@/components/TripMap";
 import { TripContacts } from "@/components/TripContacts";
 import { TripTimeline } from "@/components/TripTimeline";
+import { TesterSlot } from "@/components/TesterSlot";
 import { useOrderCalls } from "@/hooks/useOrderCalls";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useTripLocation } from "@/store/tripLocation";
@@ -277,6 +278,12 @@ export default function ActiveScreen() {
         <LegalNoticeBanner />
 
         <PushEnableCard />
+
+        {/*
+          A Google Play tester's day (nothing for anyone else). Only with no
+          job in hand, and only once that is known, so it never moves a trip.
+        */}
+        {!approval.canWork || (loaded && !trip) ? <TesterSlot /> : null}
 
         {approval.canWork ? (
           <>
