@@ -45,6 +45,7 @@
 import { Platform } from "react-native";
 
 import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
+import { TESTER_REMINDER_TYPE } from "@/lib/testerProgram";
 
 /**
  * The Android channel the server names in every message.
@@ -202,6 +203,8 @@ export function pushTargetRoute(data: PushData, threadId: string | null = null):
   if (data.type === "support_message") {
     return isChatThreadId(threadId ?? undefined) ? `/chat/${encodeURIComponent(threadId as string)}` : CHAT_LIST_ROUTE;
   }
+  // A tester's daily reminder is local and names no job; Active holds the check-in card.
+  if (data.type === TESTER_REMINDER_TYPE) return "/(tabs)/active";
   if (data.type === "announcement" || !data.orderId) return "/alerts";
   if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/offers?orderId=${encodeURIComponent(data.orderId)}`;
   // A message from the client opens the conversation itself (gridgo-client#198).

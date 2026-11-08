@@ -5,6 +5,7 @@ import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { SessionWait } from "@/components/SessionWait";
 import { TABS } from "@/constants/tabs";
 import { useRiderAuthHold } from "@/hooks/useRiderAuthHold";
+import { useTesterCheckIn } from "@/hooks/useTesterCheckIn";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
@@ -21,6 +22,7 @@ export default function TabsLayout() {
   const hold = useRiderAuthHold();
   const hydrateProof = useTripProof((s) => s.hydrate);
   const hydrateAlerts = useNotifications((s) => s.hydrate);
+  useTesterCheckIn(userId);
 
   useEffect(() => {
     void hydrateProof();

@@ -2,6 +2,7 @@ import { sessionWaitHold } from "@/lib/sessionWait";
 import { cancelDeviceRegistrations, serializeDeviceMutation, usePush } from "@/store/push";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
+import { useTesterProgram } from "@/store/testerProgram";
 import { forgetAppleRevocation } from "@/store/accountDeletion";
 import { setLiveOwner } from "@/lib/live";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -649,6 +650,10 @@ useSession.subscribe((state, previous) => {
   if (next !== (previous.user?.id ?? null)) {
     cancelDeviceRegistrations();
     forgetAppleRevocation();
+    // Tester reminders belong to the person signed in: signing out cancels
+    // them; another account re-plans them on its own read.
+    if (next) useTesterProgram.getState().reset();
+    else useTesterProgram.getState().forget();
   }
   setLiveOwner(next ? `${next}:${status ?? "approved"}` : null);
   useNotifications.getState().bindOwner(next);
