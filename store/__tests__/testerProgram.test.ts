@@ -337,3 +337,116 @@ describe("a read already pending at the tap", () => {
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });
+
+describe("an accepted Check in answer that observed a stop", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  const stops: [string, TesterProgramState][] = [
+    ["production approval", enrolled({ checkedInToday: true, stopped: true, productionApproved: true })],
+    ["the end of enrolment", { enrolled: false }],
+  ];
+
+  it.each(stops)("survives an older automatic-open answer (%s)", async (_label, stopped) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let resolveOpen!: (state: TesterProgramState) => void;
+    api.getTesterProgram.mockResolvedValueOnce(enrolled());
+    api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { resolveOpen = resolve; }));
+    // The open's read lands active; its automatic check-in answer is held.
+    const read = useTesterProgram.getState().load("u1");
+    await flush();
+    // The stop lands before the tap; the button's answer says so.
+    api.testerCheckIn.mockResolvedValueOnce(stopped);
+    await useTesterProgram.getState().checkIn();
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // GRIDGO, asked again, still says stopped.
+    api.getTesterProgram.mockResolvedValue(stopped);
+    resolveOpen(enrolled({ checkedInToday: true, streak: 4, productionApproved: false }));
+    await read;
+    await flush();
+    await flush();
+    expect(api.getTesterProgram).toHaveBeenCalledTimes(2);
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(stops)("survives an older read still pending when it lands (%s)", async (_label, stopped) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let resolveRead!: (state: TesterProgramState) => void;
+    // A foreground read is out before the tap and is held.
+    api.getTesterProgram.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const read = useTesterProgram.getState().load("u1");
+    // The button's answer lands first and says the run stopped.
+    api.testerCheckIn.mockResolvedValueOnce(stopped);
+    await useTesterProgram.getState().checkIn();
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // GRIDGO, asked again, still says stopped; the older read answers active.
+    api.getTesterProgram.mockResolvedValue(stopped);
+    api.testerCheckIn.mockResolvedValue(enrolled({ checkedInToday: true, streak: 4 }));
+    resolveRead(enrolled());
+    await read;
+    await flush();
+    await flush();
+    expect(api.getTesterProgram).toHaveBeenCalledTimes(2);
+    expect(useTesterProgram.getState().program).toEqual(stopped);
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("a real 404 not_enrolled Check in answer", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  it.each(["automatic-open answer", "read"])("survives an older %s still in flight", async (held) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let release!: (state: TesterProgramState) => void;
+    if (held === "read") {
+      api.getTesterProgram.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    } else {
+      api.getTesterProgram.mockResolvedValueOnce(enrolled());
+      api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    }
+    const read = useTesterProgram.getState().load("u1");
+    await flush();
+    // Operations removed the tester; GRIDGO refuses the tap with 404, not a state.
+    api.testerCheckIn.mockRejectedValueOnce(new api.ApiError(404, { error: "not_enrolled" }));
+    await useTesterProgram.getState().checkIn();
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // GRIDGO, asked again, still says not enrolled; the older answer says active.
+    api.getTesterProgram.mockResolvedValue({ enrolled: false });
+    api.testerCheckIn.mockResolvedValue(enrolled({ checkedInToday: true, streak: 4 }));
+    release(enrolled({ checkedInToday: held !== "read", streak: 4 }));
+    await read;
+    await flush();
+    await flush();
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(useTesterProgram.getState().checkInFailed).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it("cancels this phone's reminders and ends the card", async () => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    mockNotifications.getAllScheduledNotificationsAsync.mockResolvedValue([{ identifier: "gridgo-tester-evening-2026-11-09" }]);
+    api.testerCheckIn.mockRejectedValueOnce(new api.ApiError(404, { error: "not_enrolled" }));
+    await useTesterProgram.getState().checkIn();
+    await flush();
+    expect(useTesterProgram.getState()).toMatchObject({ program: { enrolled: false }, checkingIn: false, checkInFailed: false });
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith("gridgo-tester-evening-2026-11-09");
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
