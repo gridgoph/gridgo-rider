@@ -50,6 +50,11 @@ let checkInAttempt = 0;
 /** The read generation an accepted Check in answer moved to; reads older than it are stale. */
 let buttonGeneration = 0;
 
+/** GRIDGO's answer to a check-in from an account that is no longer a tester. */
+function notEnrolled(error: unknown): boolean {
+  return error instanceof api.ApiError && error.status === 404;
+}
+
 /** What the check-in records as this build: `1.4.212 (212)`, or the platform for a dev build. */
 export function testerAppVersion(): string {
   const version = Constants.expoConfig?.version?.trim();
@@ -92,13 +97,21 @@ export const useTesterProgram = create<TesterProgramStore>()(
         // when this call could not land.
         if (program.enrolled && !program.checkedInToday && !program.stopped) {
           try {
-            program = await api.testerCheckIn(testerAppVersion(), "open");
-          } catch {
-            // The card offers Check in; the reminders still follow the read.
+            const checked = await api.testerCheckIn(testerAppVersion(), "open");
+            if (mine !== sequence) return reconcile(userId);
+            program = checked;
+            applied++;
+            set({ program, readAt: Date.now() });
+          } catch (error) {
+            // A newer read, an accepted Check in answer or another account owns the answer now.
+            if (mine !== sequence) return reconcile(userId);
+            if (notEnrolled(error)) {
+              program = { enrolled: false };
+              applied++;
+              set({ program, readAt: Date.now() });
+            }
+            // Otherwise the card offers Check in; the reminders still follow the read.
           }
-          if (mine !== sequence) return reconcile(userId);
-          applied++;
-          set({ program, readAt: Date.now() });
         }
         // Every read reconciles this phone's reminders with GRIDGO: replanned
         // while the run is open, cancelled once it stops or the account is
@@ -118,23 +131,41 @@ export const useTesterProgram = create<TesterProgramStore>()(
         // And the answers drawn so far: a read already pending at the tap can
         // land a stop while this call is out (gridgo-supplier#237 review).
         const appliedAtTap = applied;
+        const stillMine = () => attempt === checkInAttempt && get().owner === owner;
+        const overtaken = () => readGeneration !== sequence || appliedAtTap !== applied;
+        // Accepted: any read or automatic check-in still in flight is older
+        // than this answer and must not be drawn or scheduled over it.
+        const accept = () => {
+          buttonGeneration = ++sequence;
+          applied++;
+        };
         set({ checkingIn: true, checkInFailed: false });
         try {
           const program = await api.testerCheckIn(testerAppVersion(), "button");
-          if (attempt !== checkInAttempt || get().owner !== owner) return;
-          if (readGeneration !== sequence || appliedAtTap !== applied) {
-            // Overtaken: ask GRIDGO again rather than trust either snapshot.
+          if (!stillMine()) return;
+          if (overtaken()) {
+            // Ask GRIDGO again rather than trust either snapshot.
             void get().load(owner);
             return;
           }
-          // Accepted: any read or automatic check-in still in flight is older
-          // than this answer and must not be drawn or scheduled over it.
-          buttonGeneration = ++sequence;
-          applied++;
+          accept();
           set({ program, readAt: Date.now() });
           void syncTesterReminders(reminderPlan(program, Date.now()));
-        } catch {
-          if (attempt === checkInAttempt && get().owner === owner) set({ checkInFailed: true });
+        } catch (error) {
+          if (!stillMine()) return;
+          // 404 not_enrolled is GRIDGO's answer, not a failure: the run has ended.
+          if (notEnrolled(error)) {
+            if (overtaken()) {
+              // Ask GRIDGO again rather than trust either snapshot.
+              void get().load(owner);
+              return;
+            }
+            accept();
+            set({ program: { enrolled: false }, readAt: Date.now() });
+            void syncTesterReminders([]);
+            return;
+          }
+          set({ checkInFailed: true });
         } finally {
           // Requests time out after 20 s, so this always runs.
           if (attempt === checkInAttempt) set({ checkingIn: false });
