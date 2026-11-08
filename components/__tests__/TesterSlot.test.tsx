@@ -88,3 +88,22 @@ it("hides a held feedback card once the app is production approved", async () =>
   expect(screen.queryByText("Help us launch")).toBeNull();
   expect(screen.toJSON()).toBeNull();
 });
+
+it("hides a held day-14 feedback card once the app is production approved after completion", async () => {
+  signedInWith(
+    enrolled({ day: 14, streak: 14, checkedInToday: true, runComplete: true, stopped: true, productionApproved: true, nudge: null }),
+    { held: { userId: "u1", trigger: "streak_14", shownAt: Date.parse("2026-11-07T11:00:00Z"), closed: false } },
+  );
+  await render(<TesterSlot />);
+  expect(screen.queryByText("Help us launch")).toBeNull();
+  // The completed run's own done state still shows on its last day.
+  expect(screen.getByText("All 14 days")).toBeTruthy();
+});
+
+it("keeps the legitimate day-14 ask when approval has not happened", async () => {
+  signedInWith(
+    enrolled({ day: 14, streak: 14, checkedInToday: true, runComplete: true, stopped: true, nudge: { trigger: "streak_14" } }),
+  );
+  await render(<TesterSlot />);
+  expect(screen.getByText("Help us launch")).toBeTruthy();
+});

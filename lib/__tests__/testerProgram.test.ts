@@ -157,6 +157,13 @@ describe("feedbackAllowed", () => {
     expect(feedbackAllowed(tester({ day: 14, streak: 14, runComplete: true, stopped: true }))).toBe(true);
   });
 
+  it("never after production approval, even on a completed run; a missing flag reads as not approved", () => {
+    const complete = { day: 14, streak: 14, runComplete: true, stopped: true };
+    expect(feedbackAllowed(tester({ ...complete, productionApproved: true }))).toBe(false);
+    expect(feedbackAllowed(tester({ productionApproved: true }))).toBe(false);
+    expect(feedbackAllowed(tester({ ...complete, productionApproved: false }))).toBe(true);
+  });
+
   it("never after production approval, nor for a non-tester", () => {
     expect(feedbackAllowed(tester({ stopped: true, runComplete: false }))).toBe(false);
     expect(feedbackAllowed({ enrolled: false })).toBe(false);

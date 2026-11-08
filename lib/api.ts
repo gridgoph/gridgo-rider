@@ -2069,6 +2069,11 @@ export type TesterProgramState =
       runComplete: boolean;
       /** The run is complete or the app is production approved. */
       stopped: boolean;
+      /**
+       * The app is production approved: no feedback ask at all, even after a
+       * completed run. Additive on the API; a missing field reads as false.
+       */
+      productionApproved?: boolean;
       /** Today in Manila, `YYYY-MM-DD`, by GRIDGO's clock. */
       manilaDate: string;
       nudge: { trigger: TesterFeedbackTrigger } | null;

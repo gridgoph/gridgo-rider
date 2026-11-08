@@ -294,3 +294,46 @@ describe("the session", () => {
     ]);
   });
 });
+
+describe("a read already pending at the tap", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  async function pendingReadLands(newer: TesterProgramState) {
+    useTesterProgram.setState({ owner: "u1", program: enrolled({ day: 1, streak: 0 }) });
+    let resolveRead!: (value: TesterProgramState) => void;
+    let resolveButton!: (value: TesterProgramState) => void;
+    api.getTesterProgram.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const read = useTesterProgram.getState().load("u1");
+    api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { resolveButton = resolve; }));
+    const button = useTesterProgram.getState().checkIn();
+    resolveRead(newer);
+    await read;
+    await flush();
+    await flush();
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // The reconciling read after the button agrees with what landed.
+    api.getTesterProgram.mockResolvedValue(newer);
+    resolveButton(enrolled({ checkedInToday: true, day: 1, streak: 1 }));
+    await button;
+    await flush();
+    await flush();
+  }
+
+  it("keeps a production approval it landed over the older button answer", async () => {
+    await pendingReadLands(enrolled({ checkedInToday: false, stopped: true, productionApproved: true }));
+    expect(useTesterProgram.getState().program).toMatchObject({ stopped: true });
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unenrolment it landed over the older button answer", async () => {
+    await pendingReadLands({ enrolled: false });
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});

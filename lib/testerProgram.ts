@@ -147,11 +147,15 @@ function evening(date: string, day: number): TesterReminder {
 /**
  * Whether the feedback card may be drawn at all. Once today is in, while the
  * program runs; and on a completed run (its day-14 card). Never after
- * production approval — that is `stopped` without `runComplete` — even for a
- * card this phone is still holding.
+ * production approval (`productionApproved`, or `stopped` without
+ * `runComplete` from an API that predates the field) — even for a card this
+ * phone is still holding.
  */
 export function feedbackAllowed(state: TesterProgramState | null): boolean {
   if (!state?.enrolled) return false;
+  // Before the completed-run exception: `stopped` alone cannot tell approval
+  // from completion (gridgo-supplier#237 review).
+  if (state.productionApproved === true) return false;
   if (state.runComplete) return true;
   return !state.stopped && state.checkedInToday;
 }

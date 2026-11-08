@@ -44,6 +44,8 @@ type TesterProgramStore = {
 };
 
 let sequence = 0;
+/** Counts every answer drawn from a read, so a button answer can tell it was overtaken. */
+let applied = 0;
 let checkInAttempt = 0;
 
 /** What the check-in records as this build: `1.4.212 (212)`, or the platform for a dev build. */
@@ -82,6 +84,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
           return;
         }
         if (mine !== sequence) return;
+        applied++;
         set({ program, readAt: Date.now() });
         // Opening the app is the check-in; the button is only the way back
         // when this call could not land.
@@ -92,6 +95,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
             // The card offers Check in; the reminders still follow the read.
           }
           if (mine !== sequence) return;
+          applied++;
           set({ program, readAt: Date.now() });
         }
         // Every read reconciles this phone's reminders with GRIDGO: replanned
@@ -109,11 +113,14 @@ export const useTesterProgram = create<TesterProgramStore>()(
         // know more (production approval, unenrolment), so this answer must
         // not be drawn or scheduled over it.
         const readGeneration = sequence;
+        // And the answers drawn so far: a read already pending at the tap can
+        // land a stop while this call is out (gridgo-supplier#237 review).
+        const appliedAtTap = applied;
         set({ checkingIn: true, checkInFailed: false });
         try {
           const program = await api.testerCheckIn(testerAppVersion(), "button");
           if (attempt !== checkInAttempt || get().owner !== owner) return;
-          if (readGeneration !== sequence) {
+          if (readGeneration !== sequence || appliedAtTap !== applied) {
             // Overtaken: ask GRIDGO again rather than trust either snapshot.
             void get().load(owner);
             return;
