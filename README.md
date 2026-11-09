@@ -88,8 +88,14 @@ allow an app installed from Play to offer an APK from somewhere else. With the f
 the app never reads GitHub for a newer release, and the update sheet, the "Update
 completed" sheet and the release push's download link are all off
 (`lib/buildDistribution.ts`, `offersSideloadUpdates` in `lib/appUpdate.ts`). Play
-delivers the updates. When the flag is not set, the build is the side-load APK, and it
-behaves as before.
+builds check for Google's flexible in-app updates after launch and on foreground,
+at most once every four hours across launches. Play handles consent and download;
+after download, “Later / Restart now” lets the rider choose when to install.
+Both prompts wait until no job is active and the rider's trip has loaded
+successfully. Restart checks again that no trip is active. Failures stay silent.
+The local Android module autolinks into the existing prebuild/Gradle bundle path;
+iOS never loads it. See `modules/gridgo-play-update/README.md` for Play device
+verification requirements. When the flag is not set, the build keeps its APK updater.
 
 **versionCode.** Play accepts only a versionCode higher than every one it has seen for
 the app. The versionCode is the workflow's run number (`GRIDGO_BUILD_NUMBER`, see

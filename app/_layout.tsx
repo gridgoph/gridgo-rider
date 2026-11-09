@@ -34,6 +34,7 @@ import { SessionShell } from "@/components/SessionShell";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
+import { usePlayUpdateCheck } from "@/hooks/usePlayUpdateCheck";
 import { useArrivalAlert } from "@/hooks/useArrivalAlert";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
@@ -143,6 +144,7 @@ function AppShell() {
   // once, so the flag is the whole gate — no route, no back-stack entry, and
   // nothing about where the launch lands is decided here.
   const [introPlaying, setIntroPlaying] = useState(true);
+  usePlayUpdateCheck(!introPlaying && launchReady);
 
   return (
     /*
