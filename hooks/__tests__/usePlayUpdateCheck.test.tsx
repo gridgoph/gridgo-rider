@@ -222,12 +222,16 @@ it.each([
   expect(native.startFlexibleUpdate).toHaveBeenCalledTimes(1);
 });
 
-it("waits for session hydration, then permits signed-out updates", async () => {
+it("defers signed-out checks until rider sign-in and a successful trip read", async () => {
   useSession.setState({ hydrated: false, user: null });
   useActiveTrip.setState({ loaded: false });
   await renderHook(() => usePlayUpdateCheck(true));
   expect(mockRequireNative).not.toHaveBeenCalled();
   await act(async () => useSession.setState({ hydrated: true }));
+  expect(mockRequireNative).not.toHaveBeenCalled();
+  await act(async () => useSession.setState({ user: rider }));
+  expect(mockRequireNative).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
   expect(native.startFlexibleUpdate).toHaveBeenCalledTimes(1);
 });
 
@@ -455,4 +459,82 @@ it.each(["older", "newer"] as const)("holds acceptance locks across cache resets
   expect(prematureInstalls).toBe(0);
   expect(installsBeforeFreshRead).toBe(0);
   expect(native.completeUpdate).toHaveBeenCalledTimes(1);
+});
+
+it.each(["clearSession", "logout"] as const)("requires trip reconciliation if an acceptance settles after %s", async (endSession) => {
+  await renderHook(() => usePlayUpdateCheck(true));
+  let answerFetch!: (response: Response) => void;
+  const originalFetch = global.fetch;
+  const fetchMock = jest.fn(() => new Promise<Response>((resolve) => { answerFetch = resolve; }));
+  global.fetch = fetchMock as unknown as typeof fetch;
+  api.setTokenProvider(null);
+  api.setToken("review-old-session");
+  let acceptance!: Promise<void>;
+  let acceptanceError: unknown;
+  try {
+    await act(async () => {
+      const finish = useActiveTrip.getState().beginOfferAcceptance();
+      acceptance = api.acceptOffer(trip.id)
+        .then((order) => useActiveTrip.getState().setOrder(order))
+        .catch((error: unknown) => { acceptanceError = error; })
+        .finally(finish);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    jest.spyOn(api, "logout").mockResolvedValueOnce(undefined);
+    await act(async () => useSession.getState()[endSession]());
+    expect(useActiveTrip.getState().acceptingOffer).toBe(true);
+    AppState.currentState = "background";
+    await act(async () => foreground("background"));
+    await act(async () => downloaded());
+    AppState.currentState = "active";
+    await act(async () => foreground("active"));
+    expect(Alert.alert).not.toHaveBeenCalled();
+    await act(async () => {
+      answerFetch({ ok: true, status: 200, text: async () => JSON.stringify({ order: trip }) } as Response);
+      await acceptance;
+    });
+    expect(acceptanceError).toBeInstanceOf(Error);
+    expect((acceptanceError as Error).message).toBe("The account changed. Open this screen again.");
+    expect(useSession.getState().user).toBeNull();
+    expect(useActiveTrip.getState().order).toBeNull();
+    expect(useActiveTrip.getState().reconciledGeneration).toBeNull();
+    const promptCount = jest.mocked(Alert.alert).mock.calls.length;
+    await act(async () => jest.mocked(Alert.alert).mock.calls[0]?.[2]?.[1].onPress?.());
+    expect({ promptCount, prematureInstalls: native.completeUpdate.mock.calls.length })
+      .toEqual({ promptCount: 0, prematureInstalls: 0 });
+  } finally {
+    global.fetch = originalFetch;
+    api.setToken(null);
+  }
+});
+
+it.each([
+  { loading: true },
+  { sessionWait: "in" as const },
+  { hydrated: false },
+])("requires a new read after same-rider session uncertainty: %j", async (uncertain) => {
+  native.checkForUpdate.mockResolvedValue({ available: true, flexibleAllowed: false, downloaded: true });
+  await renderHook(() => usePlayUpdateCheck(true));
+  const restart = jest.mocked(Alert.alert).mock.calls[0][2]![1].onPress!;
+  await act(async () => useSession.setState(uncertain));
+  // A read begun before the auth transition settled must also remain unusable.
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  await act(async () => useSession.setState({ loading: false, sessionWait: null, hydrated: true }));
+  await act(async () => restart());
+  expect(native.completeUpdate).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(2);
+});
+
+it("requires a new trip read after the same rider's auth owner changes", async () => {
+  useSession.setState({ authSource: "legacy" });
+  await useActiveTrip.getState().refresh(rider.id, "refresh");
+  native.checkForUpdate.mockResolvedValue({ available: true, flexibleAllowed: false, downloaded: true });
+  await renderHook(() => usePlayUpdateCheck(true));
+  const restart = jest.mocked(Alert.alert).mock.calls[0][2]![1].onPress!;
+  await act(async () => useSession.setState({ authSource: "clerk" }));
+  await act(async () => restart());
+  expect(native.completeUpdate).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(2);
 });

@@ -147,13 +147,12 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   },
 }));
 
-/** A current successful read, not the screen's cached `loaded` flag, proves idle. */
+/** Signed-out installs defer updates until sign-in and fresh trip reconciliation. */
 export function canInterruptTrip(riderId: string | null): boolean {
   const s = useActiveTrip.getState();
+  if (!riderId) return false;
   if (s.appState !== "active" || s.acceptingOffer || s.reconciling || s.loading || s.error) return false;
   if (s.order && isActiveTripState(s.order.state)) return false;
-  return !riderId || (
-    s.loaded && s.reconciledRiderId === riderId &&
-    s.reconciledGeneration === s.reconciliationGeneration
-  );
+  return s.loaded && s.reconciledRiderId === riderId &&
+    s.reconciledGeneration === s.reconciliationGeneration;
 }
