@@ -1,8 +1,9 @@
-import { liveGeneration } from "@/lib/live";
+import { invalidate, liveGeneration } from "@/lib/live";
 import { create } from "zustand";
+import { AppState, type AppStateStatus } from "react-native";
 
 import * as api from "@/lib/api";
-import { selectActiveTrip } from "@/lib/riderOrder";
+import { isActiveTripState, selectActiveTrip } from "@/lib/riderOrder";
 
 type ActiveTripState = {
   order: api.Order | null;
@@ -10,7 +11,19 @@ type ActiveTripState = {
   loaded: boolean;
   loading: boolean;
   error: string | null;
-  /** Pull the rider's one live job. `mode` only changes which flag moves. */
+  appState: AppStateStatus;
+  /** Changes whenever a cached idle answer can no longer authorize interruption. */
+  reconciliationGeneration: number;
+  reconciledGeneration: number | null;
+  reconciledRiderId: string | null;
+  /** Every trip HTTP read, including the quiet refresh mode. */
+  reconciling: boolean;
+  acceptingOffer: boolean;
+  syncAppState: (state: AppStateStatus) => void;
+  invalidateReconciliation: () => void;
+  /** Holds restart permission until acceptance settles and a new read finishes. */
+  beginOfferAcceptance: () => () => void;
+  /** Pull the rider's one live job. Only `load` shows the screen's loading flag. */
   refresh: (riderId: string | null, mode?: "load" | "refresh") => Promise<void>;
   /** Adopt an order returned by a mutation, without a round trip. */
   setOrder: (order: api.Order | null) => void;
@@ -27,22 +40,84 @@ type ActiveTripState = {
  * a lie about where the package is.
  */
 let requestVersion = 0;
+// Session/cache clearing cannot cancel an HTTP mutation. Each operation owns
+// its lock until its own finalizer runs, including across rider changes.
+const pendingAcceptances = new Set<symbol>();
 
-export const useActiveTrip = create<ActiveTripState>((set) => ({
+export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   order: null,
   loaded: false,
   loading: false,
   error: null,
-  setOrder: (order) => { ++requestVersion; set({ order, loaded: true, error: null }); },
-  clear: () => { ++requestVersion; set({ order: null, loaded: false, loading: false, error: null }); },
+  appState: AppState.currentState,
+  reconciliationGeneration: 0,
+  reconciledGeneration: null,
+  reconciledRiderId: null,
+  reconciling: false,
+  acceptingOffer: false,
+  invalidateReconciliation: () => set((s) => ({
+    reconciliationGeneration: s.reconciliationGeneration + 1,
+    reconciledGeneration: null,
+  })),
+  syncAppState: (state) => {
+    if (get().appState === state) return;
+    // Called synchronously by the root and update listeners, before either
+    // can act on an old idle result. Duplicate lifecycle callbacks are safe.
+    set((s) => ({
+      appState: state,
+      reconciliationGeneration: s.reconciliationGeneration + 1,
+      reconciledGeneration: null,
+    }));
+  },
+  beginOfferAcceptance: () => {
+    const operation = Symbol();
+    pendingAcceptances.add(operation);
+    ++requestVersion;
+    set((s) => ({
+      acceptingOffer: true,
+      reconciliationGeneration: s.reconciliationGeneration + 1,
+      reconciledGeneration: null,
+      reconciling: false,
+      loading: false,
+    }));
+    return () => {
+      if (!pendingAcceptances.delete(operation)) return;
+      ++requestVersion;
+      // Even a failed response may have accepted the job on the server.
+      // Reads begun before it settled cannot authorize a restart.
+      set((s) => ({
+        acceptingOffer: pendingAcceptances.size > 0,
+        reconciliationGeneration: s.reconciliationGeneration + 1,
+        reconciledGeneration: null,
+        reconciling: false,
+        loading: false,
+      }));
+      invalidate("orders");
+    };
+  },
+  setOrder: (order) => {
+    ++requestVersion;
+    set({ order, loaded: true, loading: false, reconciling: false, error: null, reconciledGeneration: null });
+  },
+  clear: () => {
+    ++requestVersion;
+    set((s) => ({
+      order: null, loaded: false, loading: false, error: null,
+      reconciling: false, acceptingOffer: pendingAcceptances.size > 0,
+      reconciliationGeneration: s.reconciliationGeneration + 1,
+      reconciledGeneration: null, reconciledRiderId: null,
+    }));
+  },
   refresh: async (riderId, mode = "load") => {
+    get().syncAppState(AppState.currentState);
     const version = ++requestVersion;
     const generation = liveGeneration();
+    const reconciliationGeneration = get().reconciliationGeneration;
     if (!riderId) {
-      set({ order: null, loaded: true, loading: false });
+      set({ order: null, loaded: true, loading: false, error: null, reconciling: false, reconciledGeneration: null });
       return;
     }
-    if (mode === "load") set({ loading: true });
+    set({ reconciling: true, ...(mode === "load" ? { loading: true } : {}) });
     try {
       const orders = await api.listOrders();
       if (version !== requestVersion || generation !== liveGeneration()) return;
@@ -51,6 +126,9 @@ export const useActiveTrip = create<ActiveTripState>((set) => ({
         error: null,
         loaded: true,
         loading: false,
+        reconciling: false,
+        reconciledGeneration: reconciliationGeneration,
+        reconciledRiderId: riderId,
       });
     } catch (e) {
       if (version !== requestVersion || generation !== liveGeneration()) return;
@@ -62,7 +140,19 @@ export const useActiveTrip = create<ActiveTripState>((set) => ({
         ),
         loaded: true,
         loading: false,
+        reconciling: false,
+        reconciledGeneration: null,
       });
     }
   },
 }));
+
+/** Signed-out installs defer updates until sign-in and fresh trip reconciliation. */
+export function canInterruptTrip(riderId: string | null): boolean {
+  const s = useActiveTrip.getState();
+  if (!riderId) return false;
+  if (s.appState !== "active" || s.acceptingOffer || s.reconciling || s.loading || s.error) return false;
+  if (s.order && isActiveTripState(s.order.state)) return false;
+  return s.loaded && s.reconciledRiderId === riderId &&
+    s.reconciledGeneration === s.reconciliationGeneration;
+}

@@ -4,6 +4,7 @@ import { useAlertStream } from "@/hooks/useAlertStream";
 import { openAlertStream } from "@/lib/alertStream";
 import { subscribeLive } from "@/lib/live";
 import { useSession } from "@/store/session";
+import { canInterruptTrip } from "@/store/activeTrip";
 import * as api from "@/lib/api";
 jest.mock("@/lib/alertStream", () => ({openAlertStream:jest.fn()}));
 jest.mock("@/lib/api", () => ({...jest.requireActual("@/lib/api"),listNotifications:jest.fn(),me:jest.fn(),listOrders:jest.fn(async()=>[])}));
@@ -38,6 +39,22 @@ describe("authenticated app stream lifecycle", () => {
     expect(close).toHaveBeenCalled();
     await act(async () => {change("active");});
     expect(openAlertStream).toHaveBeenCalledTimes(2);
+  });
+  it("revokes idle permission as soon as a trip hint queues reconciliation", async () => {
+    const previous = AppState.currentState;
+    AppState.currentState = "active";
+    try {
+      await renderHook(() => useAlertStream());
+      await act(async () => { await jest.advanceTimersByTimeAsync(100); });
+      expect(canInterruptTrip(user.id)).toBe(true);
+      const handlers = (openAlertStream as jest.Mock).mock.calls[0][0];
+      await act(async () => handlers.onInvalidate({ resource: "orders" }));
+      expect(canInterruptTrip(user.id)).toBe(false);
+      await act(async () => { await jest.advanceTimersByTimeAsync(100); });
+      expect(canInterruptTrip(user.id)).toBe(true);
+    } finally {
+      AppState.currentState = previous;
+    }
   });
   it("rejects old stream callbacks after account switch and clears account caches", async () => {
     await renderHook(() => useAlertStream());

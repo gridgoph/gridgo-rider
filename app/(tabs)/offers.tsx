@@ -145,6 +145,7 @@ export default function OffersScreen() {
 
   async function accept(id: string) {
     if (hasActive || acceptingIdRef.current || acceptedTimerRef.current) return;
+    const finishAcceptance = useActiveTrip.getState().beginOfferAcceptance();
     acceptingIdRef.current = id;
     setBusyId(id);
     setError(null);
@@ -177,6 +178,7 @@ export default function OffersScreen() {
       setError(null);
       setAcceptError({ id, body: message, closed: Boolean(closed) });
     } finally {
+      finishAcceptance();
       acceptingIdRef.current = null;
       setBusyId(null);
     }
