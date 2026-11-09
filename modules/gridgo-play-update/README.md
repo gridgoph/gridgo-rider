@@ -18,7 +18,9 @@ per installed version. A completed download is recovered on the next eligible
 check; a download completed while this process is alive prompts on foreground.
 Both Play consent and restart prompts wait until no job is active. The shared
 trip store requires a successful read for the current foreground/session
-generation, with no read or offer acceptance in flight. Foreground changes
+generation, with no read or offer acceptance in flight. Session/cache resets
+preserve pending acceptance locks; each operation releases only its own lock,
+then invalidates idle permission until another read succeeds. Foreground changes
 and queued trip hints invalidate idle permission synchronously, before the
 identity read or trip refresh starts. Unknown or failed reads defer updates.
 A download that finishes during a job stays pending until a new trip read

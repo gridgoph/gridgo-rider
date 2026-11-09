@@ -40,7 +40,9 @@ type ActiveTripState = {
  * a lie about where the package is.
  */
 let requestVersion = 0;
-let acceptanceVersion = 0;
+// Session/cache clearing cannot cancel an HTTP mutation. Each operation owns
+// its lock until its own finalizer runs, including across rider changes.
+const pendingAcceptances = new Set<symbol>();
 
 export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   order: null,
@@ -68,7 +70,8 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
     }));
   },
   beginOfferAcceptance: () => {
-    const version = ++acceptanceVersion;
+    const operation = Symbol();
+    pendingAcceptances.add(operation);
     ++requestVersion;
     set((s) => ({
       acceptingOffer: true,
@@ -78,13 +81,12 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
       loading: false,
     }));
     return () => {
-      if (version !== acceptanceVersion) return;
-      ++acceptanceVersion;
+      if (!pendingAcceptances.delete(operation)) return;
       ++requestVersion;
       // Even a failed response may have accepted the job on the server.
       // Reads begun before it settled cannot authorize a restart.
       set((s) => ({
-        acceptingOffer: false,
+        acceptingOffer: pendingAcceptances.size > 0,
         reconciliationGeneration: s.reconciliationGeneration + 1,
         reconciledGeneration: null,
         reconciling: false,
@@ -99,10 +101,9 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   },
   clear: () => {
     ++requestVersion;
-    ++acceptanceVersion;
     set((s) => ({
       order: null, loaded: false, loading: false, error: null,
-      reconciling: false, acceptingOffer: false,
+      reconciling: false, acceptingOffer: pendingAcceptances.size > 0,
       reconciliationGeneration: s.reconciliationGeneration + 1,
       reconciledGeneration: null, reconciledRiderId: null,
     }));

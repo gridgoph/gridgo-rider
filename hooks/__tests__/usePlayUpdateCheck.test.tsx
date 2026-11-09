@@ -398,3 +398,61 @@ it("does not reuse an idle read from the previous rider session", async () => {
   await act(async () => useActiveTrip.getState().refresh("r2", "refresh"));
   expect(Alert.alert).toHaveBeenCalledTimes(1);
 });
+
+it("keeps acceptance locked across sign-out and sign-in until its HTTP request settles", async () => {
+  await renderHook(() => usePlayUpdateCheck(true));
+  let answerAccept!: (order: Order) => void;
+  jest.spyOn(api, "acceptOffer").mockReturnValueOnce(new Promise((resolve) => { answerAccept = resolve; }));
+  let acceptance!: Promise<void>;
+  await act(async () => {
+    const finish = useActiveTrip.getState().beginOfferAcceptance();
+    acceptance = api.acceptOffer(trip.id).then((order) => useActiveTrip.getState().setOrder(order)).finally(finish);
+  });
+  expect(useActiveTrip.getState().acceptingOffer).toBe(true);
+  jest.spyOn(api, "logout").mockResolvedValueOnce(undefined);
+  await act(async () => useSession.getState().logout());
+  await act(async () => useSession.setState({ user: rider, hydrated: true, loading: false, sessionWait: null }));
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  await act(async () => downloaded());
+  const promptCount = jest.mocked(Alert.alert).mock.calls.length;
+  await act(async () => jest.mocked(Alert.alert).mock.calls[0]?.[2]?.[1].onPress?.());
+  const prematureInstalls = native.completeUpdate.mock.calls.length;
+  await act(async () => { answerAccept(trip); await acceptance; });
+  expect({ promptCount, prematureInstalls }).toEqual({ promptCount: 0, prematureInstalls: 0 });
+});
+
+it.each(["older", "newer"] as const)("holds acceptance locks across cache resets when the %s operation settles first", async (first) => {
+  native.checkForUpdate.mockResolvedValue({ available: true, flexibleAllowed: false, downloaded: true });
+  await renderHook(() => usePlayUpdateCheck(true));
+  const restart = jest.mocked(Alert.alert).mock.calls[0][2]![1].onPress!;
+  let finishOld!: () => void;
+  let finishNew!: () => void;
+  await act(async () => {
+    finishOld = useActiveTrip.getState().beginOfferAcceptance();
+    useSession.getState().clearSession();
+    useSession.setState({ user: rider, hydrated: true, loading: false, sessionWait: null });
+    finishNew = useActiveTrip.getState().beginOfferAcceptance();
+  });
+  const finishFirst = first === "older" ? finishOld : finishNew;
+  const finishLast = first === "older" ? finishNew : finishOld;
+  await act(async () => finishFirst());
+  const lockedForRemaining = useActiveTrip.getState().acceptingOffer;
+  await act(async () => finishFirst());
+  const lockedAfterDuplicate = useActiveTrip.getState().acceptingOffer;
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  await act(async () => restart());
+  const prematureInstalls = native.completeUpdate.mock.calls.length;
+  await act(async () => finishLast());
+  const lockedAfterBoth = useActiveTrip.getState().acceptingOffer;
+  await act(async () => restart());
+  const installsBeforeFreshRead = native.completeUpdate.mock.calls.length;
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  await act(async () => finishFirst());
+  await act(async () => jest.mocked(Alert.alert).mock.calls.at(-1)?.[2]?.[1].onPress?.());
+  expect(lockedForRemaining).toBe(true);
+  expect(lockedAfterDuplicate).toBe(true);
+  expect(lockedAfterBoth).toBe(false);
+  expect(prematureInstalls).toBe(0);
+  expect(installsBeforeFreshRead).toBe(0);
+  expect(native.completeUpdate).toHaveBeenCalledTimes(1);
+});
