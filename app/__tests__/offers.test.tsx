@@ -138,6 +138,22 @@ describe("Offers accept button", () => {
     await view?.unmount();
   });
 
+  it("holds the shared restart lock while an offer acceptance is in flight", async () => {
+    let resolveAccept!: (order: Order) => void;
+    api.acceptOffer.mockReturnValue(new Promise<Order>((resolve) => {
+      resolveAccept = resolve;
+    }));
+    view = await render(<OffersScreen />);
+    await screen.findByText("Storefront tarpaulin");
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    });
+    const lockedWhilePending = useActiveTrip.getState().acceptingOffer;
+    await act(async () => resolveAccept(activeJob));
+    expect(lockedWhilePending).toBe(true);
+    expect(useActiveTrip.getState().acceptingOffer).toBe(false);
+  });
+
   it("removes a competing rider's accepted offer while Offers stays open", async () => {
     view = await render(<OffersScreen />);
     await screen.findByText("Storefront tarpaulin");

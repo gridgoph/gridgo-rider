@@ -4,6 +4,7 @@ import { Alert, AppState, Platform, type AppStateStatus } from "react-native";
 
 import { usePlayUpdateCheck } from "@/hooks/usePlayUpdateCheck";
 import type { Order } from "@/lib/api";
+import * as api from "@/lib/api";
 import { loadPlayUpdate } from "@/lib/playUpdate";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
@@ -38,12 +39,14 @@ const trip = { id: "o1", riderId: rider.id, state: "out_for_delivery" } as Order
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
-  useSession.setState({ hydrated: true, user: rider });
-  useActiveTrip.setState({ order: null, loaded: true, loading: false, error: null });
   now = 1_800_000_000_000;
   jest.spyOn(Date, "now").mockImplementation(() => now);
   jest.replaceProperty(Platform, "OS", "android");
   AppState.currentState = "active";
+  useSession.setState({ hydrated: true, user: rider, loading: false, sessionWait: null });
+  useActiveTrip.getState().clear();
+  jest.spyOn(api, "listOrders").mockResolvedValue([]);
+  await useActiveTrip.getState().refresh(rider.id, "refresh");
   process.env.EXPO_PUBLIC_APP_DISTRIBUTION = "play";
   mockRequireNative.mockReturnValue(native);
   native.checkForUpdate.mockResolvedValue({ available: true, flexibleAllowed: true, downloaded: false });
@@ -102,6 +105,7 @@ it("throttles foreground checks and cold launches for four hours", async () => {
   await act(async () => foreground("background"));
   expect(native.checkForUpdate).toHaveBeenCalledTimes(1);
   await act(async () => foreground("active"));
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
   expect(native.checkForUpdate).toHaveBeenCalledTimes(2);
 });
 
@@ -128,10 +132,13 @@ it("recovers an already downloaded update without starting another download", as
 it("holds a background download prompt until the app is active", async () => {
   await renderHook(() => usePlayUpdateCheck(true));
   AppState.currentState = "background";
+  await act(async () => foreground("background"));
   await act(async () => downloaded());
   expect(Alert.alert).not.toHaveBeenCalled();
   AppState.currentState = "active";
   await act(async () => foreground("active"));
+  expect(Alert.alert).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
   expect(Alert.alert).toHaveBeenCalledTimes(1);
   expect(native.checkForUpdate).toHaveBeenCalledTimes(1);
 });
@@ -199,6 +206,7 @@ it.each(["rider_assigned", "picked_up", "out_for_delivery"])("defers Play consen
   expect(mockRequireNative).not.toHaveBeenCalled();
   expect(native.checkForUpdate).not.toHaveBeenCalled();
   await act(async () => useActiveTrip.getState().setOrder({ ...trip, state: "delivered" }));
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
   expect(native.startFlexibleUpdate).toHaveBeenCalledTimes(1);
 });
 
@@ -231,6 +239,7 @@ it("keeps a download pending during the trip and prompts once when the job ends"
   expect(Alert.alert).not.toHaveBeenCalled();
   expect(native.completeUpdate).not.toHaveBeenCalled();
   await act(async () => useActiveTrip.getState().setOrder({ ...trip, state: "awaiting_collection" }));
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
   expect(Alert.alert).toHaveBeenCalledTimes(1);
   expect(native.checkForUpdate).toHaveBeenCalledTimes(1);
   await act(async () => downloaded());
@@ -245,6 +254,7 @@ it("rechecks the job before Restart now and offers again after handover", async 
   await act(async () => restart());
   expect(native.completeUpdate).not.toHaveBeenCalled();
   await act(async () => useActiveTrip.getState().setOrder(null));
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
   expect(Alert.alert).toHaveBeenCalledTimes(2);
   await act(async () => jest.mocked(Alert.alert).mock.calls[1][2]![1].onPress?.());
   expect(native.completeUpdate).toHaveBeenCalledTimes(1);
@@ -260,6 +270,7 @@ it.each([false, true])("does not interrupt a trip accepted while Play answers (d
   expect(Alert.alert).not.toHaveBeenCalled();
   if (isDownloaded) {
     await act(async () => useActiveTrip.getState().setOrder(null));
+    await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
     expect(Alert.alert).toHaveBeenCalledTimes(1);
   }
 });
@@ -271,4 +282,119 @@ it("never restarts from a stale prompt after unmount", async () => {
   await hook.unmount();
   await act(async () => restart());
   expect(native.completeUpdate).not.toHaveBeenCalled();
+});
+
+it("waits for the current foreground trip reconciliation before restarting", async () => {
+  const api = jest.requireActual<typeof import("@/lib/api")>("@/lib/api");
+  let resolveOrders!: (orders: Order[]) => void;
+  jest.spyOn(api, "listOrders").mockReturnValue(
+    new Promise<Order[]>((resolve) => { resolveOrders = resolve; }),
+  );
+  await renderHook(() => usePlayUpdateCheck(true));
+  AppState.currentState = "background";
+  await act(async () => downloaded());
+  let reconcile!: Promise<void>;
+  await act(async () => {
+    reconcile = useActiveTrip.getState().refresh(rider.id, "refresh");
+  });
+  AppState.currentState = "active";
+  await act(async () => foreground("active"));
+  const restart = jest.mocked(Alert.alert).mock.calls[0]?.[2]?.[1].onPress;
+  await act(async () => restart?.());
+  const prematureInstalls = native.completeUpdate.mock.calls.length;
+  await act(async () => { resolveOrders([trip]); await reconcile; });
+  expect(useActiveTrip.getState().order?.state).toBe("out_for_delivery");
+  expect(prematureInstalls).toBe(0);
+});
+
+it("requires a new foreground read even when a background read returns no trip", async () => {
+  await renderHook(() => usePlayUpdateCheck(true));
+  AppState.currentState = "background";
+  await act(async () => foreground("background"));
+  await act(async () => downloaded());
+  let resolveOrders!: (orders: Order[]) => void;
+  jest.mocked(api.listOrders).mockReturnValueOnce(new Promise((resolve) => { resolveOrders = resolve; }));
+  let oldRead!: Promise<void>;
+  await act(async () => { oldRead = useActiveTrip.getState().refresh(rider.id, "refresh"); });
+  AppState.currentState = "active";
+  await act(async () => foreground("active"));
+  expect(Alert.alert).not.toHaveBeenCalled();
+  await act(async () => { resolveOrders([]); await oldRead; });
+  expect(Alert.alert).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
+});
+
+it("holds a downloaded update after a failed foreground read until a successful retry", async () => {
+  await renderHook(() => usePlayUpdateCheck(true));
+  AppState.currentState = "background";
+  await act(async () => foreground("background"));
+  await act(async () => downloaded());
+  AppState.currentState = "active";
+  await act(async () => foreground("active"));
+  jest.mocked(api.listOrders).mockRejectedValueOnce(new Error("offline"));
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).not.toHaveBeenCalled();
+  expect(native.completeUpdate).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
+});
+
+it("rechecks current foreground permission when an old Restart now button is tapped", async () => {
+  native.checkForUpdate.mockResolvedValue({ available: true, flexibleAllowed: false, downloaded: true });
+  await renderHook(() => usePlayUpdateCheck(true));
+  const restart = jest.mocked(Alert.alert).mock.calls[0][2]![1].onPress!;
+  AppState.currentState = "background";
+  await act(async () => foreground("background"));
+  AppState.currentState = "active";
+  await act(async () => foreground("active"));
+  await act(async () => restart());
+  expect(native.completeUpdate).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(2);
+});
+
+it("blocks restart through acceptance and discards idle reads begun before it settled", async () => {
+  native.checkForUpdate.mockResolvedValue({ available: true, flexibleAllowed: false, downloaded: true });
+  await renderHook(() => usePlayUpdateCheck(true));
+  const restart = jest.mocked(Alert.alert).mock.calls[0][2]![1].onPress!;
+  let finishAcceptance!: () => void;
+  await act(async () => { finishAcceptance = useActiveTrip.getState().beginOfferAcceptance(); });
+  await act(async () => restart());
+  expect(native.completeUpdate).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  await act(async () => downloaded());
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
+  await act(async () => finishAcceptance());
+  await act(async () => restart());
+  expect(native.completeUpdate).not.toHaveBeenCalled();
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(2);
+  await act(async () => jest.mocked(Alert.alert).mock.calls[1][2]![1].onPress?.());
+  expect(native.completeUpdate).toHaveBeenCalledTimes(1);
+});
+
+it("defers Play consent while an offer acceptance is pending", async () => {
+  const finishAcceptance = useActiveTrip.getState().beginOfferAcceptance();
+  await renderHook(() => usePlayUpdateCheck(true));
+  expect(mockRequireNative).not.toHaveBeenCalled();
+  await act(async () => finishAcceptance());
+  expect(mockRequireNative).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh(rider.id, "refresh"));
+  expect(native.startFlexibleUpdate).toHaveBeenCalledTimes(1);
+});
+
+it("does not reuse an idle read from the previous rider session", async () => {
+  await renderHook(() => usePlayUpdateCheck(true));
+  let resolveOrders!: (orders: Order[]) => void;
+  jest.mocked(api.listOrders).mockReturnValueOnce(new Promise((resolve) => { resolveOrders = resolve; }));
+  let oldRead!: Promise<void>;
+  await act(async () => { oldRead = useActiveTrip.getState().refresh(rider.id, "refresh"); });
+  await act(async () => useSession.setState({ user: { ...rider, id: "r2" } }));
+  await act(async () => downloaded());
+  await act(async () => { resolveOrders([]); await oldRead; });
+  expect(Alert.alert).not.toHaveBeenCalled();
+  await act(async () => useActiveTrip.getState().refresh("r2", "refresh"));
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
 });

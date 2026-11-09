@@ -91,8 +91,11 @@ completed" sheet and the release push's download link are all off
 builds check for Google's flexible in-app updates after launch and on foreground,
 at most once every four hours across launches. Play handles consent and download;
 after download, “Later / Restart now” lets the rider choose when to install.
-Both prompts wait until no job is active and the rider's trip has loaded
-successfully. Restart checks again that no trip is active. Failures stay silent.
+Both prompts wait for a successful trip read in the current foreground and
+rider session. Returning to the app or receiving a trip hint revokes the old
+idle result immediately. Accepting an offer also blocks restart until it
+settles and a new trip read succeeds. Restart checks the same shared guard
+again when tapped. Failures stay silent.
 The local Android module autolinks into the existing prebuild/Gradle bundle path;
 iOS never loads it. See `modules/gridgo-play-update/README.md` for Play device
 verification requirements. When the flag is not set, the build keeps its APK updater.

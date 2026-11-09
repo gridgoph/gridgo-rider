@@ -16,10 +16,13 @@ module only when `installChannel()` is `play`.
 at most once per four hours, including across app launches. The timestamp is
 per installed version. A completed download is recovered on the next eligible
 check; a download completed while this process is alive prompts on foreground.
-Both Play consent and restart prompts wait until no job is active. Signed-in
-riders wait for a successful trip read first; unknown or failed reads defer
-updates. A download that finishes during a job stays pending until the job
-ends. **Restart now** rechecks the trip before installing.
+Both Play consent and restart prompts wait until no job is active. The shared
+trip store requires a successful read for the current foreground/session
+generation, with no read or offer acceptance in flight. Foreground changes
+and queued trip hints invalidate idle permission synchronously, before the
+identity read or trip refresh starts. Unknown or failed reads defer updates.
+A download that finishes during a job stays pending until a new trip read
+confirms the job has ended. **Restart now** rechecks this guard before installing.
 
 Why local: `expo-in-app-updates@0.12.0` automatically completes flexible
 updates and redirects to the Store on failure. Its current `0.13.x` release

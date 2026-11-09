@@ -5,8 +5,7 @@ import { Alert, AppState } from "react-native";
 
 import { installChannel } from "@/lib/buildDistribution";
 import { loadPlayUpdate } from "@/lib/playUpdate";
-import { isActiveTripState } from "@/lib/riderOrder";
-import { useActiveTrip } from "@/store/activeTrip";
+import { canInterruptTrip, useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -16,15 +15,15 @@ const CHECK_KEY = `gridgo:play-update-check:${Constants.expoConfig?.android?.ver
 /** Unknown trip state is not permission to interrupt a rider's job. */
 function canInterruptRider(): boolean {
   const session = useSession.getState();
-  const trip = useActiveTrip.getState();
-  if (!session.hydrated || (trip.order && isActiveTripState(trip.order.state))) return false;
-  return !session.user || (trip.loaded && !trip.loading && !trip.error);
+  return session.hydrated && !session.loading && !session.sessionWait &&
+    canInterruptTrip(session.user?.id ?? null);
 }
 
 /** Play owns consent and download. GRIDGO only asks before restarting. */
 export function usePlayUpdateCheck(ready: boolean): void {
   useEffect(() => {
     if (!ready || installChannel() !== "play") return;
+    useActiveTrip.getState().syncAppState(AppState.currentState);
 
     let disposed = false;
     let checking = false;
@@ -96,6 +95,7 @@ export function usePlayUpdateCheck(ready: boolean): void {
 
     void check();
     const subscription = AppState.addEventListener("change", (state) => {
+      useActiveTrip.getState().syncAppState(state);
       if (state === "active") {
         promptRestart();
         void check();
