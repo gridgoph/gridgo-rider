@@ -2,10 +2,12 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 import { accountHold } from "@/lib/accountHold";
 import { openAlertStream, type AlertStreamHandle } from "@/lib/alertStream";
-import { invalidate, liveGeneration, subscribeLive } from "@/lib/live";
+import { invalidate, liveGeneration, subscribeLive, type LiveResource } from "@/lib/live";
 import { useSession } from "@/store/session";
 import { useNotifications } from "@/store/notifications";
 import { useActiveTrip } from "@/store/activeTrip";
+
+const TRIP_RESOURCES = new Set<LiveResource | "*">(["*", "orders", "dispatch", "identity", "approvals", "escalations"]);
 
 /**
  * Root-owned foreground reconciliation: stream hints, startup/resume, and a
@@ -18,6 +20,7 @@ export function useAlertStream(enabled = true): void {
   const verification = useSession((s) => s.user?.verificationStatus);
   const held = useSession((s) => accountHold(s.user) != null);
   useEffect(() => {
+    useActiveTrip.getState().syncAppState(AppState.currentState);
     if (!enabled || !userId || held) return;
     const generation = liveGeneration();
     let stopped = false;
@@ -49,6 +52,8 @@ export function useAlertStream(enabled = true): void {
       }
     }
     const unsubscribe = subscribeLive((resource) => {
+      // Revoke idle permission before the coalescing timer or identity read.
+      if (TRIP_RESOURCES.has(resource)) useActiveTrip.getState().invalidateReconciliation();
       pending.add(resource);
       if (!timer && !refreshing) timer = setTimeout(() => void flush(), 80);
     });
@@ -73,6 +78,7 @@ export function useAlertStream(enabled = true): void {
     }
     if (foreground) start();
     const appState = AppState.addEventListener("change", (next) => {
+      useActiveTrip.getState().syncAppState(next);
       foreground = next === "active";
       if (!foreground) { handle?.close(); handle = null; }
       else start();

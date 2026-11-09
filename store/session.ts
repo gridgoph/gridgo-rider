@@ -4,7 +4,7 @@ import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
 import { useTesterProgram } from "@/store/testerProgram";
 import { forgetAppleRevocation } from "@/store/accountDeletion";
-import { setLiveOwner } from "@/lib/live";
+import { invalidate, setLiveOwner } from "@/lib/live";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
@@ -646,7 +646,16 @@ export function bindApiUnauthorizedHandler(): () => void {
 useSession.subscribe((state, previous) => {
   const next = state.user?.id ?? null;
   const status = state.user?.verificationStatus;
-  if (next === (previous.user?.id ?? null) && status === previous.user?.verificationStatus) return;
+  const uncertain = !state.hydrated || state.loading || state.sessionWait !== null;
+  const wasUncertain = !previous.hydrated || previous.loading || previous.sessionWait !== null;
+  const readinessChanged = uncertain !== wasUncertain || state.authSource !== previous.authSource;
+  // Revoke both on entering and leaving uncertainty: a read begun during
+  // adoption must not authorize a restart after the same rider returns.
+  if (readinessChanged) useActiveTrip.getState().invalidateReconciliation();
+  if (next === (previous.user?.id ?? null) && status === previous.user?.verificationStatus) {
+    if (readinessChanged && !uncertain && next) invalidate("orders");
+    return;
+  }
   if (next !== (previous.user?.id ?? null)) {
     cancelDeviceRegistrations();
     forgetAppleRevocation();
