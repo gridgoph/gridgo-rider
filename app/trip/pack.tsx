@@ -61,6 +61,7 @@ export default function PackedPhotoScreen() {
     orderId: id ?? "",
     step: "packing",
     targets: PACKING_PHOTO_TARGETS,
+    inspectionId: order ? currentInspectionId(order) : null,
   });
   const refusalAction = useRefusalAction(id, "pack");
   // A refused attach that names a missing step (the unpacked check, most

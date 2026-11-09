@@ -151,6 +151,7 @@ export default function PickupChecklistScreen() {
     orderId: id ?? "",
     step: "pickup",
     targets: PICKUP_FAILURE_TARGETS,
+    inspectionId: order ? currentInspectionId(order) : null,
   });
 
   const mode = order ? countMode(order) : ({ kind: "legacy" } as const);

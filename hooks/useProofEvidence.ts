@@ -13,12 +13,15 @@ import {
   signatureEvidence,
   type CaptureStep,
 } from "@/lib/proofPhoto";
+import { useSession } from "@/store/session";
 
 type Args = {
   orderId: string;
   step: CaptureStep;
   /** Every purpose this capture must be stored under before it counts. */
   targets: readonly EvidenceTarget[];
+  /** A packed photo belongs to this inspection, never a previous one. */
+  inspectionId?: string | null;
 };
 
 /**
@@ -37,14 +40,19 @@ type Args = {
  * `upload.phase === "stored"` is the only state that means the server has the
  * file. Nothing here ever sets it optimistically.
  */
-export function useProofEvidence({ orderId, step, targets }: Args) {
+export function useProofEvidence({ orderId, step, targets, inspectionId = null }: Args) {
+  const actorId = useSession((state) => state.user?.id ?? null);
   const [evidence, setEvidence] = useState<ProofEvidence | null>(null);
   const [upload, setUpload] = useState<EvidenceUpload>(UPLOAD_IDLE);
   const [stored, setStored] = useState<StoredEvidence>({});
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const handleRef = useRef<UploadHandle | null>(null);
-  const scope = useMemo(() => ({ orderId }), [orderId]);
+  const targetsKey = JSON.stringify(targets);
+  const scope = useMemo(
+    () => ({ orderId, actorId, step, inspectionId, targetsKey }),
+    [orderId, actorId, step, inspectionId, targetsKey],
+  );
   const activeScopeRef = useRef<typeof scope | null>(null);
   const generationRef = useRef(0);
   // Targets are a literal at every call site; holding the latest in a ref keeps
@@ -52,11 +60,11 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
   const targetsRef = useRef(targets);
   useEffect(() => { targetsRef.current = targets; }, [targets]);
 
-  // Reset before committing a reused screen, so another order never renders
-  // the previous photo or receives its server file ids. Shared by pickup/delivery.
-  const [previousOrderId, setPreviousOrderId] = useState(orderId);
-  if (previousOrderId !== orderId) {
-    setPreviousOrderId(orderId);
+  // Reset before committing a reused screen, so a changed actor, step or
+  // inspection cannot render or retry evidence from the previous scope.
+  const [previousScope, setPreviousScope] = useState(scope);
+  if (previousScope !== scope) {
+    setPreviousScope(scope);
     setEvidence(null);
     setUpload(UPLOAD_IDLE);
     setStored({});
@@ -76,15 +84,21 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
   }, [scope, invalidate]);
 
   const send = useCallback(
-    (file: ProofEvidence) => {
+    (file: ProofEvidence, retrying = false) => {
       if (activeScopeRef.current !== scope) return;
       const generation = ++generationRef.current;
+      const resume = retrying ? handleRef.current?.checkpoint : undefined;
       handleRef.current?.cancel();
       setStored({});
+      setUpload(UPLOAD_IDLE);
       const handle = uploadEvidence({
         orderId,
+        actorId,
+        step,
+        inspectionId,
         evidence: file,
         targets: targetsRef.current,
+        resume,
         onPhase: (phase) => {
           if (activeScopeRef.current !== scope || generation !== generationRef.current) return;
           setUpload(phase);
@@ -99,7 +113,7 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
         })
         .catch(() => undefined);
     },
-    [orderId, scope],
+    [orderId, actorId, step, inspectionId, scope],
   );
 
   const takePhoto = useCallback(async () => {
@@ -137,7 +151,7 @@ export function useProofEvidence({ orderId, step, targets }: Args) {
   );
 
   const retry = useCallback(() => {
-    if (evidence) send(evidence);
+    if (evidence) send(evidence, true);
   }, [evidence, send]);
 
   const clear = useCallback(() => {
