@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Pressable, Text, View, type PressableProps } from "react-native";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
    * Use on Active primary CTAs only.
    */
   size?: "default" | "large";
+  /** For a screen that has to move focus onto its one action. */
+  ref?: Ref<View>;
 };
 
 /**
@@ -18,7 +21,7 @@ type Props = {
  * Yellow is a finite attention budget. If a screen already has a
  * PrimaryButton, every other action on it is a SecondaryButton.
  */
-export function PrimaryButton({ label, onPress, disabled, size = "default" }: Props) {
+export function PrimaryButton({ label, onPress, disabled, size = "default", ref }: Props) {
   /*
     A disabled CTA gives its yellow back. Fading the fill instead leaves a pale
     slab with grey-on-cream text that fails contrast and still spends the
@@ -33,6 +36,7 @@ export function PrimaryButton({ label, onPress, disabled, size = "default" }: Pr
 
   return (
     <Pressable
+      ref={ref}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"

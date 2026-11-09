@@ -35,13 +35,14 @@ export function useMinimumBuildCheck(): void {
 
 /**
  * How much of the app the update takes right now (`updateBlock`). A signed-in
- * rider's trip counts as in hand until the trip read says otherwise, so a
- * job is never covered while it is still loading.
+ * rider's trip counts as in hand until a trip read says otherwise: while it is
+ * still loading, and after a read that failed (a 5xx or a lost connection is
+ * not "no job"), the trip, its chat and the read's own Try again stay usable.
  */
 export function useUpdateBlock(): "full" | "steps" | null {
   const required = useUpdateRequired(updateRequired);
   const signedIn = useSession((s) => isSignedIn(s.user));
-  const tripInHand = useActiveTrip((s) => Boolean(s.order) || !s.loaded);
+  const tripInHand = useActiveTrip((s) => Boolean(s.order) || !s.loaded || s.readFailed);
   return updateBlock({ updateRequired: required, tripInHand: signedIn && tripInHand });
 }
 

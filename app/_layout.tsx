@@ -31,7 +31,7 @@ import {
 import { BrandIntro } from "@/components/BrandIntro";
 import { OngoingCallBar } from "@/components/OngoingCallBar";
 import { SessionShell } from "@/components/SessionShell";
-import { UpdateRequiredOverlay } from "@/components/UpdateRequired";
+import { UpdateBlockedContent, UpdateRequiredOverlay } from "@/components/UpdateRequired";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -189,8 +189,10 @@ function AppShell() {
         <ThemeProvider value={navigationTheme(scheme)}>
         {launchReady ? (
         <AuthGate>
-          <RootStack />
-          <CallWatcher />
+          <UpdateBlockedContent blocked={blocked}>
+            <RootStack />
+            <CallWatcher />
+          </UpdateBlockedContent>
           <AppUpdatePrompt ready={!introPlaying && !blocked} />
           <PushPrompt ready={!introPlaying && !blocked} />
           {/*

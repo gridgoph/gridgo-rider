@@ -1,6 +1,7 @@
 import type { InstalledBuildInput } from "@/lib/appUpdate";
 import {
   appHeaderValue,
+  appIdentity,
   custodyStepNeedsUpdate,
   fetchRiderMinimum,
   isBelowMinimum,
@@ -22,26 +23,41 @@ const release: InstalledBuildInput = {
 };
 
 describe("X-GRIDGO-App", () => {
+  const ios = { ...release, platform: "ios", versionName: "1.0.0", versionCode: 1, iosBuildNumber: "12" };
+
   it("names the rider app, the version and the build", () => {
-    expect(appHeaderValue(riderBuild(release))).toBe("rider/1.0.161+161");
+    expect(appHeaderValue(appIdentity({ ...release, iosBuildNumber: null }))).toBe("rider/1.0.161+161");
+    expect(riderBuild(release)).toEqual({ versionCode: 161, versionName: "1.0.161" });
   });
 
   it("names nothing for a build with no release number", () => {
     // Each of these would read versionCode 1 and be refused every rider_packs step.
-    expect(riderBuild({ ...release, dev: true })).toBeNull();
-    expect(riderBuild({ ...release, expoGo: true })).toBeNull();
-    expect(riderBuild({ ...release, versionName: "1.0.0", versionCode: 1 })).toBeNull();
+    for (const input of [{ ...release, dev: true }, { ...release, expoGo: true }, { ...release, versionName: "1.0.0", versionCode: 1 }]) {
+      expect(riderBuild(input)).toBeNull();
+      expect(appIdentity({ ...input, iosBuildNumber: null })).toBeNull();
+    }
     expect(appHeaderValue(null)).toBeNull();
   });
 
-  it("names nothing on an iPhone, whose build number is not on the minimum's scale", () => {
-    expect(riderBuild({ ...release, platform: "ios", versionName: "1.0.0", versionCode: 12 })).toBeNull();
-    expect(riderBuild({ ...release, platform: "web" })).toBeNull();
+  it("names an iPhone under its own key, never compared with the Android minimum", () => {
+    expect(appHeaderValue(appIdentity(ios))).toBe("rider-ios/1.0.0+12");
+    expect(riderBuild(ios)).toBeNull();
+  });
+
+  it("names nothing for an iPhone development build, Expo Go or an unreadable build number", () => {
+    for (const input of [{ ...ios, dev: true }, { ...ios, expoGo: true }, { ...ios, iosBuildNumber: null }, { ...ios, iosBuildNumber: "1.2" }, { ...ios, iosBuildNumber: "0" }]) {
+      expect(appIdentity(input)).toBeNull();
+    }
+  });
+
+  it("names nothing on web", () => {
+    expect(appIdentity({ ...release, platform: "web", iosBuildNumber: null })).toBeNull();
   });
 
   it("takes the development override on any platform", () => {
-    const forced = riderBuild({ ...release, platform: "web", dev: true, versionName: "1.0.0", forcedVersionCode: 146 });
-    expect(appHeaderValue(forced)).toBe("rider/1.0.146+146");
+    const forced = { ...release, platform: "web", dev: true, versionName: "1.0.0", forcedVersionCode: 146, iosBuildNumber: null };
+    expect(appHeaderValue(appIdentity(forced))).toBe("rider/1.0.146+146");
+    expect(riderBuild(forced)?.versionCode).toBe(146);
   });
 });
 

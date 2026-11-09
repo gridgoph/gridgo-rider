@@ -44,31 +44,66 @@ export const MINIMUM_BUILD_FETCH_TIMEOUT_MS = 8_000;
 const KNOWN_HANDOVER_FLOWS: readonly string[] = ["rider_packs", "legacy"];
 
 /**
- * `X-GRIDGO-App` for this build: `rider/<version>+<versionCode>`, e.g.
- * `rider/1.0.161+161`. `null` sends no header, which the API treats exactly as
- * it did before the header existed.
+ * This app's iPhone build in `X-GRIDGO-App`. A separate key on purpose: an
+ * iPhone build number is EAS's own counter, unrelated to the Android
+ * `versionCode` the rider minimum is set in, so it must never be compared
+ * with it. gridgo-api reads an app key it has no minimum for as no header at
+ * all, so this names the iPhone build (audit) without gating it. iPhone
+ * minimums are a follow-up.
  */
-export function appHeaderValue(build: AppBuild | null): string | null {
-  return build ? `${RIDER_APP}/${build.versionName}+${build.versionCode}` : null;
+export const RIDER_IOS_APP = "rider-ios";
+
+/** What this build names itself to GRIDGO as. */
+export type AppIdentity = { app: typeof RIDER_APP | typeof RIDER_IOS_APP; versionName: string; build: number };
+
+/**
+ * `X-GRIDGO-App` for this build: `<app>/<version>+<build>`, e.g.
+ * `rider/1.0.161+161` or `rider-ios/1.0.0+12`. `null` sends no header, which
+ * the API treats exactly as it did before the header existed.
+ */
+export function appHeaderValue(identity: AppIdentity | null): string | null {
+  return identity ? `${identity.app}/${identity.versionName}+${identity.build}` : null;
 }
 
 /**
- * The build this phone names to GRIDGO, or `null` to name none.
+ * The build compared with the published rider minimum, or `null` to compare
+ * nothing.
  *
  * Only an Android CI release has a `versionCode` on the same scale as the
  * published minimum (the release run number, `app.config.ts`). A development
  * build or Expo Go reports versionCode 1 and would be refused every
- * `rider_packs` step, so it sends nothing. An iPhone's build number is EAS's
- * own counter, unrelated to that scale, so an iPhone sends nothing either
- * until the API keeps a minimum per platform.
+ * `rider_packs` step, so it names no build. An iPhone names its own
+ * (`appIdentity`) and is never compared.
  *
  * `EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE` (development only, inlined at
- * bundle time) pretends to be that build on any platform, so the block can be
- * seen without a release APK.
+ * bundle time) pretends to be that Android build on any platform, so the block
+ * can be seen without a release APK.
  */
 export function riderBuild(input: InstalledBuildInput): AppBuild | null {
   if (input.forcedVersionCode !== null) return installedBuild({ ...input, platform: "android" });
   return installedBuild(input);
+}
+
+const IOS_VERSION = /^\d+\.\d+\.\d+$/;
+
+/**
+ * Who this build says it is in `X-GRIDGO-App`, or `null` to say nothing.
+ *
+ * `iosBuildNumber` is the binary's own `CFBundleVersion`
+ * (`Constants.platform.ios.buildNumber`). Development builds and Expo Go name
+ * nothing on either platform.
+ */
+export function appIdentity(
+  input: InstalledBuildInput & { iosBuildNumber: string | null | undefined },
+): AppIdentity | null {
+  const android = riderBuild(input);
+  if (android) return { app: RIDER_APP, versionName: android.versionName, build: android.versionCode };
+  if (input.platform !== "ios" || input.dev || input.expoGo) return null;
+  const versionName = (input.versionName ?? "").trim();
+  const raw = (input.iosBuildNumber ?? "").trim();
+  if (!IOS_VERSION.test(versionName) || !/^\d+$/.test(raw)) return null;
+  const build = wholeNumber(Number(raw));
+  return build === null ? null : { app: RIDER_IOS_APP, versionName, build };
 }
 
 function wholeNumber(value: unknown): number | null {

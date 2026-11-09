@@ -11,6 +11,12 @@ type ActiveTripState = {
   loaded: boolean;
   loading: boolean;
   error: string | null;
+  /**
+   * The last read failed without an answer about the trip (a 5xx, a lost
+   * connection). That is uncertainty, not "no job": the update block treats
+   * the rider as possibly carrying one (`hooks/useUpdateRequired.ts`).
+   */
+  readFailed: boolean;
   appState: AppStateStatus;
   /** Changes whenever a cached idle answer can no longer authorize interruption. */
   reconciliationGeneration: number;
@@ -49,6 +55,7 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   loaded: false,
   loading: false,
   error: null,
+  readFailed: false,
   appState: AppState.currentState,
   reconciliationGeneration: 0,
   reconciledGeneration: null,
@@ -97,12 +104,12 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   },
   setOrder: (order) => {
     ++requestVersion;
-    set({ order, loaded: true, loading: false, reconciling: false, error: null, reconciledGeneration: null });
+    set({ order, loaded: true, loading: false, reconciling: false, error: null, readFailed: false, reconciledGeneration: null });
   },
   clear: () => {
     ++requestVersion;
     set((s) => ({
-      order: null, loaded: false, loading: false, error: null,
+      order: null, loaded: false, loading: false, error: null, readFailed: false,
       reconciling: false, acceptingOffer: pendingAcceptances.size > 0,
       reconciliationGeneration: s.reconciliationGeneration + 1,
       reconciledGeneration: null, reconciledRiderId: null,
@@ -114,7 +121,7 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
     const generation = liveGeneration();
     const reconciliationGeneration = get().reconciliationGeneration;
     if (!riderId) {
-      set({ order: null, loaded: true, loading: false, error: null, reconciling: false, reconciledGeneration: null });
+      set({ order: null, loaded: true, loading: false, error: null, readFailed: false, reconciling: false, reconciledGeneration: null });
       return;
     }
     set({ reconciling: true, ...(mode === "load" ? { loading: true } : {}) });
@@ -124,6 +131,7 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
       set({
         order: selectActiveTrip(orders, riderId),
         error: null,
+        readFailed: false,
         loaded: true,
         loading: false,
         reconciling: false,
@@ -132,8 +140,11 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
       });
     } catch (e) {
       if (version !== requestVersion || generation !== liveGeneration()) return;
-      if (e instanceof api.ApiError && (e.status === 403 || e.status === 404)) set({order:null});
+      // 403/404 answer the question (no job this rider can hold); anything else does not.
+      const answered = e instanceof api.ApiError && (e.status === 403 || e.status === 404);
+      if (answered) set({order:null});
       set({
+        readFailed: !answered,
         error: api.apiErrorMessage(
           e,
           "Your trip did not load. Check the phone's connection and pull down to try again.",
