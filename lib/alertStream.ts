@@ -1,4 +1,5 @@
 import * as api from "@/lib/api";
+import { appHeaders } from "@/lib/appIdentity";
 import { parseSseChunk, reconnectDelayMs, type SseEvent } from "@/lib/eventStream";
 import { readInvalidation, type Invalidation } from "@/lib/live";
 
@@ -62,6 +63,7 @@ export function openAlertStream(handlers: AlertStreamHandlers): AlertStreamHandl
     xhr.open("GET", `${api.getApiBase()}/notifications/stream?role=rider`);
     xhr.setRequestHeader("Accept", "text/event-stream");
     xhr.setRequestHeader("X-GRIDGO-Role", "rider");
+    for (const [name, value] of Object.entries(appHeaders())) xhr.setRequestHeader(name, value);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     if (cursor) xhr.setRequestHeader("Last-Event-ID", cursor);
     const fail = () => { if (!closed && request === xhr && ticket === sequence) retry(); };

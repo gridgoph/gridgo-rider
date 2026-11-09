@@ -39,6 +39,10 @@ type ActiveTripState = {
  * job's state belongs to the server, and a stale one shown at launch would be
  * a lie about where the package is.
  */
+export type ActiveTripStateSnapshot = Pick<ActiveTripState,
+  "order" | "loaded" | "loading" | "error" | "appState" | "acceptingOffer" | "reconciling" |
+  "reconciliationGeneration" | "reconciledGeneration" | "reconciledRiderId">;
+
 let requestVersion = 0;
 // Session/cache clearing cannot cancel an HTTP mutation. Each operation owns
 // its lock until its own finalizer runs, including across rider changes.
@@ -147,12 +151,23 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   },
 }));
 
-/** Signed-out installs defer updates until sign-in and fresh trip reconciliation. */
-export function canInterruptTrip(riderId: string | null): boolean {
-  const s = useActiveTrip.getState();
+/**
+ * Whether a current, successful, idle trip read proves this rider holds no job:
+ * in front, no offer acceptance in flight, no read pending or failed, and the
+ * last reconciliation is this rider's and has not been invalidated since. One
+ * guard for everything that may interrupt a rider — the Play restart prompt
+ * (`canInterruptTrip`) and the whole-app update block
+ * (`hooks/useUpdateRequired.ts`).
+ */
+export function tripProvedIdle(s: ActiveTripStateSnapshot, riderId: string | null): boolean {
   if (!riderId) return false;
   if (s.appState !== "active" || s.acceptingOffer || s.reconciling || s.loading || s.error) return false;
   if (s.order && isActiveTripState(s.order.state)) return false;
   return s.loaded && s.reconciledRiderId === riderId &&
     s.reconciledGeneration === s.reconciliationGeneration;
+}
+
+/** Signed-out installs defer updates until sign-in and fresh trip reconciliation. */
+export function canInterruptTrip(riderId: string | null): boolean {
+  return tripProvedIdle(useActiveTrip.getState(), riderId);
 }

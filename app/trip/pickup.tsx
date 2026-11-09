@@ -18,10 +18,12 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { PickupChecklistSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
+import { UpdateRequiredPanel } from "@/components/UpdateRequired";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTripOrder } from "@/hooks/useTripOrder";
+import { useCustodyNeedsUpdate } from "@/hooks/useUpdateRequired";
 import * as api from "@/lib/api";
 import { PICKUP_FAILURE_TARGETS } from "@/lib/attachments";
 import {
@@ -90,6 +92,8 @@ export default function PickupChecklistScreen() {
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
   const { order, setOrder, loading, error: loadError, reload } = useTripOrder(id);
+  // A step this build is too old for shows the update; the trip stays as it is.
+  const needsUpdate = useCustodyNeedsUpdate(order);
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
 
   const {
@@ -256,6 +260,14 @@ export default function PickupChecklistScreen() {
       submitting.current = false;
       setBusy(false);
     }
+  }
+
+  if (needsUpdate) {
+    return (
+      <Screen edges={[]}>
+        <UpdateRequiredPanel variant="step" />
+      </Screen>
+    );
   }
 
   return (

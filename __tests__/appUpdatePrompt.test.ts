@@ -15,7 +15,7 @@ describe("the update prompt", () => {
   it("is mounted from the root shell, so it runs signed in or out", () => {
     const layout = read("app/_layout.tsx");
     expect(layout).toContain("useAppUpdateCheck");
-    expect(layout).toMatch(/<AppUpdatePrompt ready=\{!introPlaying\} \/>/);
+    expect(layout).toMatch(/<AppUpdatePrompt ready=\{!introPlaying && !blocked\} \/>/);
   });
 
   it("is the platform's sheet, never a Modal", () => {

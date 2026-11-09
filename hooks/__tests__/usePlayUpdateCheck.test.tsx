@@ -19,6 +19,8 @@ jest.mock("@/lib/playUpdate", () => {
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: { expoConfig: { android: { versionCode: 90 } } },
+  // lib/appIdentity.ts reads it for X-GRIDGO-App on every request.
+  ExecutionEnvironment: { Bare: "bare", Standalone: "standalone", StoreClient: "storeClient" },
 }));
 
 const native = {

@@ -31,6 +31,7 @@ import {
 import { BrandIntro } from "@/components/BrandIntro";
 import { OngoingCallBar } from "@/components/OngoingCallBar";
 import { SessionShell } from "@/components/SessionShell";
+import { UpdateBlockedContent, UpdateRequiredOverlay } from "@/components/UpdateRequired";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -40,6 +41,7 @@ import { useAuthGate } from "@/hooks/useAuthGate";
 import { useClerkSessionBridge } from "@/hooks/useClerkSessionBridge";
 import { useLaunchReady } from "@/hooks/useLaunchReady";
 import { useLegalGate } from "@/hooks/useLegalGate";
+import { useMinimumBuildCheck, useUpdateBlock } from "@/hooks/useUpdateRequired";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { usePushPrompt } from "@/hooks/usePushPrompt";
 import { useHydrateTheme, useThemeColors, useThemeName } from "@/hooks/useTheme";
@@ -119,6 +121,11 @@ function AppShell() {
   useArrivalAlert();
   // The Android delivery bubble over the rider's map app (lib/tripBubble.ts).
   useTripBubble();
+  // Whether this build is too old to carry a job: the published minimum,
+  // read at launch and on foreground, and any 426 (lib/minimumBuild.ts).
+  useMinimumBuildCheck();
+  const updateBlock = useUpdateBlock();
+  const blocked = updateBlock === "full";
 
   // Read the stored session here, not in the gate: the gate lives inside the
   // tree that this component refuses to render until hydration finishes.
@@ -182,10 +189,18 @@ function AppShell() {
         <ThemeProvider value={navigationTheme(scheme)}>
         {launchReady ? (
         <AuthGate>
-          <RootStack />
-          <CallWatcher />
-          <AppUpdatePrompt ready={!introPlaying} />
-          <PushPrompt ready={!introPlaying} />
+          <UpdateBlockedContent blocked={blocked}>
+            <RootStack />
+            <CallWatcher />
+          </UpdateBlockedContent>
+          <AppUpdatePrompt ready={!introPlaying && !blocked} />
+          <PushPrompt ready={!introPlaying && !blocked} />
+          {/*
+            Over the navigator, never instead of it: with no job in hand the
+            whole app waits for the update, and nothing under it unmounts.
+            Mid-trip only the custody steps close (UpdateRequiredStep).
+          */}
+          {blocked ? <UpdateRequiredOverlay /> : null}
         </AuthGate>
         ) : (
           <View style={{ flex: 1, backgroundColor: token.canvas }} />

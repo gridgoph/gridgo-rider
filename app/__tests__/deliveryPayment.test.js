@@ -44,6 +44,9 @@ jest.mock("@/components/SkeletonScreens", () => ({ ProofStepSkeleton: "ProofStep
 jest.mock("@/components/FormScroll", () => ({ FormScroll: "FormScroll" }));
 jest.mock("@/components/StickyActionBar", () => ({ StickyActionBar: "StickyActionBar", StickyActionFallback: "StickyActionFallback" }));
 jest.mock("@/components/TripStepHeader", () => ({ TripStepHeader: "TripStepHeader" }));
+jest.mock("@/components/UpdateRequired", () => ({ UpdateRequiredPanel: "UpdateRequiredPanel" }));
+jest.mock("@/hooks/useUpdateRequired", () => ({ useCustodyNeedsUpdate: () => false }));
+jest.mock("@/lib/appIdentity", () => ({ appHeaders: () => ({}) }));
 
 function order(status) {
   return {
