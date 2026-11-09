@@ -17,9 +17,11 @@ import { StatusChip } from "@/components/StatusChip";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TextField } from "@/components/TextField";
 import { TripStepHeader } from "@/components/TripStepHeader";
+import { UpdateRequiredPanel } from "@/components/UpdateRequired";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTripOrder } from "@/hooks/useTripOrder";
+import { useCustodyNeedsUpdate } from "@/hooks/useUpdateRequired";
 import * as api from "@/lib/api";
 import { HANDOFF_SIGNATURE_TARGETS, uploadEvidence } from "@/lib/attachments";
 import {
@@ -87,6 +89,8 @@ export default function HandoffSignatureScreen() {
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
   const { order, loading, error: loadError, reload } = useTripOrder(id);
+  // A step this build is too old for shows the update; the trip stays as it is.
+  const needsUpdate = useCustodyNeedsUpdate(order);
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
   const rider = useSession((s) => s.user);
 
@@ -289,6 +293,14 @@ export default function HandoffSignatureScreen() {
     : Boolean(order && answers && allPassed(answers));
   // What a `rider_packs` job still needs before the shop can sign.
   const missingStep = packs && !ready ? (inspected ? "pack" : "check") : null;
+
+  if (needsUpdate) {
+    return (
+      <Screen edges={[]}>
+        <UpdateRequiredPanel variant="step" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen edges={[]}>

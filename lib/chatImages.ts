@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
 import * as api from "@/lib/api";
+import { appHeaders } from "@/lib/appIdentity";
 
 export const SUPPORT_CHAT_IMAGE_PURPOSE = "support_chat_image";
 export const SUPPORT_CHAT_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
@@ -105,6 +106,7 @@ export async function uploadChatImage(
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.setRequestHeader("X-GRIDGO-Role", "rider");
+    for (const [name, value] of Object.entries(appHeaders())) xhr.setRequestHeader(name, value);
     xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
     xhr.onerror = () => reject(new Error("That photo did not reach GRIDGO. Try again."));
     xhr.ontimeout = () => reject(new Error("That photo took too long to send. Try again."));

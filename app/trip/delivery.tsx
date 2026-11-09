@@ -16,12 +16,14 @@ import { Screen } from "@/components/Screen";
 import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
+import { UpdateRequiredPanel } from "@/components/UpdateRequired";
 import { tripDestination } from "@/lib/tripNav";
 import { useAcknowledgementReceipt } from "@/hooks/useAcknowledgementReceipt";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useTripOrder } from "@/hooks/useTripOrder";
+import { useCustodyNeedsUpdate } from "@/hooks/useUpdateRequired";
 import { receiptDeliveryHold, receiptStage } from "@/lib/acknowledgementReceipt";
 import * as api from "@/lib/api";
 import { DELIVERY_TARGETS, PACKAGE_PHOTO_TARGETS } from "@/lib/attachments";
@@ -99,6 +101,8 @@ export default function DeliveryProofScreen() {
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
   const id = typeof orderId === "string" ? orderId : null;
   const { order, setOrder, loading, error: loadError, reload } = useTripOrder(id);
+  // A step this build is too old for shows the update; the trip stays as it is.
+  const needsUpdate = useCustodyNeedsUpdate(order);
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
 
   const [busy, setBusy] = useState(false);
@@ -356,6 +360,14 @@ export default function DeliveryProofScreen() {
       ) : null}
     </>
   );
+
+  if (needsUpdate) {
+    return (
+      <Screen edges={[]}>
+        <UpdateRequiredPanel variant="step" />
+      </Screen>
+    );
+  }
 
   return (
     <Screen edges={[]}>

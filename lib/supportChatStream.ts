@@ -1,4 +1,5 @@
 import * as api from "@/lib/api";
+import { appHeaders } from "@/lib/appIdentity";
 import { parseSseChunk, reconnectDelayMs } from "@/lib/eventStream";
 
 export type SupportChatEvent = {
@@ -69,6 +70,7 @@ export function openSupportChatStream(handlers: {
     xhr.open("GET", `${api.getApiBase()}/support-chat/stream`);
     xhr.setRequestHeader("Accept", "text/event-stream");
     xhr.setRequestHeader("X-GRIDGO-Role", "rider");
+    for (const [name, value] of Object.entries(appHeaders())) xhr.setRequestHeader(name, value);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     if (cursor) xhr.setRequestHeader("Last-Event-ID", cursor);
     xhr.onerror = () => {

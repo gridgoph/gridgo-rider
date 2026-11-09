@@ -10,6 +10,7 @@ jest.mock("expo-file-system/legacy", () => ({
 jest.mock("@/lib/api", () => ({
   getApiBase: () => "http://127.0.0.1:8787",
   resolveBearer: jest.fn(async () => "clerk_jwt"),
+  reportUpdateRequired: jest.fn(() => false),
 }));
 
 import { createUploadTask } from "expo-file-system/legacy";

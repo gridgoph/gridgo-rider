@@ -3,6 +3,8 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
+import { appHeaders } from "@/lib/appIdentity";
+import { isUpdateRequiredRefusal } from "@/lib/minimumBuild";
 import type { DevicePlatform } from "@/lib/push";
 import type { InstallChannel } from "@/lib/buildDistribution";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
@@ -736,11 +738,35 @@ type RequestInitWithProbe = RequestInit & {
 
 export const API_REQUEST_MS = 20_000;
 
+type UpdateRequiredHandler = (minimumBuild: number | null) => void;
+let updateRequiredHandler: UpdateRequiredHandler | null = null;
+
+/**
+ * Who hears a `426 app_update_required` (`store/updateRequired.ts`). Every
+ * request that reaches the API reports one through {@link reportUpdateRequired},
+ * uploads included, so the rider sees the update instead of a refusal.
+ */
+export function setUpdateRequiredHandler(handler: UpdateRequiredHandler | null): () => void {
+  updateRequiredHandler = handler;
+  return () => {
+    if (updateRequiredHandler === handler) updateRequiredHandler = null;
+  };
+}
+
+/** Tell the handler when a response is the API's "update this app". */
+export function reportUpdateRequired(status: number, body: unknown): boolean {
+  if (!isUpdateRequiredRefusal(status, body)) return false;
+  const minimum = (body as { minimumBuild?: unknown }).minimumBuild;
+  updateRequiredHandler?.(typeof minimum === "number" && Number.isSafeInteger(minimum) ? minimum : null);
+  return true;
+}
+
 async function request<T>(path: string, init: RequestInitWithProbe = {}): Promise<T> {
   const generation = liveGeneration();
   const { ignoreUnauthorized, holdUnauthorized, ...fetchInit } = init;
   const headers: Record<string, string> = {
     Accept: "application/json",
+    ...appHeaders(),
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
@@ -804,6 +830,7 @@ async function request<T>(path: string, init: RequestInitWithProbe = {}): Promis
   }
   assertLiveGeneration(generation);
   if (!res.ok) {
+    reportUpdateRequired(res.status, data);
     // Expired/invalid bearer — wipe local auth so the routing gate leaves (tabs).
     // Login 401 is wrong password, not session death; skip that path.
     //
@@ -933,7 +960,7 @@ export async function logout(deviceToken?: string | null, capturedBearer?: Promi
     try {
       await fetch(`${getApiBase()}/auth/logout`, {
         method: "POST", signal: controller.signal,
-        headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", "X-GRIDGO-Role": "rider" },
+        headers: { ...appHeaders(), Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", "X-GRIDGO-Role": "rider" },
         body: JSON.stringify(deviceToken ? { deviceToken } : {}),
       });
     } finally { clearTimeout(deadline); }
@@ -1025,7 +1052,7 @@ export async function registerDeviceUnclaimed(
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     signal,
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...appHeaders() },
     body: JSON.stringify(deviceBody(token, platform, installChannel)),
   });
   if (!res.ok) {
@@ -1699,6 +1726,8 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
         return "Fill in your vehicle, plate number and licence number.";
       case "invitation_required":
         return "This server is not taking public rider applications. Open the invitation sent by Operations.";
+      case "app_update_required":
+        return "Update GRIDGO to do this step. Your trip stays as it is.";
       case "dispatch_proof_route_retired":
       case "payment_route_retired":
         return "This app is out of date for the current GRIDGO process. Update it before taking more work.";

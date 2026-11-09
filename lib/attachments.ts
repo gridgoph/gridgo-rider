@@ -3,7 +3,8 @@ import {
   FileSystemUploadType,
 } from "expo-file-system/legacy";
 
-import { getApiBase, resolveBearer } from "@/lib/api";
+import { getApiBase, reportUpdateRequired, resolveBearer } from "@/lib/api";
+import { appHeaders } from "@/lib/appIdentity";
 import { riderRefusal } from "@/lib/riderRefusals";
 import {
   UNREADABLE_CAPTURE_MESSAGE,
@@ -153,6 +154,8 @@ export function storageErrorMessage(code: string | undefined, status: number): s
       return "The photo did not come through in one piece. Retake it and send again.";
     case "forbidden":
       return "This job is not assigned to you any more. Refresh your trip.";
+    case "app_update_required":
+      return "Update GRIDGO to do this step. Your trip stays as it is.";
     case "unauthorized":
       return "Your session has expired. Sign in again, then send the evidence.";
     case "order_not_found":
@@ -326,6 +329,7 @@ export function uploadEvidence({
           parameters: { purpose: target.purpose },
           headers: {
             Accept: "application/json",
+            ...appHeaders(),
             ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
           },
         },
@@ -365,6 +369,7 @@ export function uploadEvidence({
 
       const failure = parseFailure(uploadResult.body);
       if (uploadResult.status !== 201) {
+        reportUpdateRequired(uploadResult.status, failure);
         const error = new Error(storageErrorMessage(failure.error, uploadResult.status));
         Object.assign(error, { code: failure.error, status: uploadResult.status });
         rejectUpload(error);
@@ -387,6 +392,7 @@ export function uploadEvidence({
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
+          ...appHeaders(),
           ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
         },
         body: JSON.stringify(
@@ -407,6 +413,7 @@ export function uploadEvidence({
       const attachText = await attachResponse.text();
       if (!attachResponse.ok) {
         const attachFailure = parseFailure(attachText);
+        reportUpdateRequired(attachResponse.status, attachFailure);
         if (
           target.purpose === "fulfilment_proof" &&
           stored.delivery_photo &&
