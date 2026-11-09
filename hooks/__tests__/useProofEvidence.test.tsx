@@ -31,7 +31,7 @@ it.each(["pickup", "delivery"] as const)("%s cancels old uploads and ignores the
   const pending = deferred<StoredEvidence>();
   const cancel = jest.fn();
   jest.mocked(captureProofPhoto).mockResolvedValue({ ok: true, evidence: photo });
-  jest.mocked(uploadEvidence).mockReturnValue({ result: pending.promise, cancel });
+  jest.mocked(uploadEvidence).mockReturnValue({ result: pending.promise, cancel, checkpoint: { scopeKey: "", uploaded: {}, attached: {} } });
   const { result, rerender } = await renderHook(({ orderId }: { orderId: string }) => useProofEvidence({
     orderId, step, targets: step === "pickup" ? PICKUP_FAILURE_TARGETS : DELIVERY_TARGETS,
   }), { initialProps: { orderId: "A" } });
