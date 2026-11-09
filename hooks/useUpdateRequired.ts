@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 
 import { currentRiderBuild } from "@/lib/appIdentity";
 import { custodyStepNeedsUpdate, knowsHandoverFlow, updateBlock } from "@/lib/minimumBuild";
-import { useActiveTrip } from "@/store/activeTrip";
+import { tripProvedIdle, useActiveTrip } from "@/store/activeTrip";
 import { isSignedIn, useSession } from "@/store/session";
 import {
   bindUpdateRequiredHandler,
@@ -35,15 +35,18 @@ export function useMinimumBuildCheck(): void {
 
 /**
  * How much of the app the update takes right now (`updateBlock`). A signed-in
- * rider's trip counts as in hand until a trip read says otherwise: while it is
- * still loading, and after a read that failed (a 5xx or a lost connection is
- * not "no job"), the trip, its chat and the read's own Try again stay usable.
+ * rider's trip counts as in hand unless a current, successful, idle trip read
+ * proves otherwise (`tripProvedIdle`, the same guard the Play restart prompt
+ * uses). A read still pending, one that failed, a foreground return or an
+ * offer acceptance not yet reconciled are all uncertainty, so the trip, its
+ * chat and the read's own Try again stay usable. Signed out there is no trip.
  */
 export function useUpdateBlock(): "full" | "steps" | null {
   const required = useUpdateRequired(updateRequired);
   const signedIn = useSession((s) => isSignedIn(s.user));
-  const tripInHand = useActiveTrip((s) => Boolean(s.order) || !s.loaded || s.readFailed);
-  return updateBlock({ updateRequired: required, tripInHand: signedIn && tripInHand });
+  const riderId = useSession((s) => s.user?.id ?? null);
+  const provedIdle = useActiveTrip((s) => tripProvedIdle(s, riderId));
+  return updateBlock({ updateRequired: required, tripInHand: signedIn && !provedIdle });
 }
 
 /** Whether this build is too old for a `rider_packs` step (`custodyStepNeedsUpdate`). */

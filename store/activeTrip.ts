@@ -11,12 +11,6 @@ type ActiveTripState = {
   loaded: boolean;
   loading: boolean;
   error: string | null;
-  /**
-   * The last read failed without an answer about the trip (a 5xx, a lost
-   * connection). That is uncertainty, not "no job": the update block treats
-   * the rider as possibly carrying one (`hooks/useUpdateRequired.ts`).
-   */
-  readFailed: boolean;
   appState: AppStateStatus;
   /** Changes whenever a cached idle answer can no longer authorize interruption. */
   reconciliationGeneration: number;
@@ -45,6 +39,10 @@ type ActiveTripState = {
  * job's state belongs to the server, and a stale one shown at launch would be
  * a lie about where the package is.
  */
+export type ActiveTripStateSnapshot = Pick<ActiveTripState,
+  "order" | "loaded" | "loading" | "error" | "appState" | "acceptingOffer" | "reconciling" |
+  "reconciliationGeneration" | "reconciledGeneration" | "reconciledRiderId">;
+
 let requestVersion = 0;
 // Session/cache clearing cannot cancel an HTTP mutation. Each operation owns
 // its lock until its own finalizer runs, including across rider changes.
@@ -55,7 +53,6 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   loaded: false,
   loading: false,
   error: null,
-  readFailed: false,
   appState: AppState.currentState,
   reconciliationGeneration: 0,
   reconciledGeneration: null,
@@ -104,12 +101,12 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   },
   setOrder: (order) => {
     ++requestVersion;
-    set({ order, loaded: true, loading: false, reconciling: false, error: null, readFailed: false, reconciledGeneration: null });
+    set({ order, loaded: true, loading: false, reconciling: false, error: null, reconciledGeneration: null });
   },
   clear: () => {
     ++requestVersion;
     set((s) => ({
-      order: null, loaded: false, loading: false, error: null, readFailed: false,
+      order: null, loaded: false, loading: false, error: null,
       reconciling: false, acceptingOffer: pendingAcceptances.size > 0,
       reconciliationGeneration: s.reconciliationGeneration + 1,
       reconciledGeneration: null, reconciledRiderId: null,
@@ -121,7 +118,7 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
     const generation = liveGeneration();
     const reconciliationGeneration = get().reconciliationGeneration;
     if (!riderId) {
-      set({ order: null, loaded: true, loading: false, error: null, readFailed: false, reconciling: false, reconciledGeneration: null });
+      set({ order: null, loaded: true, loading: false, error: null, reconciling: false, reconciledGeneration: null });
       return;
     }
     set({ reconciling: true, ...(mode === "load" ? { loading: true } : {}) });
@@ -131,7 +128,6 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
       set({
         order: selectActiveTrip(orders, riderId),
         error: null,
-        readFailed: false,
         loaded: true,
         loading: false,
         reconciling: false,
@@ -140,11 +136,8 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
       });
     } catch (e) {
       if (version !== requestVersion || generation !== liveGeneration()) return;
-      // 403/404 answer the question (no job this rider can hold); anything else does not.
-      const answered = e instanceof api.ApiError && (e.status === 403 || e.status === 404);
-      if (answered) set({order:null});
+      if (e instanceof api.ApiError && (e.status === 403 || e.status === 404)) set({order:null});
       set({
-        readFailed: !answered,
         error: api.apiErrorMessage(
           e,
           "Your trip did not load. Check the phone's connection and pull down to try again.",
@@ -158,12 +151,23 @@ export const useActiveTrip = create<ActiveTripState>((set, get) => ({
   },
 }));
 
-/** Signed-out installs defer updates until sign-in and fresh trip reconciliation. */
-export function canInterruptTrip(riderId: string | null): boolean {
-  const s = useActiveTrip.getState();
+/**
+ * Whether a current, successful, idle trip read proves this rider holds no job:
+ * in front, no offer acceptance in flight, no read pending or failed, and the
+ * last reconciliation is this rider's and has not been invalidated since. One
+ * guard for everything that may interrupt a rider — the Play restart prompt
+ * (`canInterruptTrip`) and the whole-app update block
+ * (`hooks/useUpdateRequired.ts`).
+ */
+export function tripProvedIdle(s: ActiveTripStateSnapshot, riderId: string | null): boolean {
   if (!riderId) return false;
   if (s.appState !== "active" || s.acceptingOffer || s.reconciling || s.loading || s.error) return false;
   if (s.order && isActiveTripState(s.order.state)) return false;
   return s.loaded && s.reconciledRiderId === riderId &&
     s.reconciledGeneration === s.reconciliationGeneration;
+}
+
+/** Signed-out installs defer updates until sign-in and fresh trip reconciliation. */
+export function canInterruptTrip(riderId: string | null): boolean {
+  return tripProvedIdle(useActiveTrip.getState(), riderId);
 }
