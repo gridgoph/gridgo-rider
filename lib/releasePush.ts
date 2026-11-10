@@ -81,6 +81,34 @@ export function showsOnInstall(
   return releaseChannel === undefined || (channel !== null && releaseChannel === channel);
 }
 
+/**
+ * Where "Update now" sends this install when its build is too old to work
+ * (`lib/minimumBuild.ts`): the Play listing, the side-load APK, or TestFlight.
+ * Never the APK on a Play or iPhone install. Web and development builds have
+ * no channel and get the APK, which is only ever seen there under the forced
+ * build override.
+ */
+export function updateDestination(channel: InstallChannel | null): ReleaseDestination {
+  return DESTINATIONS[channel ?? "apk"].destination;
+}
+
+/**
+ * Open the destination, as `openReleaseDestination` does, and say whether
+ * anything took the link.
+ */
+export async function tryOpenDestination(
+  destination: ReleaseDestination,
+  open: (url: string) => Promise<unknown>,
+): Promise<boolean> {
+  try {
+    await open(destination.url);
+    return true;
+  } catch {
+    if (!destination.fallbackUrl) return false;
+    return open(destination.fallbackUrl).then(() => true, () => false);
+  }
+}
+
 /** Open the destination, falling back to its web page when no app takes the link. */
 export async function openReleaseDestination(
   destination: ReleaseDestination,

@@ -3,7 +3,9 @@ import {
   FileSystemUploadType,
 } from "expo-file-system/legacy";
 
-import { getApiBase, resolveBearer } from "@/lib/api";
+import { getApiBase, getFile, reportUpdateRequired, resolveBearer } from "@/lib/api";
+import type { CaptureStep } from "@/lib/proofPhoto";
+import { appHeaders } from "@/lib/appIdentity";
 import { riderRefusal } from "@/lib/riderRefusals";
 import {
   UNREADABLE_CAPTURE_MESSAGE,
@@ -22,7 +24,7 @@ import {
  *    id does not travel with the upload. A `201` carrying `file.fileId` is the
  *    first honest success: MinIO has the object and the record says `ready`.
  * 2. `POST /files/:fileId/attach` binds that file to the order. Until this
- *    returns, the file exists but nothing points at it, so nothing is proven.
+ *    confirms (or a read verifies a lost reply), the file is not proven.
  *
  * Progress reaching 100% is not success — the contract says so explicitly, and
  * this module keeps "sending" and "saving" as separate states for that reason.
@@ -114,9 +116,17 @@ export class StorageUnavailableError extends Error {
 /** File ids the server accepted, keyed by the purpose they were stored under. */
 export type StoredEvidence = Partial<Record<EvidencePurpose, string>>;
 
+/** In-memory progress only. An uploaded file is not yet confirmed evidence. */
+export type EvidenceCheckpoint = {
+  scopeKey: string;
+  uploaded: StoredEvidence;
+  attached: StoredEvidence;
+};
+
 export type UploadHandle = {
   result: Promise<StoredEvidence>;
   cancel: () => void;
+  checkpoint: EvidenceCheckpoint;
 };
 
 type UploadArgs = {
@@ -125,6 +135,10 @@ type UploadArgs = {
   /** Every purpose this capture has to be stored under before it counts. */
   targets: readonly EvidenceTarget[];
   onPhase: (phase: EvidenceUpload) => void;
+  actorId?: string | null;
+  step?: CaptureStep;
+  inspectionId?: string | null;
+  resume?: EvidenceCheckpoint;
 };
 
 type ApiFailure = { error?: string; message?: string; maxMiB?: number };
@@ -153,6 +167,8 @@ export function storageErrorMessage(code: string | undefined, status: number): s
       return "The photo did not come through in one piece. Retake it and send again.";
     case "forbidden":
       return "This job is not assigned to you any more. Refresh your trip.";
+    case "app_update_required":
+      return "Update GRIDGO to do this step. Your trip stays as it is.";
     case "unauthorized":
       return "Your session has expired. Sign in again, then send the evidence.";
     case "order_not_found":
@@ -244,10 +260,44 @@ export function uploadEvidence({
   evidence,
   targets,
   onPhase,
+  actorId,
+  step,
+  inspectionId = null,
+  resume,
 }: UploadArgs): UploadHandle {
   let inFlight: CancellableUpload | null = null;
   let cancelled = false;
   let settled = false;
+  // Every input that gives a file meaning must still match before reusing it.
+  const scopeKey = JSON.stringify([orderId, actorId, step, inspectionId, evidence, targets]);
+  const prior = actorId && step && resume?.scopeKey === scopeKey ? resume : undefined;
+  const checkpoint: EvidenceCheckpoint = {
+    scopeKey,
+    uploaded: { ...prior?.uploaded },
+    attached: { ...prior?.attached },
+  };
+
+  function checkCancelled() {
+    if (!cancelled) return;
+    settled = true;
+    onPhase({ phase: "idle" });
+    throw new Error("cancelled");
+  }
+
+  async function confirmAttachment(fileId: string, target: EvidenceTarget): Promise<boolean> {
+    try {
+      const file = await getFile(fileId);
+      checkCancelled();
+      // Rider metadata deliberately omits milestone and inspection fields.
+      // Such a read cannot prove that scope; use a fresh file for that purpose.
+      if (target.milestoneCode || inspectionId) return false;
+      return file.fileId === fileId && file.ownerId === actorId && file.state === "ready" &&
+        file.purpose === target.purpose &&
+        file.references?.some((ref) => ref.type === "order" && ref.id === orderId) === true;
+    } catch {
+      return false;
+    }
+  }
 
   function fail(message: string, retryable: boolean, error: Error & { code?: string }): never {
     settled = true;
@@ -301,129 +351,153 @@ export function uploadEvidence({
     }
 
     const token = await resolveBearer();
+    checkCancelled();
     const base = getApiBase();
-    const stored: StoredEvidence = {};
+    const stored = checkpoint.attached;
 
     reportSending(0, 0, evidence.sizeBytes);
 
     for (const [index, target] of targets.entries()) {
-      if (cancelled) {
-        settled = true;
-        onPhase({ phase: "idle" });
-        throw new Error("cancelled");
-      }
+      checkCancelled();
+      if (stored[target.purpose]) continue;
 
-      reportSending(index, 0, evidence.sizeBytes);
+      // A conflict may need one replacement, never a repeat of other purposes.
+      let replaceConflictedFile = true;
+      while (!stored[target.purpose]) {
+        let fileId = checkpoint.uploaded[target.purpose];
+        if (!fileId) {
+          reportSending(index, 0, evidence.sizeBytes);
 
-      const task = createUploadTask(
-        `${base}/files`,
-        evidence.uri,
-        {
-          httpMethod: "POST",
-          uploadType: FileSystemUploadType.MULTIPART,
-          fieldName: "file",
-          mimeType: evidence.mimeType || "application/octet-stream",
-          parameters: { purpose: target.purpose },
+          const task = createUploadTask(
+            `${base}/files`,
+            evidence.uri,
+            {
+              httpMethod: "POST",
+              uploadType: FileSystemUploadType.MULTIPART,
+              fieldName: "file",
+              mimeType: evidence.mimeType || "application/octet-stream",
+              parameters: { purpose: target.purpose },
+              headers: {
+                Accept: "application/json",
+                ...appHeaders(),
+                ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
+              },
+            },
+            (progress) => {
+              reportSending(
+                index,
+                progress.totalBytesSent,
+                progress.totalBytesExpectedToSend > 0 ? progress.totalBytesExpectedToSend : null,
+              );
+            },
+          );
+          inFlight = task;
+
+          let uploadResult: { status: number; body: string } | null | undefined;
+          try {
+            uploadResult = await task.uploadAsync();
+          } catch (error) {
+            rejectUpload(
+              error instanceof Error
+                ? Object.assign(error, {
+                    message:
+                      "No connection while sending. Move to a spot with signal and send again.",
+                  })
+                : new Error(
+                    "No connection while sending. Move to a spot with signal and send again.",
+                  ),
+            );
+          } finally {
+            inFlight = null;
+          }
+
+          if (cancelled || uploadResult == null) {
+            settled = true;
+            onPhase({ phase: "idle" });
+            throw new Error("cancelled");
+          }
+
+          const failure = parseFailure(uploadResult.body);
+          if (uploadResult.status !== 201) {
+            reportUpdateRequired(uploadResult.status, failure);
+            const error = new Error(storageErrorMessage(failure.error, uploadResult.status));
+            Object.assign(error, { code: failure.error, status: uploadResult.status });
+            rejectUpload(error);
+          }
+
+          const uploaded = (failure as { file?: StoredFile }).file;
+          if (!uploaded?.fileId) {
+            fail(
+              "The server accepted the file but did not identify it. Send it again.",
+              true,
+              new Error("file_metadata_invalid"),
+            );
+          }
+          fileId = uploaded.fileId;
+          checkpoint.uploaded[target.purpose] = fileId;
+        }
+
+        // Uploaded, but nothing points at it yet.
+        onPhase({ phase: "processing" });
+
+        const attachResponse = await fetch(`${base}/files/${fileId}/attach`, {
+          method: "POST",
           headers: {
             Accept: "application/json",
+            "Content-Type": "application/json",
+            ...appHeaders(),
             ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
           },
-        },
-        (progress) => {
-          reportSending(
-            index,
-            progress.totalBytesSent,
-            progress.totalBytesExpectedToSend > 0 ? progress.totalBytesExpectedToSend : null,
+          body: JSON.stringify(
+            target.milestoneCode
+              ? { orderId, milestoneCode: target.milestoneCode }
+              : { orderId },
+          ),
+        }).catch(() => null);
+        checkCancelled();
+
+        const attachText = attachResponse ? await attachResponse.text().catch(() => null) : null;
+        checkCancelled();
+        if (!attachResponse || attachText == null) {
+          fail(
+            "The photo reached the server but could not be linked to this job. Send it again.",
+            true,
+            new Error("attach_network"),
           );
-        },
-      );
-      inFlight = task;
-
-      let uploadResult: { status: number; body: string } | null | undefined;
-      try {
-        uploadResult = await task.uploadAsync();
-      } catch (error) {
-        rejectUpload(
-          error instanceof Error
-            ? Object.assign(error, {
-                message:
-                  "No connection while sending. Move to a spot with signal and send again.",
-              })
-            : new Error(
-                "No connection while sending. Move to a spot with signal and send again.",
-              ),
-        );
-      } finally {
-        inFlight = null;
-      }
-
-      if (cancelled || uploadResult == null) {
-        settled = true;
-        onPhase({ phase: "idle" });
-        throw new Error("cancelled");
-      }
-
-      const failure = parseFailure(uploadResult.body);
-      if (uploadResult.status !== 201) {
-        const error = new Error(storageErrorMessage(failure.error, uploadResult.status));
-        Object.assign(error, { code: failure.error, status: uploadResult.status });
-        rejectUpload(error);
-      }
-
-      const uploaded = (failure as { file?: StoredFile }).file;
-      if (!uploaded?.fileId) {
-        fail(
-          "The server accepted the file but did not identify it. Send it again.",
-          true,
-          new Error("file_metadata_invalid"),
-        );
-      }
-
-      // Uploaded, but nothing points at it yet.
-      onPhase({ phase: "processing" });
-
-      const attachResponse = await fetch(`${base}/files/${uploaded.fileId}/attach`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}`, "X-GRIDGO-Role": "rider" } : {}),
-        },
-        body: JSON.stringify(
-          target.milestoneCode
-            ? { orderId, milestoneCode: target.milestoneCode }
-            : { orderId },
-        ),
-      }).catch(() => null);
-
-      if (!attachResponse) {
-        fail(
-          "The photo reached the server but could not be linked to this job. Send it again.",
-          true,
-          new Error("attach_network"),
-        );
-      }
-
-      const attachText = await attachResponse.text();
-      if (!attachResponse.ok) {
-        const attachFailure = parseFailure(attachText);
-        if (
-          target.purpose === "fulfilment_proof" &&
-          stored.delivery_photo &&
-          isOptionalFulfilmentProofFailure(attachFailure.error)
-        ) {
-          continue;
         }
-        fail(
-          storageErrorMessage(attachFailure.error, attachResponse.status),
-          isRetryable(attachFailure.error, attachResponse.status),
-          Object.assign(new Error(attachFailure.error ?? "attach_failed"), {
-            code: attachFailure.error,
-          }),
-        );
-      }
 
-      stored[target.purpose] = uploaded.fileId;
+        if (!attachResponse.ok) {
+          const attachFailure = parseFailure(attachText);
+          reportUpdateRequired(attachResponse.status, attachFailure);
+          if (attachResponse.status === 409 && attachFailure.error === "file_already_attached" && replaceConflictedFile) {
+            const confirmed = await confirmAttachment(fileId, target);
+            checkCancelled();
+            if (confirmed) {
+              stored[target.purpose] = fileId;
+              break;
+            }
+            delete checkpoint.uploaded[target.purpose];
+            replaceConflictedFile = false;
+            continue;
+          }
+          if (
+            target.purpose === "fulfilment_proof" &&
+            stored.delivery_photo &&
+            isOptionalFulfilmentProofFailure(attachFailure.error)
+          ) {
+            break;
+          }
+          fail(
+            storageErrorMessage(attachFailure.error, attachResponse.status),
+            isRetryable(attachFailure.error, attachResponse.status),
+            Object.assign(new Error(attachFailure.error ?? "attach_failed"), {
+              code: attachFailure.error,
+            }),
+          );
+        }
+
+        stored[target.purpose] = fileId;
+      }
     }
 
     settled = true;
@@ -437,6 +511,7 @@ export function uploadEvidence({
 
   return {
     result,
+    checkpoint,
     cancel: () => {
       if (settled) return;
       cancelled = true;

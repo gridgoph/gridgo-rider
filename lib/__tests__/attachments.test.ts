@@ -1,6 +1,17 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+import { createUploadTask } from "expo-file-system/legacy";
+
+import { getFile, resolveBearer } from "@/lib/api";
+import {
+  DELIVERY_TARGETS,
+  MAX_EVIDENCE_BYTES,
+  storageErrorMessage,
+  uploadEvidence,
+} from "@/lib/attachments";
+import { UNREADABLE_CAPTURE_MESSAGE, type ProofEvidence } from "@/lib/proofEvidence";
+
 jest.mock("expo-file-system/legacy", () => ({
   copyAsync: jest.fn(),
   createUploadTask: jest.fn(),
@@ -10,18 +21,9 @@ jest.mock("expo-file-system/legacy", () => ({
 jest.mock("@/lib/api", () => ({
   getApiBase: () => "http://127.0.0.1:8787",
   resolveBearer: jest.fn(async () => "clerk_jwt"),
+  reportUpdateRequired: jest.fn(() => false),
+  getFile: jest.fn(),
 }));
-
-import { createUploadTask } from "expo-file-system/legacy";
-
-import { resolveBearer } from "@/lib/api";
-import {
-  DELIVERY_TARGETS,
-  MAX_EVIDENCE_BYTES,
-  storageErrorMessage,
-  uploadEvidence,
-} from "@/lib/attachments";
-import { UNREADABLE_CAPTURE_MESSAGE, type ProofEvidence } from "@/lib/proofEvidence";
 
 /** Every error code the storage contract documents for a rider upload. */
 const RIDER_CODES = [
@@ -243,5 +245,167 @@ describe("uploadEvidence", () => {
 describe("evidence size limit", () => {
   it("matches the delivery_photo limit in the storage contract", () => {
     expect(MAX_EVIDENCE_BYTES).toBe(20971520);
+  });
+});
+
+describe("partial evidence retries", () => {
+  const nativeUpload = jest.mocked(createUploadTask);
+  const originalFetch = global.fetch;
+  const response = (status = 200, error?: string) => ({
+    ok: status === 200, status, text: async () => JSON.stringify({ error }),
+  });
+  let attaches: jest.Mock;
+  const args = {
+    orderId: "ord_1", actorId: "rider_1", step: "delivery" as const,
+    inspectionId: null, evidence: { ...photo, sizeBytes: 2 * 1024 * 1024 },
+    targets: DELIVERY_TARGETS, onPhase: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.mocked(resolveBearer).mockResolvedValue("clerk_jwt");
+    jest.mocked(getFile).mockReset();
+    args.onPhase.mockClear();
+    nativeUpload.mockReset();
+    let uploads = 0;
+    nativeUpload.mockImplementation(() => ({
+      uploadAsync: async () => ({ status: 201, body: JSON.stringify({ file: { fileId: `fil_${++uploads}` } }) }),
+      cancelAsync: async () => undefined,
+    }) as unknown as ReturnType<typeof createUploadTask>);
+    attaches = jest.fn().mockResolvedValue(response());
+    global.fetch = attaches;
+  });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it("retries only the second attach after its transient failure, without resending either 2 MiB upload", async () => {
+    attaches.mockResolvedValueOnce(response()).mockResolvedValueOnce(response(503, "temporarily_unavailable"));
+    const first = uploadEvidence(args);
+    await expect(first.result).rejects.toThrow();
+    expect(args.onPhase).not.toHaveBeenCalledWith(expect.objectContaining({ phase: "stored" }));
+    const retry = uploadEvidence({ ...args, resume: first.checkpoint });
+    await expect(retry.result).resolves.toEqual({ delivery_photo: "fil_1", fulfilment_proof: "fil_2" });
+    expect(nativeUpload).toHaveBeenCalledTimes(2);
+    expect(attaches.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/files/fil_1/attach",
+      "http://127.0.0.1:8787/files/fil_2/attach",
+      "http://127.0.0.1:8787/files/fil_2/attach",
+    ]);
+    expect(JSON.parse(attaches.mock.calls[2][1].body)).toEqual({ orderId: "ord_1", milestoneCode: "delivered" });
+  });
+
+  it("keeps the first attachment when uploading the second purpose fails", async () => {
+    const successfulUpload = nativeUpload.getMockImplementation()!;
+    nativeUpload.mockImplementationOnce(successfulUpload).mockImplementationOnce(() => ({
+      uploadAsync: async () => ({ status: 503, body: '{"error":"temporary_failure"}' }),
+      cancelAsync: async () => undefined,
+    }) as unknown as ReturnType<typeof createUploadTask>);
+    const first = uploadEvidence(args);
+    await expect(first.result).rejects.toThrow();
+    await expect(uploadEvidence({ ...args, resume: first.checkpoint }).result)
+      .resolves.toEqual({ delivery_photo: "fil_1", fulfilment_proof: "fil_2" });
+    expect(nativeUpload).toHaveBeenCalledTimes(3);
+    expect(attaches).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not confirm a late attach response after cancellation", async () => {
+    let finishAttach!: (value: ReturnType<typeof response>) => void;
+    attaches.mockImplementationOnce(() => new Promise((resolve) => { finishAttach = resolve; }));
+    const handle = uploadEvidence(args);
+    // Let the native upload reach the pending attach.
+    await Promise.resolve();
+    await Promise.resolve();
+    handle.cancel();
+    finishAttach(response());
+    await expect(handle.result).rejects.toThrow("cancelled");
+    expect(handle.checkpoint.attached).toEqual({});
+    expect(args.onPhase).not.toHaveBeenCalledWith(expect.objectContaining({ phase: "stored" }));
+  });
+
+  it.each(["connection", "response body"])("reconciles an ambiguous attach after losing the %s", async (lost) => {
+    if (lost === "connection") attaches.mockRejectedValueOnce(new Error("response lost"));
+    else attaches.mockResolvedValueOnce({ ...response(), text: async () => { throw new Error("body lost"); } });
+    attaches.mockResolvedValueOnce(response(409, "file_already_attached"));
+    jest.mocked(getFile).mockResolvedValue({
+      fileId: "fil_1", ownerId: "rider_1", state: "ready", purpose: "delivery_photo",
+      references: [{ type: "order", id: "ord_1" }],
+    } as Awaited<ReturnType<typeof getFile>>);
+    const first = uploadEvidence(args);
+    await expect(first.result).rejects.toThrow();
+    expect(args.onPhase).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "failed", retryable: true }));
+    await expect(uploadEvidence({ ...args, resume: first.checkpoint }).result)
+      .resolves.toEqual({ delivery_photo: "fil_1", fulfilment_proof: "fil_2" });
+    expect(getFile).toHaveBeenCalledWith("fil_1");
+    expect(nativeUpload).toHaveBeenCalledTimes(2);
+    expect(attaches).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["wrong order", "wrong owner", "wrong purpose", "wrong id", "not ready", "read failed"])(
+    "reuploads only the unconfirmed purpose after a conflict: %s", async (reason) => {
+      attaches.mockResolvedValueOnce(response()).mockRejectedValueOnce(new Error("response lost"))
+        .mockResolvedValueOnce(response(409, "file_already_attached"));
+      // Confirm a photo with no hidden milestone/inspection scope.
+      const metadata = {
+        fileId: reason === "wrong id" ? "other" : "fil_2", ownerId: reason === "wrong owner" ? "other" : "rider_1",
+        state: reason === "not ready" ? "deleted" : "ready", purpose: reason === "wrong purpose" ? "artwork" : "delivery_photo",
+        references: [{ type: "order", id: reason === "wrong order" ? "other" : "ord_1" }],
+      };
+      if (reason === "read failed") jest.mocked(getFile).mockRejectedValue(new Error("offline"));
+      else jest.mocked(getFile).mockResolvedValue(metadata as Awaited<ReturnType<typeof getFile>>);
+      const reversed = { ...args, targets: [...DELIVERY_TARGETS].reverse() };
+      const first = uploadEvidence(reversed);
+      await expect(first.result).rejects.toThrow();
+      await expect(uploadEvidence({ ...reversed, resume: first.checkpoint }).result)
+        .resolves.toEqual({ fulfilment_proof: "fil_1", delivery_photo: "fil_3" });
+      expect(nativeUpload).toHaveBeenCalledTimes(3);
+      expect(attaches).toHaveBeenCalledTimes(4);
+      expect(nativeUpload.mock.calls[2][2]).toEqual(expect.objectContaining({ parameters: { purpose: "delivery_photo" } }));
+    },
+  );
+
+  it("does not adopt an ambiguous file when the rider read hides its milestone scope", async () => {
+    attaches.mockResolvedValueOnce(response()).mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce(response(409, "file_already_attached"));
+    jest.mocked(getFile).mockResolvedValue({
+      fileId: "fil_2", ownerId: "rider_1", state: "ready", purpose: "order_photo",
+      references: [{ type: "order", id: "ord_1" }],
+    } as unknown as Awaited<ReturnType<typeof getFile>>);
+    const first = uploadEvidence(args);
+    await expect(first.result).rejects.toThrow();
+    await expect(uploadEvidence({ ...args, resume: first.checkpoint }).result)
+      .resolves.toEqual({ delivery_photo: "fil_1", fulfilment_proof: "fil_3" });
+    expect(nativeUpload).toHaveBeenCalledTimes(3);
+    expect(attaches).toHaveBeenCalledTimes(4);
+  });
+
+  it("replaces a conflicted packing photo when the read cannot confirm its inspection", async () => {
+    attaches.mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce(response(409, "file_already_attached"));
+    jest.mocked(getFile).mockResolvedValue({
+      fileId: "fil_1", ownerId: "rider_1", state: "ready", purpose: "packing_photo",
+      references: [{ type: "order", id: "ord_1" }],
+    } as unknown as Awaited<ReturnType<typeof getFile>>);
+    const packing = { ...args, step: "packing" as const, inspectionId: "inspection_1", targets: [{ purpose: "packing_photo" as const }] };
+    const first = uploadEvidence(packing);
+    await expect(first.result).rejects.toThrow();
+    await expect(uploadEvidence({ ...packing, resume: first.checkpoint }).result)
+      .resolves.toEqual({ packing_photo: "fil_2" });
+    expect(nativeUpload).toHaveBeenCalledTimes(2);
+    expect(attaches).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ["capture", { evidence: { ...args.evidence, uri: "file:///new.jpg", capturedAt: "2026-09-01T05:33:00.000Z" } }],
+    ["order", { orderId: "ord_2" }],
+    ["actor", { actorId: "rider_2" }],
+    ["step", { step: "pickup" as const }],
+    ["inspection", { inspectionId: "inspection_2" }],
+    ["targets", { targets: [{ purpose: "delivery_photo" as const }] }],
+  ])("starts fresh when %s changes", async (_name, change) => {
+    attaches.mockResolvedValueOnce(response()).mockResolvedValueOnce(response(503));
+    const first = uploadEvidence(args);
+    await expect(first.result).rejects.toThrow();
+    const next = { ...args, ...change, resume: first.checkpoint };
+    await uploadEvidence(next).result;
+    expect(nativeUpload).toHaveBeenCalledTimes(2 + next.targets.length);
+    expect(attaches).toHaveBeenCalledTimes(2 + next.targets.length);
   });
 });
