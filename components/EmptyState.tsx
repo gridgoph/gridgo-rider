@@ -1,4 +1,4 @@
-import { Clock, Inbox, MapPinned, Wallet, type LucideIcon } from "lucide-react-native";
+import { Clock, Inbox, MapPinned, Rocket, Wallet, type LucideIcon } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -10,6 +10,8 @@ const ICONS = {
   trip: MapPinned,
   earnings: Wallet,
   closed: Clock,
+  /** The Play tester steps (`app/play-optin.tsx`), the same rocket as its card. */
+  tester: Rocket,
 } satisfies Record<string, LucideIcon>;
 
 export type EmptyStateIcon = keyof typeof ICONS;

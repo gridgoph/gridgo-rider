@@ -333,6 +333,14 @@ function RootStack() {
           ...multiOriginPushedScreenOptions,
         }}
       />
+      {/*
+        Becoming a Google Play tester, from the card on Active, the
+        `play_optin` push or its Alerts row (`lib/playOptIn.ts`).
+      */}
+      <Stack.Screen
+        name="play-optin"
+        options={{ title: "Play tester", ...multiOriginPushedScreenOptions }}
+      />
       <Stack.Screen
         name="rider-details"
         options={{
