@@ -177,21 +177,7 @@ describe("ios-testflight.yml", () => {
   });
 });
 
-describe("the TestFlight release notice", () => {
-  it("follows a successful upload, as ios, and never fails the run", () => {
-    const notice = step("Broadcast the TestFlight release");
-    expect(notice).toMatch(/if: inputs\.submit_to_testflight && steps\.build\.outputs\.announce_version != ''/);
-    expect(notice).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
-    expect(notice).toContain("continue-on-error: true");
-    expect(notice).toContain("RELEASE_CHANNEL: ios");
-    expect(notice).toContain("RELEASE_APP: rider");
-    expect(notice).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
-    expect(notice).toContain("node scripts/announce-release.mjs");
-    expect(workflow.indexOf("- name: Upload to TestFlight")).toBeLessThan(
-      workflow.indexOf("- name: Broadcast the TestFlight release"),
-    );
-  });
-
+describe("the TestFlight version", () => {
   it("names MAJOR.MINOR.<build number>, the Android version shape", () => {
     expect(step("Read the build")).toContain("${line[1]}.${line[2]}.${number}");
     expect(step("Read the build")).toContain("announce_version=${announce}");
@@ -231,4 +217,23 @@ describe("eas.json", () => {
 it("never commits the iPhone Firebase file", () => {
   const ignored = readFileSync(join(root, ".gitignore"), "utf8").split("\n");
   expect(ignored).toContain("GoogleService-Info.plist");
+});
+
+it("persists TestFlight metadata before upload and never announces immediately", () => {
+  const queue = step("Queue the TestFlight release notice");
+  expect(queue).toContain("github.ref == 'refs/heads/main'");
+  expect(queue).toContain("inputs.submit_to_testflight");
+  expect(queue).toContain("RELEASE_BUILD_NUMBER: ${{ steps.build.outputs.build_number }}");
+  expect(queue).toContain("RELEASE_STORE_VERSION: ${{ steps.build.outputs.version }}");
+  expect(queue).toContain("node scripts/queue-store-release.mjs");
+  expect(queue).not.toContain("RELEASE_ANNOUNCE_TOKEN");
+  expect(workflow.indexOf("- name: Queue the TestFlight release notice")).toBeLessThan(workflow.indexOf("- name: Upload to TestFlight"));
+  expect(step("Save the pending TestFlight notice")).toContain("steps.queue_ios.outcome == 'success'");
+  expect(step("Save the pending TestFlight notice")).toContain("retention-days: 7");
+  expect(queue).not.toContain("continue-on-error");
+  expect(step("Save the pending TestFlight notice")).not.toContain("continue-on-error");
+  expect(workflow.indexOf("- name: Save the pending TestFlight notice")).toBeLessThan(workflow.indexOf("- name: Upload to TestFlight"));
+  expect(step("Upload to TestFlight")).toContain("steps.save_ios_notice.outcome == 'success'");
+  expect(workflow).not.toContain("scripts/announce-release.mjs");
+  expect(step("Read the build")).toContain("announce_version=");
 });

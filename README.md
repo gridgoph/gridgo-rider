@@ -62,6 +62,9 @@ never broadcast. `lib/releasePush.ts` recognizes the fixed public release copy a
 opens this app's existing download URL on a push tap, including while signed out.
 A Google Play build ignores that tap's download and leaves the push in the inbox.
 
+Store notices wait for confirmed availability of the exact build. See
+[store release notices](docs/STORE_RELEASE_NOTICES.md) for checks and retries.
+
 ## Google Play bundle
 
 The side-load APK is unchanged: every push to `main` still builds it, puts it on the
