@@ -45,6 +45,7 @@
 import { Platform } from "react-native";
 
 import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
+import { PLAY_OPTIN_PUSH_TYPE, PLAY_OPTIN_ROUTE } from "@/lib/playOptIn";
 import { TESTER_REMINDER_TYPE } from "@/lib/testerProgram";
 
 /**
@@ -205,6 +206,8 @@ export function pushTargetRoute(data: PushData, threadId: string | null = null):
   }
   // A tester's daily reminder is local and names no job; Active holds the check-in card.
   if (data.type === TESTER_REMINDER_TYPE) return "/(tabs)/active";
+  // GRIDGO's ask to become a Play tester opens the steps themselves.
+  if (data.type === PLAY_OPTIN_PUSH_TYPE) return `${PLAY_OPTIN_ROUTE}?from=push`;
   if (data.type === "announcement" || !data.orderId) return "/alerts";
   if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/offers?orderId=${encodeURIComponent(data.orderId)}`;
   // A message from the client opens the conversation itself (gridgo-client#198).

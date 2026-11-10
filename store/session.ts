@@ -2,6 +2,7 @@ import { sessionWaitHold } from "@/lib/sessionWait";
 import { cancelDeviceRegistrations, serializeDeviceMutation, usePush } from "@/store/push";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useNotifications } from "@/store/notifications";
+import { usePlayOptIn } from "@/store/playOptIn";
 import { useTesterProgram } from "@/store/testerProgram";
 import { forgetAppleRevocation } from "@/store/accountDeletion";
 import { invalidate, setLiveOwner } from "@/lib/live";
@@ -663,6 +664,8 @@ useSession.subscribe((state, previous) => {
     // them; another account re-plans them on its own read.
     if (next) useTesterProgram.getState().reset();
     else useTesterProgram.getState().forget();
+    // The Play opt-in answer is one account's; the next is asked afresh.
+    usePlayOptIn.getState().reset();
   }
   setLiveOwner(next ? `${next}:${status ?? "approved"}` : null);
   useNotifications.getState().bindOwner(next);

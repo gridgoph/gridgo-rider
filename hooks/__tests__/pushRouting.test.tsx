@@ -206,3 +206,12 @@ it.each([
   await act(async () => { jest.advanceTimersByTime(100); });
   expect(mockPush).toHaveBeenCalledWith(route);
 });
+
+it("opens the Play tester steps for the owner's play_optin push, approved or still waiting", async () => {
+  mockReady = true;
+  (api.listNotifications as jest.Mock).mockResolvedValue([{id:"optin-notice",orderId:null,type:"play_optin"}]);
+  mockLast.mockResolvedValue({notification:{request:{identifier:"tap-optin",content:{data:{notificationId:"optin-notice",type:"play_optin"}}}}});
+  await renderHook(() => usePushNotifications());
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockPush).toHaveBeenCalledWith("/play-optin?from=push");
+});
