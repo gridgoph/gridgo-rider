@@ -135,7 +135,27 @@ it("link mode: reports group_opened, then optin_opened, before opening each link
     .filter((c) => c.url.endsWith("/me/play-optin/event"))
     .map((c) => c.body?.type);
   expect(types).toEqual(["group_opened", "optin_opened"]);
-  expect(usePlayOptIn.getState().progress).toEqual({ groupOpened: true, optInOpened: true });
+  expect(usePlayOptIn.getState().progress).toEqual({ groupOpened: true, optInOpened: true, failed: null });
+});
+
+it("does not advance when the group page fails to open, and recovers on retry", async () => {
+  fetchMock.mockResolvedValue(answer(state({ step: "join_group" })));
+  await usePlayOptIn.getState().load("u1");
+  fetchMock.mockResolvedValue(answer({ ok: true }));
+  (Linking.openURL as jest.Mock).mockRejectedValueOnce(new Error("no handler"));
+  expect(await usePlayOptIn.getState().openGroup()).toBe("The group page did not open. Try again.");
+  expect(usePlayOptIn.getState().progress).toEqual({ groupOpened: false, optInOpened: false, failed: "group" });
+  expect(await usePlayOptIn.getState().openGroup()).toBeNull();
+  expect(usePlayOptIn.getState().progress).toEqual({ groupOpened: true, optInOpened: false, failed: null });
+});
+
+it("does not advance when the Play tester page fails to open", async () => {
+  fetchMock.mockResolvedValue(answer(state({ step: "open_optin", groupMode: "automatic", groupJoinUrl: null })));
+  await usePlayOptIn.getState().load("u1");
+  fetchMock.mockResolvedValue(answer({ ok: true }));
+  (Linking.openURL as jest.Mock).mockRejectedValueOnce(new Error("no handler"));
+  expect(await usePlayOptIn.getState().openOptIn()).toBe("The Play tester page did not open. Try again.");
+  expect(usePlayOptIn.getState().progress).toMatchObject({ optInOpened: false, failed: "optin" });
 });
 
 it("does not open Play when GRIDGO refuses the step, and reads the steps again", async () => {

@@ -162,7 +162,7 @@ export default function PlayOptInScreen() {
         ? { label: "Join group", onPress: () => void run(store.openGroup) }
         : step === "optin"
           ? { label: "Become a tester", onPress: () => void run(store.openOptIn) }
-          : { label: "Install from Play", onPress: () => void store.openPlayStore() };
+          : { label: "Install from Play", onPress: () => void run(store.openPlayStore) };
 
   // Each link step's way back, for a page closed too early.
   const again =

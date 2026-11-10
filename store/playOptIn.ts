@@ -3,7 +3,7 @@ import { create } from "zustand";
 
 import * as api from "@/lib/api";
 import { buildDistribution } from "@/lib/buildDistribution";
-import { optInInstall, type OptInProgress } from "@/lib/playOptIn";
+import { NO_OPT_IN_PROGRESS, optInInstall, type OptInProgress } from "@/lib/playOptIn";
 
 /**
  * This install, as every opt-in call reports it. A development web build may
@@ -15,7 +15,7 @@ export function playOptInInstall(): api.PlayOptInInstall {
   return optInInstall(Platform.OS, buildDistribution(), force);
 }
 
-const NO_PROGRESS: OptInProgress = { groupOpened: false, optInOpened: false };
+const NO_PROGRESS: OptInProgress = NO_OPT_IN_PROGRESS;
 
 type PlayOptInStore = {
   /** The account the answer below belongs to. */
@@ -40,7 +40,7 @@ type PlayOptInStore = {
   confirmGmail: (email: string, googleAccount: boolean) => Promise<string | null>;
   openGroup: () => Promise<string | null>;
   openOptIn: () => Promise<string | null>;
-  openPlayStore: () => Promise<void>;
+  openPlayStore: () => Promise<string | null>;
   reset: () => void;
 };
 
@@ -50,12 +50,14 @@ function report(type: api.PlayOptInEvent): Promise<void> {
   return api.reportPlayOptInEvent(playOptInInstall(), type);
 }
 
-async function open(url: string | null | undefined): Promise<void> {
-  if (!url) return;
+/** Whether something on this phone took the link. */
+async function open(url: string | null | undefined): Promise<boolean> {
+  if (!url) return false;
   try {
     await Linking.openURL(url);
+    return true;
   } catch {
-    // Nothing on this phone took the link; the step stays offered.
+    return false;
   }
 }
 
@@ -139,8 +141,13 @@ export const usePlayOptIn = create<PlayOptInStore>()((set, get) => {
       } catch (error) {
         return refused(error, "The tester group did not open. Try again.");
       }
-      set({ progress: { ...get().progress, groupOpened: true } });
-      await open(url);
+      // Progress moves only once the page actually opened; otherwise the
+      // group stays the current action, whatever GRIDGO's next read says.
+      if (!(await open(url))) {
+        set({ progress: { ...get().progress, groupOpened: false, failed: "group" } });
+        return "The group page did not open. Try again.";
+      }
+      set({ progress: { ...get().progress, groupOpened: true, failed: null } });
       return null;
     },
     openOptIn: async () => {
@@ -150,13 +157,14 @@ export const usePlayOptIn = create<PlayOptInStore>()((set, get) => {
       } catch (error) {
         return refused(error, "Google Play did not open. Try again.");
       }
-      set({ progress: { ...get().progress, optInOpened: true } });
-      await open(url);
+      if (!(await open(url))) {
+        set({ progress: { ...get().progress, optInOpened: false, failed: "optin" } });
+        return "The Play tester page did not open. Try again.";
+      }
+      set({ progress: { ...get().progress, optInOpened: true, failed: null } });
       return null;
     },
-    openPlayStore: async () => {
-      await open(get().state?.playStoreUrl);
-    },
+    openPlayStore: async () => ((await open(get().state?.playStoreUrl)) ? null : "Google Play did not open. Try again."),
     reset: () => {
       sequence++;
       set(EMPTY);

@@ -92,14 +92,29 @@ describe("Gmail check", () => {
 });
 
 describe("steps", () => {
-  const none = { groupOpened: false, optInOpened: false };
+  const none = { groupOpened: false, optInOpened: false, failed: null };
 
   it("link mode: Gmail, group, Play testing page, install", () => {
     expect(optInSteps(optIn(), none).map((s) => s.key)).toEqual(["gmail", "group", "optin", "install"]);
     expect(currentOptInStep(optIn({ step: "join_group" }), none)).toBe("group");
-    expect(currentOptInStep(optIn({ step: "join_group" }), { groupOpened: true, optInOpened: false })).toBe("optin");
-    expect(currentOptInStep(optIn({ step: "join_group" }), { groupOpened: true, optInOpened: true })).toBe("install");
+    expect(currentOptInStep(optIn({ step: "join_group" }), { groupOpened: true, optInOpened: false, failed: null })).toBe("optin");
+    expect(currentOptInStep(optIn({ step: "join_group" }), { groupOpened: true, optInOpened: true, failed: null })).toBe("install");
     expect(currentOptInStep(optIn({ step: "install_from_play" }), none)).toBe("install");
+  });
+
+  it("keeps a link that did not open as the current step after GRIDGO moved on", () => {
+    // The event committed, so GRIDGO's next read is already one step ahead.
+    expect(currentOptInStep(optIn({ step: "open_optin" }), { ...none, failed: "group" })).toBe("group");
+    expect(currentOptInStep(optIn({ step: "install_from_play" }), { ...none, failed: "optin" })).toBe("optin");
+    expect(optInSteps(optIn({ step: "install_from_play" }), { ...none, groupOpened: true, failed: "optin" })).toEqual([
+      { key: "gmail", status: "done" },
+      { key: "group", status: "done" },
+      { key: "optin", status: "current" },
+      { key: "install", status: "ahead" },
+    ]);
+    // A changed Gmail or an opt-in still wins.
+    expect(currentOptInStep(optIn({ step: "confirm_gmail" }), { ...none, failed: "optin" })).toBe("gmail");
+    expect(currentOptInStep(optIn({ step: "opted_in" }), { ...none, failed: "optin" })).toBe("done");
   });
 
   it("automatic mode has no group step", () => {

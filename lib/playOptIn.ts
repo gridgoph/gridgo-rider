@@ -102,11 +102,24 @@ export type OptInStepKey = "gmail" | "group" | "optin" | "install";
 export type OptInStepStatus = "done" | "current" | "ahead";
 export type OptInStepView = { key: OptInStepKey; status: OptInStepStatus };
 
-/** What the phone opened this visit, beyond GRIDGO's last answer. */
-export type OptInProgress = { groupOpened: boolean; optInOpened: boolean };
+/**
+ * What the phone opened this visit, beyond GRIDGO's last answer. `failed`
+ * is a link whose event GRIDGO took but which nothing on the phone opened.
+ */
+export type OptInProgress = { groupOpened: boolean; optInOpened: boolean; failed: "group" | "optin" | null };
+
+export const NO_OPT_IN_PROGRESS: OptInProgress = { groupOpened: false, optInOpened: false, failed: null };
 
 /** The step the rider is on, from GRIDGO's `step` and what this visit opened. */
 export function currentOptInStep(state: PlayOptInState, progress: OptInProgress): OptInStepKey | "done" {
+  /*
+    A link that did not open stays the current action, even though GRIDGO
+    already recorded its event and the next read reports the step after it:
+    the rider has not seen that page yet.
+  */
+  if (state.step !== "confirm_gmail" && state.step !== "opted_in" && progress.failed) {
+    return progress.failed === "group" && state.groupMode === "link" ? "group" : "optin";
+  }
   switch (state.step) {
     case "confirm_gmail":
       return "gmail";
