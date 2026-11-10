@@ -7,6 +7,8 @@ import { useTesterProgram } from "@/store/testerProgram";
 
 /** Active's tester line: nothing for a non-tester, Day N and the streak for a tester. */
 
+jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return { ...actual, reportTesterFeedback: jest.fn(() => Promise.resolve()) };

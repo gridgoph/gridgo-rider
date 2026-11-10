@@ -1,6 +1,6 @@
 import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking, RefreshControl, ScrollView, Text, View } from "react-native";
 
@@ -14,6 +14,7 @@ import { AlertListSkeleton } from "@/components/SkeletonScreens";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { installChannel } from "@/lib/buildDistribution";
+import { PLAY_OPTIN_PUSH_TYPE, PLAY_OPTIN_ROUTE } from "@/lib/playOptIn";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { useNotifications } from "@/store/notifications";
 import { askConfirm } from "@/store/sheets";
@@ -186,7 +187,16 @@ export default function AlertsScreen() {
                     order={item.orderId ? (byId.get(item.orderId) ?? null) : null}
                     read={isRead(item)}
                     onMarkRead={() => markRead(item.id)}
-                    onOpen={release ? () => void openReleaseDestination(release, (url) => Linking.openURL(url)) : undefined}
+                    onOpen={
+                      release
+                        ? () => void openReleaseDestination(release, (url) => Linking.openURL(url))
+                        : item.type === PLAY_OPTIN_PUSH_TYPE
+                          ? () => {
+                              markRead(item.id);
+                              router.push(`${PLAY_OPTIN_ROUTE}?from=alert` as Href);
+                            }
+                          : undefined
+                    }
                   />
                 );
               })}

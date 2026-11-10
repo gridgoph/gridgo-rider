@@ -1728,6 +1728,21 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
         return "This server is not taking public rider applications. Open the invitation sent by Operations.";
       case "app_update_required":
         return "Update GRIDGO to do this step. Your trip stays as it is.";
+      // Play tester opt-in (gridgo-api `docs/PLAY_OPTIN_API.md`).
+      case "invalid_gmail":
+        return "Enter the Gmail you use on Google Play.";
+      case "google_group_unavailable":
+        return "Google did not answer. Try again in a moment.";
+      case "group_not_configured":
+        return "The tester list is not open yet. Try again later.";
+      case "campaign_not_available":
+        return "Testing on Google Play is closed for now.";
+      case "install_not_reported":
+        return "Try again in a moment.";
+      case "gmail_not_confirmed":
+        return "Confirm your Gmail first.";
+      case "group_step_required":
+        return "Join the tester group first.";
       case "dispatch_proof_route_retired":
       case "payment_route_retired":
         return "This app is out of date for the current GRIDGO process. Update it before taking more work.";
@@ -2127,5 +2142,61 @@ export async function reportTesterFeedback(event: TesterFeedbackEvent, trigger: 
   await request<{ ok: true }>("/me/tester-program/feedback", {
     method: "POST",
     body: JSON.stringify({ app: "rider", event, trigger }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Google Play closed-test opt-in. Contract: gridgo-api `docs/PLAY_OPTIN_API.md`.
+// A Gmail confirmation and telemetry only: nothing here touches a job, an
+// offer, a trip or pay. `lib/playOptIn.ts` owns what the rider sees.
+// ---------------------------------------------------------------------------
+
+export type PlayOptInStep = "confirm_gmail" | "join_group" | "open_optin" | "install_from_play" | "opted_in";
+export type PlayOptInPlatform = "android" | "ios" | "web";
+/** The APK reports `sideload`; device registration keeps its own `apk` value. */
+export type PlayOptInChannel = "play" | "sideload";
+export type PlayOptInEvent = "shown" | "tapped" | "dismissed" | "group_opened" | "optin_opened";
+
+export type PlayOptInState = {
+  app: string;
+  show: boolean;
+  step: PlayOptInStep;
+  gmailSuggestion: string | null;
+  /** `automatic`: GRIDGO adds the Gmail to the tester group. `link`: the rider joins it. */
+  groupMode: "automatic" | "link";
+  campaignEnabled: boolean;
+  optInUrl: string;
+  groupJoinUrl: string | null;
+  target: number;
+  optedIn: boolean;
+  dismissCount: number;
+  playStoreUrl: string;
+};
+
+/** Where and how this install runs; sent on every opt-in call. */
+export type PlayOptInInstall = { platform: PlayOptInPlatform; channel: PlayOptInChannel };
+
+/** Also this install's report: an Android `play` read records the rider as opted in. */
+export async function getPlayOptIn(install: PlayOptInInstall): Promise<PlayOptInState> {
+  return request<PlayOptInState>(`/me/play-optin?app=rider&platform=${install.platform}&channel=${install.channel}`);
+}
+
+/** `googleAccount` is the rider's own word that a non-Gmail address is a Google account. */
+export async function confirmPlayOptInGmail(
+  install: PlayOptInInstall,
+  email: string,
+  googleAccount: boolean,
+): Promise<PlayOptInState> {
+  return request<PlayOptInState>("/me/play-optin/confirm-gmail", {
+    method: "POST",
+    body: JSON.stringify({ app: "rider", ...install, email, ...(googleAccount ? { googleAccount: true } : {}) }),
+  });
+}
+
+/** `dismissed` counts once per call on GRIDGO: never retry it. */
+export async function reportPlayOptInEvent(install: PlayOptInInstall, type: PlayOptInEvent): Promise<void> {
+  await request<{ ok: true }>("/me/play-optin/event", {
+    method: "POST",
+    body: JSON.stringify({ app: "rider", ...install, type }),
   });
 }
