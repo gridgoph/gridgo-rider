@@ -65,9 +65,9 @@ const RESEND_COOLDOWN_SECONDS = 30;
  * screen has a second face rather than a second route.
  *
  * GRIDGO files nobody who has not agreed to its terms: the form names the
- * Rider Agreement, Terms of Service and Privacy Notice in effect now, asks the
- * age question, and holds the button until the unticked agreement box is
- * ticked. The enrollment carries those exact version IDs (`docs/LEGAL_API.md`).
+ * Rider Agreement, Terms of Service and Privacy Notice in effect now, and holds
+ * the button until the unticked agreement box — which also declares the rider
+ * is 18 or older — is ticked. The enrollment carries those exact version IDs (`docs/LEGAL_API.md`).
  */
 export default function SignupScreen() {
   const router = useRouter();
