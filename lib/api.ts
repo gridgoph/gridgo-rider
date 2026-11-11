@@ -1945,8 +1945,8 @@ export type EnrollmentConsentBody = LegalAcceptanceContext & {
   accepted: true;
   versionIds: string[];
   method: "checkbox";
-  junior: boolean;
-  guardian?: boolean;
+  /** Rider accounts are for people 18 and over: a rider never declares junior. */
+  junior: false;
   marketing: boolean;
 };
 

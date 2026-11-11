@@ -18,6 +18,8 @@ import {
   openRequestOf,
   privacyRequestLine,
   privacyStatusLook,
+  RIDER_AGE_RULE,
+  signupAgreementLabel,
   signupConsentProblem,
   signupDocuments,
   unseenNotices,
@@ -100,21 +102,35 @@ describe("the rider library", () => {
 });
 
 describe("agreeing on the apply form", () => {
-  it("holds the application until every required answer is given", () => {
+  it("holds the application until the documents load and the box is ticked", () => {
     expect(signupConsentProblem(EMPTY_SIGNUP_CONSENT, false)).toMatch(/not loaded/);
+    expect(signupConsentProblem(EMPTY_SIGNUP_CONSENT)).toMatch(/Tick the box/);
     expect(signupConsentProblem(EMPTY_SIGNUP_CONSENT)).toMatch(/18 or older/);
-    expect(signupConsentProblem({ ...EMPTY_SIGNUP_CONSENT, adult: false })).toMatch(/guardian/);
-    expect(signupConsentProblem({ ...EMPTY_SIGNUP_CONSENT, adult: true })).toMatch(/Tick the box/);
-    expect(signupConsentProblem({ ...EMPTY_SIGNUP_CONSENT, adult: true, agreed: true })).toBeNull();
-    expect(
-      signupConsentProblem({ ...EMPTY_SIGNUP_CONSENT, adult: false, guardian: true, agreed: true }),
-    ).toBeNull();
+    expect(signupConsentProblem({ ...EMPTY_SIGNUP_CONSENT, agreed: true })).toBeNull();
   });
 
-  it("builds the exact v1 body, guardian only for a junior and marketing always said", () => {
+  it("asks for no age answer and offers no under-18 path", () => {
+    expect(Object.keys(EMPTY_SIGNUP_CONSENT).sort()).toEqual(["agreed", "marketing"]);
+  });
+
+  it("declares 18 or older in the agreement box, as gridgo-supplier does", () => {
+    expect(
+      signupAgreementLabel([
+        doc("rider-agreement", "Rider Agreement"),
+        doc("terms-of-service", "Terms of Service"),
+        doc("privacy-notice", "Privacy Notice"),
+      ]),
+    ).toBe("I am 18 or older and agree to the Rider Agreement, Terms of Service and Privacy Notice");
+    expect(signupAgreementLabel(null)).toBe(
+      "I am 18 or older and agree to the Rider Agreement, Terms of Service and Privacy Notice",
+    );
+    expect(RIDER_AGE_RULE).toBe("Rider accounts are for people 18 and over.");
+  });
+
+  it("builds the exact v1 body: never junior, never a guardian, marketing always said", () => {
     const context = { app: "gridgo-rider/1.0.0", device: "rider-abc" };
     expect(
-      enrollmentConsentBody(["a", "b"], { ...EMPTY_SIGNUP_CONSENT, adult: true, agreed: true }, context),
+      enrollmentConsentBody(["a", "b"], { ...EMPTY_SIGNUP_CONSENT, agreed: true }, context),
     ).toEqual({
       accepted: true,
       versionIds: ["a", "b"],
@@ -124,13 +140,9 @@ describe("agreeing on the apply form", () => {
       app: "gridgo-rider/1.0.0",
       device: "rider-abc",
     });
-    expect(
-      enrollmentConsentBody(
-        ["a"],
-        { agreed: true, adult: false, guardian: true, marketing: true },
-        context,
-      ),
-    ).toMatchObject({ junior: true, guardian: true, marketing: true });
+    const body = enrollmentConsentBody(["a"], { agreed: true, marketing: true }, context);
+    expect(body).toMatchObject({ junior: false, marketing: true });
+    expect(body).not.toHaveProperty("guardian");
   });
 
   it("labels the app within the API's 80 characters", () => {
