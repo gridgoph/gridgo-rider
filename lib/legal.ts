@@ -141,20 +141,34 @@ export function changeNote(doc: Pick<LegalVersion, "version" | "changeSummary">)
 // Agreeing on the apply form
 // ---------------------------------------------------------------------------
 
-/** The apply form's answers. `adult` is null until the rider says. */
+/**
+ * The apply form's answers. The agreement box carries the age declaration too:
+ * rider accounts are for people 18 and over (Terms of Service, section 17), so
+ * the person applying says they are — GRIDGO never infers age, and there is no
+ * under-18 path. Same shape as gridgo-supplier's apply form.
+ */
 export type SignupConsent = {
   agreed: boolean;
-  adult: boolean | null;
-  guardian: boolean;
   marketing: boolean;
 };
 
 export const EMPTY_SIGNUP_CONSENT: SignupConsent = {
   agreed: false,
-  adult: null,
-  guardian: false,
   marketing: false,
 };
+
+/** Said under the agreement box, so the age rule is read before it is ticked. */
+export const RIDER_AGE_RULE = "Rider accounts are for people 18 and over.";
+
+/** "I am 18 or older and agree to the Rider Agreement, Terms of Service and Privacy Notice". */
+export function signupAgreementLabel(
+  documents: readonly Pick<LegalVersion, "title">[] | null,
+): string {
+  const titles = documents?.length
+    ? joinTitles(documents)
+    : "Rider Agreement, Terms of Service and Privacy Notice";
+  return `I am 18 or older and agree to the ${titles}`;
+}
 
 /**
  * Why the application cannot go yet, in the order the boxes are drawn.
@@ -166,28 +180,23 @@ export function signupConsentProblem(
   documentsReady = true,
 ): string | null {
   if (!documentsReady) return "GRIDGO's terms have not loaded yet. Load them, then apply.";
-  if (consent.adult === null) return "Say whether you are 18 or older.";
-  if (consent.adult === false && !consent.guardian) {
-    return "Under 18, a parent or guardian has to agree with you. Tick the guardian box.";
-  }
   if (!consent.agreed) {
-    return "Tick the box to agree to the Rider Agreement, Terms of Service and Privacy Notice.";
+    return "Tick the box to confirm you are 18 or older and agree to the Rider Agreement, Terms of Service and Privacy Notice.";
   }
   return null;
 }
 
+/** Every rider is an adult, so the declaration is always `junior: false`. */
 export function enrollmentConsentBody(
   versionIds: string[],
   consent: SignupConsent,
   context: LegalAcceptanceContext,
 ): EnrollmentConsentBody {
-  const junior = consent.adult === false;
   return {
     accepted: true,
     versionIds,
     method: "checkbox",
-    junior,
-    ...(junior ? { guardian: consent.guardian } : {}),
+    junior: false,
     marketing: consent.marketing,
     ...context,
   };
