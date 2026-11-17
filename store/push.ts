@@ -14,9 +14,12 @@ import {
   readPushPermission,
   type ChannelAudibility,
   type PushPermission,
+  type PushTokenProvider,
 } from "@/lib/push";
 
 const Notifications = loadExpoNotifications();
+
+type PushToken = { token: string; provider: PushTokenProvider };
 
 /**
  * The one place `expo-notifications` is spoken to.
@@ -70,7 +73,7 @@ type PushState = {
    * create, because a rider's own channel settings outlive any re-create.
    */
   channel: ChannelAudibility;
-  /** The FCM registration token this installation currently holds. */
+  /** The push token this installation currently holds. */
   token: string | null;
   /**
    * Whether the last registration named the signed-in rider.
@@ -92,15 +95,15 @@ type PushState = {
    */
   enable: () => Promise<boolean>;
   /** Launch, sign-in and token rotation all land here. No dialog is raised. */
-  registerIfGranted: (refreshedToken?: string) => Promise<void>;
+  registerIfGranted: (refreshedToken?: PushToken) => Promise<void>;
   /**
    * GRIDGO came back to the front. The rider may have just allowed
    * notifications in the phone's settings (or turned them off), so the
    * permission is read fresh before registering. No dialog is raised.
    */
   resume: () => Promise<void>;
-  /** Firebase reissued the token while the app was running. */
-  adoptToken: (token: string) => Promise<void>;
+  /** The provider reissued the token while the app was running. */
+  adoptToken: (issued: PushToken) => Promise<void>;
   /** The channel's own settings screen: sound, importance, on/off. */
   openChannelSettings: () => Promise<void>;
   /**
@@ -158,22 +161,25 @@ async function ensureChannel(): Promise<ChannelAudibility> {
 }
 
 /**
- * This installation's FCM token, or null if it cannot be had.
+ * This installation's token and its issuer, or null if it cannot be had.
  *
- * The API sends through FCM HTTP v1. On Android expo-notifications returns an
- * FCM token. On iOS it returns the raw APNs token, which FCM cannot address,
+ * On Android expo-notifications returns an FCM token. On iOS it returns the
+ * raw APNs token, which FCM cannot address,
  * so an iPhone build with Firebase asks Firebase for an FCM token instead
  * (`lib/firebaseMessaging.ios.ts`) and is registered exactly like Android.
+ * Without Firebase, iOS registers its native token explicitly as APNs.
  */
-async function fetchToken(): Promise<string | null> {
+async function fetchToken(): Promise<PushToken | null> {
   const firebase = getFirebaseMessaging();
   if (firebase) {
     const token = await firebase.getToken();
-    return token || null;
+    return token ? { token, provider: "fcm" } : null;
   }
   if (!Notifications) return null;
-  const { data } = await Notifications.getDevicePushTokenAsync();
-  return typeof data === "string" && data ? data : null;
+  const { type, data } = await Notifications.getDevicePushTokenAsync();
+  return typeof data === "string" && data
+    ? { token: data, provider: type === "ios" ? "apns" : "fcm" }
+    : null;
 }
 
 /**
@@ -183,14 +189,16 @@ async function fetchToken(): Promise<string | null> {
  * expo-notifications' listener — and only there, because on such an iPhone
  * that listener reports the APNs token, which is not what the API was given.
  */
-export function subscribePushTokenRotation(onToken: (token: string) => void): () => void {
-  const adopt = (token: unknown) => {
-    if (typeof token === "string" && token) onToken(token);
+export function subscribePushTokenRotation(onToken: (issued: PushToken) => void): () => void {
+  const adopt = (token: unknown, provider: PushTokenProvider) => {
+    if (typeof token === "string" && token) onToken({ token, provider });
   };
   const firebase = getFirebaseMessaging();
-  if (firebase) return firebase.onTokenRefresh(adopt);
+  if (firebase) return firebase.onTokenRefresh((token) => adopt(token, "fcm"));
   if (!Notifications) return () => undefined;
-  const subscription = Notifications.addPushTokenListener((token) => adopt(token.data));
+  const subscription = Notifications.addPushTokenListener((token) =>
+    adopt(token.data, token.type === "ios" ? "apns" : "fcm"),
+  );
   return () => subscription.remove();
 }
 
@@ -275,16 +283,17 @@ export const usePush = create<PushState>((set, get) => ({
       if (!isCurrent()) return;
       set({ busy: true, error: null });
       try {
-        const token = refreshedToken || await fetchToken();
+        const issued = refreshedToken ?? await fetchToken();
         if (!isCurrent()) return;
-        if (!token) {
+        if (!issued) {
           set({ busy: false, error: "This phone did not return a notification token." });
           return;
         }
+        const { token, provider } = issued;
         if (signedIn) set({ token });
         const channel = installChannel();
-        if (signedIn) await api.registerDevice(token, platform, channel, controller.signal);
-        else await api.registerDeviceUnclaimed(token, platform, channel, controller.signal);
+        if (signedIn) await api.registerDevice(token, platform, provider, channel, controller.signal);
+        else await api.registerDeviceUnclaimed(token, platform, provider, channel, controller.signal);
         if (isCurrent()) set({ token, claimed: signedIn, busy: false, error: null });
       } catch (e) {
         if (!isCurrent()) return;
@@ -321,10 +330,11 @@ export const usePush = create<PushState>((set, get) => ({
     await get().registerIfGranted();
   },
 
-  adoptToken: async (token) => {
+  adoptToken: async (issued) => {
+    const { token } = issued;
     if (token === get().token) return;
     set({ token });
-    await get().registerIfGranted(token);
+    await get().registerIfGranted(issued);
   },
 
   openChannelSettings: async () => {
