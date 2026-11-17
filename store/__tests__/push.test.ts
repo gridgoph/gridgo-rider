@@ -565,6 +565,39 @@ it.each(["native token", "bearer", "registration request"])("offers retry after 
   }
 });
 
+it("registers a granted phone when the API answers after six seconds", async () => {
+  jest.useFakeTimers();
+  const originalFetch = global.fetch;
+  usePush.setState({ permission: "granted" });
+  // Keep registerDevice/request real: the store used to abort their HTTP
+  // request at 5s, although the shared API helper allows it 20s to answer.
+  global.fetch = jest.fn((_url, init) => new Promise<Response>((resolve, reject) => {
+    const timer = setTimeout(() => resolve({
+      ok: true,
+      status: 201,
+      text: async () => JSON.stringify({ device: { id: "dev_rider" }, created: true, reassigned: false }),
+    } as Response), 6_000);
+    init?.signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new Error("Request aborted"));
+    }, { once: true });
+  }));
+  try {
+    const pending = usePush.getState().registerIfGranted();
+    await jest.advanceTimersByTimeAsync(6_000);
+    await pending;
+    const state = usePush.getState();
+    expect(state).toMatchObject({
+      permission: "granted", token: "fcm-token-a7c8d3f1", claimed: true, busy: false, error: null,
+    });
+    expect(pushOffer({ ...state, signedIn: true, failed: Boolean(state.error) })).toBe("hidden");
+  } finally {
+    cancelDeviceRegistrations();
+    global.fetch = originalFetch;
+    jest.useRealTimers();
+  }
+});
+
 it("releases the registration queue at its deadline and ignores a late token", async () => {
   jest.useFakeTimers();
   const stalled = deferred<Notifications.DevicePushToken>();
