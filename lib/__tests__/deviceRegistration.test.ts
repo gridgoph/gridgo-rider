@@ -13,12 +13,12 @@ describe("POST /devices installChannel", () => {
   afterEach(() => fetchSpy.mockRestore());
 
   it.each(["apk", "play", "ios"] as const)("reports %s on an unclaimed registration", async (channel) => {
-    await api.registerDeviceUnclaimed("tok", channel === "ios" ? "ios" : "android", channel);
+    await api.registerDeviceUnclaimed("tok", channel === "ios" ? "ios" : "android", "fcm", channel);
     expect(sentBody(fetchSpy)).toMatchObject({ token: "tok", appRole: "rider", installChannel: channel });
   });
 
   it("sends no channel when the build has none to report", async () => {
-    await api.registerDeviceUnclaimed("tok", "web", null);
+    await api.registerDeviceUnclaimed("tok", "web", "fcm", null);
     expect(sentBody(fetchSpy)).not.toHaveProperty("installChannel");
   });
 });
