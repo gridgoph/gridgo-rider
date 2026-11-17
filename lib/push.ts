@@ -104,6 +104,9 @@ export function channelAudibility(
 /** The `platform` value `POST /devices` accepts. */
 export type DevicePlatform = "android" | "ios" | "web";
 
+/** The issuer of the acquired token, independent of the phone's platform. */
+export type PushTokenProvider = "fcm" | "apns";
+
 /**
  * Map the runtime to the contract's platform value.
  *

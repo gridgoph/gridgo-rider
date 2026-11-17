@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import { shouldInvalidateSessionOnStatus } from "@/lib/authGate";
 import { appHeaders } from "@/lib/appIdentity";
 import { isUpdateRequiredRefusal } from "@/lib/minimumBuild";
-import type { DevicePlatform } from "@/lib/push";
+import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
 import type { InstallChannel } from "@/lib/buildDistribution";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import type { PickupChatMessage, PickupChatSummary } from "@/lib/pickupChat";
@@ -984,18 +984,23 @@ export async function logout(deviceToken?: string | null, capturedBearer?: Promi
  * version; web reports none. Every launch re-registers, which is how an
  * install that predates the field starts reporting it.
  */
-function deviceBody(token: string, platform: DevicePlatform, installChannel: InstallChannel | null) {
+function deviceBody(
+  token: string,
+  platform: DevicePlatform,
+  tokenProvider: PushTokenProvider,
+  installChannel: InstallChannel | null,
+) {
   return {
     token,
     platform,
     appRole: "rider",
-    tokenProvider: platform === "ios" ? "apns" : "fcm",
+    tokenProvider,
     ...(installChannel ? { installChannel } : {}),
   };
 }
 
 /**
- * Register this installation's FCM token against the signed-in rider.
+ * Register this installation's push token against the signed-in rider.
  *
  * Idempotent and cheap by design, so it is called on every launch and on every
  * token refresh: re-registering the same token under the same account updates
@@ -1007,13 +1012,14 @@ function deviceBody(token: string, platform: DevicePlatform, installChannel: Ins
 export async function registerDevice(
   token: string,
   platform: DevicePlatform,
+  tokenProvider: PushTokenProvider,
   installChannel: InstallChannel | null,
   signal?: AbortSignal,
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
     signal,
-    body: JSON.stringify(deviceBody(token, platform, installChannel)),
+    body: JSON.stringify(deviceBody(token, platform, tokenProvider, installChannel)),
   });
 }
 
@@ -1046,6 +1052,7 @@ export async function registerDevice(
 export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
+  tokenProvider: PushTokenProvider,
   installChannel: InstallChannel | null,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -1053,7 +1060,7 @@ export async function registerDeviceUnclaimed(
     method: "POST",
     signal,
     headers: { Accept: "application/json", "Content-Type": "application/json", ...appHeaders() },
-    body: JSON.stringify(deviceBody(token, platform, installChannel)),
+    body: JSON.stringify(deviceBody(token, platform, tokenProvider, installChannel)),
   });
   if (!res.ok) {
     const text = await res.text();

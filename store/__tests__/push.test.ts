@@ -108,7 +108,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().error).toBeNull();
     register.mockRestore();
@@ -133,7 +133,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     expect(claimed).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(false);
@@ -152,7 +152,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     expect(unclaimed).not.toHaveBeenCalled();
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
@@ -167,7 +167,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
   });
@@ -264,7 +264,7 @@ describe("enable", () => {
     await expect(usePush.getState().enable()).resolves.toBe(true);
 
     expect(mocked.requestPermissionsAsync).toHaveBeenCalled();
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     register.mockRestore();
   });
 
@@ -293,7 +293,7 @@ describe("resume", () => {
 
     expect(usePush.getState().permission).toBe("granted");
     expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     register.mockRestore();
   });
 
@@ -339,8 +339,8 @@ describe("install channel", () => {
     bearer.mockResolvedValueOnce(true);
     await usePush.getState().registerIfGranted();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "play", expect.any(AbortSignal));
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "play", expect.any(AbortSignal));
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "play", expect.any(AbortSignal));
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "play", expect.any(AbortSignal));
     claimed.mockRestore();
     unclaimed.mockRestore();
     bearer.mockRestore();
@@ -366,7 +366,7 @@ describe("an iPhone build with Firebase", () => {
       mockFirebase = null;
     }
 
-    expect(register).toHaveBeenCalledWith("fcm-ios-token-9b1e", "ios", "ios", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("fcm-ios-token-9b1e", "ios", "fcm", "ios", expect.any(AbortSignal));
     expect(mocked.getDevicePushTokenAsync).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-ios-token-9b1e");
     register.mockRestore();
@@ -375,14 +375,14 @@ describe("an iPhone build with Firebase", () => {
 
 describe("subscribePushTokenRotation", () => {
   it("follows expo-notifications' token where there is no Firebase", () => {
-    const heard: string[] = [];
+    const heard: { token: string; provider: string }[] = [];
     const unsubscribe = subscribePushTokenRotation((token) => heard.push(token));
     const listener = mocked.addPushTokenListener.mock.calls[0][0];
     listener({ type: "android", data: "rotated-fcm" } as never);
     listener({ type: "android", data: "" } as never);
     unsubscribe();
 
-    expect(heard).toEqual(["rotated-fcm"]);
+    expect(heard).toEqual([{ token: "rotated-fcm", provider: "fcm" }]);
     const subscription = mocked.addPushTokenListener.mock.results[0].value as { remove: jest.Mock };
     expect(subscription.remove).toHaveBeenCalled();
   });
@@ -397,7 +397,7 @@ describe("subscribePushTokenRotation", () => {
         return stop;
       }),
     };
-    const heard: string[] = [];
+    const heard: { token: string; provider: string }[] = [];
     try {
       const unsubscribe = subscribePushTokenRotation((token) => heard.push(token));
       refresh?.("rotated-fcm-ios");
@@ -406,7 +406,7 @@ describe("subscribePushTokenRotation", () => {
       mockFirebase = null;
     }
 
-    expect(heard).toEqual(["rotated-fcm-ios"]);
+    expect(heard).toEqual([{ token: "rotated-fcm-ios", provider: "fcm" }]);
     expect(stop).toHaveBeenCalled();
     expect(mocked.addPushTokenListener).not.toHaveBeenCalled();
   });
@@ -423,16 +423,16 @@ describe("adoptToken", () => {
     } as never);
     const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
 
-    await usePush.getState().adoptToken("rotated-token");
+    await usePush.getState().adoptToken({ token: "rotated-token", provider: "fcm" });
 
-    expect(register).toHaveBeenCalledWith("rotated-token", "android", "apk", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("rotated-token", "android", "fcm", "apk", expect.any(AbortSignal));
     register.mockRestore();
   });
 
   it("ignores a rotation event for the token it already holds", async () => {
     usePush.setState({ permission: "granted", token: "same-token" });
     const register = jest.spyOn(api, "registerDevice");
-    await usePush.getState().adoptToken("same-token");
+    await usePush.getState().adoptToken({ token: "same-token", provider: "fcm" });
     expect(register).not.toHaveBeenCalled();
     register.mockRestore();
   });
@@ -477,7 +477,7 @@ describe("signing out", () => {
 
     await usePush.getState().release();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "apk", expect.any(AbortSignal));
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", "fcm", "apk", expect.any(AbortSignal));
     expect(usePush.getState().claimed).toBe(false);
     unclaimed.mockRestore();
   });
@@ -513,7 +513,7 @@ it.each(["native token", "bearer", "unclaimed request"])("cancels stalled %s wor
     await old;
     expect(logout).toHaveBeenCalledTimes(1);
     expect(identity).toHaveBeenCalledTimes(1);
-    if (stage === "unclaimed request") expect(unclaimed.mock.calls[0][3]?.aborted).toBe(true);
+    if (stage === "unclaimed request") expect(unclaimed.mock.calls[0][4]?.aborted).toBe(true);
     stalled.resolve({ type: "android", data: "obsolete" } as never);
     await jest.advanceTimersByTimeAsync(0);
     expect(register).not.toHaveBeenCalled();
@@ -546,7 +546,7 @@ it.each(["native token", "bearer", "registration request"])("offers retry after 
       error: "Could not turn on alerts for this phone. Your alerts still arrive in the app.",
     });
     expect(pushOffer({ ...state, signedIn: true, failed: Boolean(state.error) })).toBe("retry");
-    if (stage === "registration request") expect(register.mock.calls[0][3]?.aborted).toBe(true);
+    if (stage === "registration request") expect(register.mock.calls[0][4]?.aborted).toBe(true);
     stalled.resolve({ type: "android", data: "obsolete" } as never);
     await jest.advanceTimersByTimeAsync(0);
     expect(usePush.getState().error).toBe(state.error);
@@ -641,10 +641,11 @@ it.each(["native token", "bearer"])("finishes push registration when approval ch
     expect(register).toHaveBeenCalledWith(
       stage === "native token" ? "rotated-token" : "fcm-token-a7c8d3f1",
       "android",
+      "fcm",
       "apk",
       expect.any(AbortSignal),
     );
-    expect(register.mock.calls[0][3]?.aborted).toBe(false);
+    expect(register.mock.calls[0][4]?.aborted).toBe(false);
     expect(usePush.getState()).toMatchObject({ busy: false, claimed: true, error: null });
   } finally {
     cancelDeviceRegistrations();
@@ -685,8 +686,8 @@ it("registers the rotation event token even if the native getter still has the p
   usePush.setState({permission:"granted",token:"previous-token"});
   const register = jest.spyOn(api,"registerDevice").mockResolvedValue({} as never);
   try {
-    await usePush.getState().adoptToken("fresh-token");
-    expect(register).toHaveBeenCalledWith("fresh-token","android","apk",expect.any(AbortSignal));
+    await usePush.getState().adoptToken({ token: "fresh-token", provider: "fcm" });
+    expect(register).toHaveBeenCalledWith("fresh-token","android","fcm","apk",expect.any(AbortSignal));
     expect(mocked.getDevicePushTokenAsync).not.toHaveBeenCalled();
   } finally { register.mockRestore(); }
 });
