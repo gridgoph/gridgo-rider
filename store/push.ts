@@ -196,7 +196,11 @@ export function subscribePushTokenRotation(onToken: (token: string) => void): ()
 
 let registrationQueue: Promise<void> = Promise.resolve();
 const registrations = new Set<AbortController>();
-export const DEVICE_REGISTRATION_TIMEOUT_MS = 5_000;
+// Registration crosses native token/auth calls before POST /devices. A shorter
+// deadline than ordinary API requests aborts healthy mobile connections and
+// leaves permission granted without a confirmed registration. Keep it bounded
+// by the same allowance as the rest of the app; sign-out still cancels it early.
+export const DEVICE_REGISTRATION_TIMEOUT_MS = api.API_REQUEST_MS;
 
 export function cancelDeviceRegistrations(): void {
   for (const controller of registrations) controller.abort();
