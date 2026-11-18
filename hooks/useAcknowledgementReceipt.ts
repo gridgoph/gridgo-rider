@@ -21,6 +21,19 @@ type Options = {
   verify: () => Promise<boolean>;
   /** The server closed the receipt: re-read the job to learn where it went. */
   onClosed: () => void;
+  /**
+   * A cash job: the receipt is issued by collecting the client's cash, never
+   * prepared ahead of it — `prepareAcknowledgementReceipt` would only be
+   * refused while the cash is unpaid.
+   */
+  cash?: boolean;
+  /**
+   * A cash job's money record as last read (its cash version and whether the
+   * server has the collection). When it moves, the receipt is read again: a
+   * collection whose reply was lost still issued the receipt, and the rider
+   * gets it from the read instead of an action that would only be refused.
+   */
+  cashMark?: string | null;
 };
 
 const UNVERIFIED: ReceiptProblem = {
@@ -49,7 +62,10 @@ const UNVERIFIED: ReceiptProblem = {
  * means the server has closed the window; `onClosed` re-reads the job to
  * learn why.
  */
-export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, verify, onClosed }: Options) {
+export function useAcknowledgementReceipt(
+  order: api.Order | null,
+  { onOrder, verify, onClosed, cash = false, cashMark = null }: Options,
+) {
   const stage = receiptStage(order);
   const orderId = order?.id ?? null;
 
@@ -107,6 +123,10 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
       .catch((e: unknown) => {
         if (api.apiErrorCode(e) !== "acknowledgement_receipt_not_found") throw e;
         if (!current()) return null;
+        if (cash) {
+          adopt({ status: "cash_due" });
+          return null;
+        }
         return api.prepareAcknowledgementReceipt(orderId);
       })
       .then((receipt: AcknowledgementReceipt | null) => {
@@ -120,7 +140,34 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
         adopt({ status: "problem", problem });
         if (problem.kind === "closed" || problem.kind === "gone") latest.current.onClosed();
       });
-  }, [openKey, orderId, nextRead]);
+    // `cashMark` is a dependency for its change alone: a moved money record re-reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey, orderId, nextRead, cash, cash ? cashMark : null]);
+
+  /*
+    The client's exact cash, recorded at the door. The server issues the
+    receipt, marked Cash, in the same step and returns it; it is adopted here
+    and nowhere else, like a read. A key per attempt: the caller keeps it
+    across retries with the same body, so a lost reply returns the first
+    answer instead of conflicting with it.
+  */
+  const [collecting, setCollecting] = useState(false);
+  const collect = useCallback(
+    async (input: { expectedVersion: number; amountReceivedMinor: number; evidenceFileId: string }, key: string) => {
+      if (!openKey || !orderId || collecting) return false;
+      const target = openKey;
+      setCollecting(true);
+      try {
+        const result = await api.collectCashAtDoor(orderId, input, key);
+        if (result.receipt.orderId !== orderId) throw new Error("receipt_order_mismatch");
+        setHeld((now) => (now?.key === target || !now ? { key: target, load: { status: "ready", receipt: result.receipt } } : now));
+        return true;
+      } finally {
+        setCollecting(false);
+      }
+    },
+    [openKey, orderId, collecting],
+  );
 
   useEffect(() => {
     void read();
@@ -183,5 +230,5 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
     else load = held?.key === openKey ? held.load : { status: "loading" };
   }
 
-  return { stage, load, retry, arrive, arriving, arrivalError };
+  return { stage, load, retry, arrive, arriving, arrivalError, collect, collecting };
 }

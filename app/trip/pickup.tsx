@@ -20,6 +20,7 @@ import { PickupChecklistSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
 import { TripStepHeader } from "@/components/TripStepHeader";
 import { UpdateRequiredPanel } from "@/components/UpdateRequired";
+import { useOrderCash } from "@/hooks/useOrderCash";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -49,6 +50,7 @@ import {
   toCountPayload,
   type CountDraft,
 } from "@/lib/pickupCount";
+import { cashStage } from "@/lib/cash";
 import { formatCheckedAt } from "@/lib/handoffSignature";
 import { pickupLabel } from "@/lib/riderOrder";
 import type { RiderRefusal } from "@/lib/riderRefusals";
@@ -96,6 +98,9 @@ export default function PickupChecklistScreen() {
   const { order, setOrder, loading, error: loadError, reload } = useTripOrder(id);
   // A step this build is too old for shows the update; the trip stays as it is.
   const needsUpdate = useCustodyNeedsUpdate(order);
+  // A cash job pays the shop before the checks; the server refuses them until then.
+  const orderCash = useOrderCash(order);
+  const shopUnpaid = order ? cashStage(order, orderCash.detail) === "pay_shop" : false;
   const setActiveOrder = useActiveTrip((s) => s.setOrder);
 
   const {
@@ -306,6 +311,17 @@ export default function PickupChecklistScreen() {
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} navigate />
 
             <ContactBar trip={order} party="shop" />
+
+            {shopUnpaid ? (
+              <InlineNotice
+                tone="warning"
+                icon="triangle-alert"
+                title="Pay the shop first"
+                body="This is a cash job. Pay the shop its exact price and photograph the receipt, then check the job here."
+                actionLabel="Pay the shop"
+                onAction={() => router.replace({ pathname: "/trip/shop-payment", params: { orderId: order.id } })}
+              />
+            ) : null}
 
             {packs ? <HandoverSteps current="check" /> : null}
 

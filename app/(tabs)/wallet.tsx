@@ -1,6 +1,6 @@
 import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 
@@ -8,6 +8,7 @@ import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { EarningAmount } from "@/components/EarningAmount";
 import { EmptyState } from "@/components/EmptyState";
+import { WalletCard } from "@/components/WalletCard";
 import { InlineNotice } from "@/components/InlineNotice";
 import { Screen } from "@/components/Screen";
 import { EarningsSkeleton } from "@/components/SkeletonScreens";
@@ -15,23 +16,27 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { approvalPresentation } from "@/lib/riderApproval";
+import { cashEnabled } from "@/lib/cash";
 import { earningsDayLabel, summariseEarnings } from "@/lib/riderEarnings";
 import { useSession } from "@/store/session";
 
 /**
- * What today paid.
+ * The rider's money: the cash wallet, then what they earned.
  *
- * This screen used to carry a second, louder figure: the customer cash the
- * rider was holding until Operations reconciled it. Cash on delivery is gone,
- * so that number is gone with it, and everything on screen is now the rider's
- * own money — which is the whole reason the two were ever kept apart.
+ * The wallet (gridgo-api#360, `GET /me/rider-wallet`) is what cash jobs draw
+ * on — accepting one holds GRIDGO's share of it — so it leads, with its
+ * balance, top-up and every movement (`WalletCard`). While a Super Admin has
+ * cash switched off, top-up and the cash wording go but the balance and its
+ * history stay readable: money already in a wallet does not vanish with the
+ * setting. Earnings stay below it as they were.
  *
- * The demo backend has no payouts endpoint, so every figure here is derived
+ * The demo backend has no payouts endpoint, so every earnings figure is derived
  * from the rider's own delivered orders. The footnote says exactly that rather
  * than implying a settled statement. Each figure is the rider's share of the
  * fee (`riderPayoutMinor`); the gross the client paid is secondary, under it.
  */
-export default function EarningsScreen() {
+export default function WalletScreen() {
+  const router = useRouter();
   const colors = useThemeColors();
   const beginRead = useReadVersion();
   const user = useSession((s) => s.user);
@@ -40,6 +45,29 @@ export default function EarningsScreen() {
   const [orders, setOrders] = useState<api.Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [wallet, setWallet] = useState<Awaited<ReturnType<typeof api.getRiderWallet>> | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  const [cashOn, setCashOn] = useState(false);
+  const beginWalletRead = useReadVersion();
+  const canWork = approval.canWork;
+
+  // Approved riders only: the route answers 403 to anyone else, and an
+  // unapproved account sees its approval notice instead.
+  const reloadWallet = useCallback(async () => {
+    const isCurrent = beginWalletRead();
+    if (!canWork) return;
+    const [settings, next] = await Promise.allSettled([api.getSettings(), api.getRiderWallet()]);
+    if (!isCurrent()) return;
+    if (settings.status === "fulfilled") setCashOn(cashEnabled(settings.value));
+    if (next.status === "fulfilled") {
+      setWallet(next.value);
+      setWalletError(null);
+    } else {
+      setWalletError(
+        api.apiErrorMessage(next.reason, "Your wallet did not load. Check the phone's connection and pull down to try again."),
+      );
+    }
+  }, [beginWalletRead, canWork]);
 
   const reload = useCallback(async () => {
     const isCurrent = beginRead();
@@ -69,18 +97,20 @@ export default function EarningsScreen() {
   const pullToRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await reload();
+      await Promise.all([reload(), reloadWallet()]);
     } finally {
       setRefreshing(false);
     }
-  }, [reload]);
+  }, [reload, reloadWallet]);
 
   useLiveRefresh(["orders", "payouts", "identity"], reload);
+  useLiveRefresh(["orders", "payouts", "settings", "identity"], reloadWallet);
 
   useFocusEffect(
     useCallback(() => {
       void reload();
-    }, [reload]),
+      void reloadWallet();
+    }, [reload, reloadWallet]),
   );
 
   const summary = useMemo(
@@ -102,12 +132,30 @@ export default function EarningsScreen() {
         }
       >
         <ScreenHeader
-          title="Earnings"
-          subtitle="What you earned from jobs you closed."
+          title="Wallet"
+          subtitle={cashOn ? "Your cash wallet, and what you earned." : "Your balance, and what you earned."}
           status={<ApprovalChip />}
         />
 
         {!approval.canWork ? <ApprovalNotice /> : null}
+
+        {approval.canWork ? (
+          <WalletCard
+            wallet={wallet}
+            error={walletError}
+            cashOn={cashOn}
+            onRetry={() => void reloadWallet()}
+            onTopup={(amountMinor) =>
+              router.push({ pathname: "/wallet/topup", params: amountMinor ? { amount: String(amountMinor) } : {} })
+            }
+          />
+        ) : null}
+
+        {orders !== null && approval.canWork ? (
+          <Text className="pt-2 text-h3 text-text-primary" accessibilityRole="header">
+            Earnings
+          </Text>
+        ) : null}
 
         {error && approval.canWork ? (
           <InlineNotice

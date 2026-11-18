@@ -107,8 +107,11 @@ export function AcknowledgementReceipt({ receipt, signed = false }: Props) {
             )}
           </View>
         ))}
+        {/* A cash job's receipt is issued by the collection itself, so it is settled in cash, not ahead of the door. */}
         <Text className="text-body text-text-secondary">
-          Already paid. There is nothing to collect at the door.
+          {receipt.payments.some((payment) => payment.type === "cash")
+            ? "Paid in cash at the door. Nothing more to collect."
+            : "Already paid. There is nothing to collect at the door."}
         </Text>
       </View>
 

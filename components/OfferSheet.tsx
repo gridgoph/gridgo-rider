@@ -1,5 +1,8 @@
 import { CircleX, Package, Route, Timer, TriangleAlert } from "lucide-react-native";
+import { useState } from "react";
 import { Text, View } from "react-native";
+
+import { CashOfferTerms } from "@/components/CashOfferTerms";
 
 import { EarningAmount } from "@/components/EarningAmount";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -8,6 +11,7 @@ import { StopList } from "@/components/StopList";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
+import { cashAmountsOf, isCashOrder } from "@/lib/cash";
 import {
   cargoLines,
   cargoTotalLabel,
@@ -50,6 +54,11 @@ const HURRY_SECONDS = 10;
  * would compete with it. Its seconds are also printed, so nothing depends on
  * reading a width, and a screen reader hears the time left rather than a bar.
  *
+ * A cash offer swaps the fee line for the cash slip (`CashOfferTerms`): pay
+ * the shop, collect, GRIDGO's share and what the rider keeps — the last one
+ * carrying the earnings mark — and Accept waits for the rider to confirm they
+ * have the shop's cash on them.
+ *
  * Distance is the API's stored shop-to-drop-off figure. The API gives no
  * travel time, so a time appears only when the map router returns one, and is
  * labelled as its estimate.
@@ -66,6 +75,12 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
   const cargoTotal = cargoTotalLabel(offer);
   const hurry = secondsLeft != null && secondsLeft <= HURRY_SECONDS;
   const expired = secondsLeft === 0;
+  // A cash offer is accepted only with its four figures on screen and the
+  // shop's cash confirmed in hand; a new offer starts unticked.
+  const cash = isCashOrder(offer);
+  const amounts = cashAmountsOf(offer);
+  const [haveCash, setHaveCash] = useState<{ id: string; value: boolean }>({ id: offer.id, value: false });
+  const cashReady = !cash || (amounts != null && haveCash.id === offer.id && haveCash.value);
 
   return (
     <View
@@ -113,11 +128,26 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
         <Text className="text-overline text-text-secondary">NEW DELIVERY OFFER</Text>
       )}
 
-      <View className="gap-1">
-        <Text className="text-caption text-text-secondary">You earn</Text>
-        <EarningAmount minor={pay.earnedMinor} size="display" className="self-start" />
-        {payDetail ? <Text className="text-caption text-text-secondary">{payDetail}</Text> : null}
-      </View>
+      {cash ? (
+        amounts ? (
+          <CashOfferTerms
+            amounts={amounts}
+            haveCash={haveCash.id === offer.id && haveCash.value}
+            onHaveCash={(value) => setHaveCash({ id: offer.id, value })}
+            disabled={busy !== null || expired}
+          />
+        ) : (
+          <Text className="text-body text-text-secondary">
+            {"This cash job's amounts did not load. Wait for the offer to refresh before you accept."}
+          </Text>
+        )
+      ) : (
+        <View className="gap-1">
+          <Text className="text-caption text-text-secondary">You earn</Text>
+          <EarningAmount minor={pay.earnedMinor} size="display" className="self-start" />
+          {payDetail ? <Text className="text-caption text-text-secondary">{payDetail}</Text> : null}
+        </View>
+      )}
 
       {distance || roadTime ? (
         <View className="flex-row items-start gap-2">
@@ -177,7 +207,7 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
           <PrimaryButton
             label={busy === "accept" ? "Accepting…" : "Accept"}
             onPress={onAccept}
-            disabled={busy !== null || expired}
+            disabled={busy !== null || expired || !cashReady}
             size="large"
           />
         </View>
