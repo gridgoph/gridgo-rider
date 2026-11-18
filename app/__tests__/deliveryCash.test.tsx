@@ -245,7 +245,7 @@ beforeEach(() => {
   useSession.setState({
     user: { id: "user_rider", email: "rider@example.test", name: "Rider", role: "rider", verificationStatus: "approved" },
   } as never);
-  useCashNoShow.setState({ byOrder: {}, hydrated: true });
+  useCashNoShow.setState({ byOrder: {}, hydrated: true, serverVersion: {} });
   server = { order: cashAtDoor(2), cash: cashRecord(2), receipt: null };
   api.health.mockResolvedValue({});
   api.getOrder.mockImplementation(async () => server.order);
@@ -328,6 +328,7 @@ describe("a no-show report Operations rejected (cash review P1-2)", () => {
     useCashNoShow.setState({
       byOrder: { ord_1: { startedAtMs: Date.parse(STARTED), contactMethod: "call", reportedAtMs: Date.parse(REPORTED) } },
       hydrated: true,
+    serverVersion: {},
     });
   });
 

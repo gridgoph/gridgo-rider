@@ -83,6 +83,7 @@ beforeEach(() => {
   useCashNoShow.setState({
     byOrder: { ord_1: { startedAtMs: Date.parse(STARTED), contactMethod: "call", reportedAtMs: Date.parse(REPORTED) } },
     hydrated: true,
+    serverVersion: {},
   });
   server = { order: order(5), cash: record(5, { noShowStartedAt: STARTED, noShowReportedAt: REPORTED }) };
   api.getOrder.mockImplementation(async () => server.order);

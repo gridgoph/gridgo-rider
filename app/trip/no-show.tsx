@@ -44,10 +44,12 @@ const CONTACT = [
  * then takes it — the parcel goes back to GRIDGO Office, and once they confirm
  * it is there the shop payment returns to the rider's wallet.
  *
- * The timer on screen is this phone's reading of a wait the server started
- * (`store/cashNoShow.ts` keeps when). If the phone runs ahead, the server
- * refuses the report as early and the rider waits a little longer; nothing is
- * lost. If the client turns up, the rider goes back and collects as normal.
+ * The timer counts from the server's `noShowStartedAt` once the cash record
+ * is read; until then from when the server accepted the start
+ * (`store/cashNoShow.ts`). If the phone's clock runs ahead, the server refuses
+ * the report as early and the rider waits a little longer; nothing is lost.
+ * If Operations rejects a report, the server clears it and the screen offers
+ * the wait again. If the client turns up, the rider collects as normal.
  */
 export default function CashNoShowScreen() {
   const router = useRouter();
@@ -95,8 +97,8 @@ export default function CashNoShowScreen() {
       startAttempt && startAttempt.body.contactMethod === contact ? startAttempt : { body, key: newIdempotencyKey("no-show-start") };
     setStartAttempt(attempt);
     try {
-      await api.startCashNoShow(order.id, attempt.body, attempt.key);
-      markStarted(order.id, contact, Date.now());
+      const result = await api.startCashNoShow(order.id, attempt.body, attempt.key);
+      markStarted(order.id, contact, Date.now(), result.cash?.version);
       setNow(Date.now());
       void cash.reload();
     } catch (e) {
@@ -130,8 +132,9 @@ export default function CashNoShowScreen() {
     setBusy("report");
     setError(null);
     try {
-      await api.reportCashNoShow(order.id, attempt.body, attempt.key);
-      markReported(order.id, Date.now());
+      const result = await api.reportCashNoShow(order.id, attempt.body, attempt.key);
+      markReported(order.id, Date.now(), result.cash?.version);
+      void cash.reload();
     } catch (e) {
       const code = api.apiErrorCode(e);
       if (e instanceof api.ApiError && e.status < 500) setReportAttempt(null);

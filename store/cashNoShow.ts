@@ -4,13 +4,15 @@ import { create } from "zustand";
 /**
  * A cash no-show at the door, as this phone saw it.
  *
- * The server measures the wait (`noShowWaitSeconds`) and refuses an early
- * report, but it does not tell the rider when their wait began or that their
- * report went in. So this keeps exactly those two facts per job — when the
- * server accepted the start, and when it accepted the report — so a relaunch
- * at the door shows the same timer and does not ask for a second report.
- * It is only ever a stand-in for the server: `noShowFromServer` clears or
- * replaces it as soon as the server's record says otherwise.
+ * The server owns the wait and the report: the rider's cash record carries
+ * `noShowStartedAt` and `noShowReportedAt`. This keeps the same two facts per
+ * job so the screens have them before that record is read, and across a
+ * relaunch while offline. It is only a stand-in for the server:
+ * `noShowFromServer` clears or replaces it whenever a server read says otherwise.
+ *
+ * `serverVersion` is the newest cash version each record has been checked
+ * against (memory only). Two screens can hold reads of different ages; an
+ * older read never overrides a newer one, or the two would undo each other.
  * Times, a contact method and nothing else: no photo, no reason, no money.
  */
 export type CashNoShowRecord = {
@@ -27,12 +29,24 @@ const KEEP_MS = 2 * 24 * 3600 * 1000;
 type State = {
   byOrder: Record<string, CashNoShowRecord>;
   hydrated: boolean;
+  serverVersion: Record<string, number>;
   hydrate: () => Promise<void>;
-  started: (orderId: string, contactMethod: "call" | "message", atMs: number) => void;
-  reported: (orderId: string, atMs: number) => void;
-  /** The server's word replaces this phone's (`noShowFromServer`): adopt it, or forget the job. */
-  replace: (orderId: string, record: CashNoShowRecord | null) => void;
+  /** `version` is the cash version in the server's reply to the start or report. */
+  started: (orderId: string, contactMethod: "call" | "message", atMs: number, version?: number) => void;
+  reported: (orderId: string, atMs: number, version?: number) => void;
+  /**
+   * The server's word at cash `version` replaces this phone's
+   * (`noShowFromServer`): adopt a record, forget the job (null), or keep the
+   * record and only note the version (undefined). Ignored when older than the
+   * version already applied.
+   */
+  replace: (orderId: string, record: CashNoShowRecord | null | undefined, version: number) => void;
 };
+
+function stamp(versions: Record<string, number>, orderId: string, version: number | undefined) {
+  if (version == null || (versions[orderId] ?? -1) >= version) return versions;
+  return { ...versions, [orderId]: version };
+}
 
 function save(byOrder: Record<string, CashNoShowRecord>) {
   void AsyncStorage.setItem(KEY, JSON.stringify(byOrder)).catch(() => undefined);
@@ -50,6 +64,7 @@ function valid(value: unknown): value is CashNoShowRecord {
 
 export const useCashNoShow = create<State>((set, get) => ({
   byOrder: {},
+  serverVersion: {},
   hydrated: false,
   hydrate: async () => {
     if (get().hydrated) return;
@@ -67,23 +82,29 @@ export const useCashNoShow = create<State>((set, get) => ({
       set({ hydrated: true });
     }
   },
-  started: (orderId, contactMethod, atMs) => {
+  started: (orderId, contactMethod, atMs, version) => {
     const byOrder = { ...get().byOrder, [orderId]: { startedAtMs: atMs, contactMethod, reportedAtMs: null } };
-    set({ byOrder });
+    set({ byOrder, serverVersion: stamp(get().serverVersion, orderId, version) });
     save(byOrder);
   },
-  replace: (orderId, record) => {
+  replace: (orderId, record, version) => {
+    if ((get().serverVersion[orderId] ?? -1) > version) return;
+    const serverVersion = stamp(get().serverVersion, orderId, version);
+    if (record === undefined) {
+      if (serverVersion !== get().serverVersion) set({ serverVersion });
+      return;
+    }
     const byOrder = { ...get().byOrder };
     if (record) byOrder[orderId] = record;
     else delete byOrder[orderId];
-    set({ byOrder });
+    set({ byOrder, serverVersion });
     save(byOrder);
   },
-  reported: (orderId, atMs) => {
+  reported: (orderId, atMs, version) => {
     const current = get().byOrder[orderId];
     if (!current) return;
     const byOrder = { ...get().byOrder, [orderId]: { ...current, reportedAtMs: atMs } };
-    set({ byOrder });
+    set({ byOrder, serverVersion: stamp(get().serverVersion, orderId, version) });
     save(byOrder);
   },
 }));
