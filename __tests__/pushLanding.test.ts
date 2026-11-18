@@ -5,10 +5,12 @@ import { join } from "path";
  * Where a rider who said "Not now" finds notifications again.
  *
  * The explainer is one sheet a week at most; between times the recovery is
- * `PushEnableCard` on the screen launch lands on. Moving the launch redirect
- * to a tab without the card would quietly leave "Not now" riders with no way
- * back short of opening Alerts, which is how production ended up with almost
- * no rider phones registered.
+ * `PushEnableCard`, one tap from the screen launch lands on. The map home
+ * folds every warning into one chip (#180), so the landing draws the chip —
+ * which counts alerts that are off — and the chip's screen draws the card.
+ * Losing either would quietly leave "Not now" riders with no way back short
+ * of opening Alerts, which is how production ended up with almost no rider
+ * phones registered.
  */
 
 const read = (path: string) => readFileSync(join(__dirname, "..", path), "utf8");
@@ -17,17 +19,20 @@ describe("the notifications recovery on the landing screen", () => {
   const landing = read("app/index.tsx").match(/if \(user\) return <Redirect href="\/([^"]+)"/)?.[1];
 
   it("finds where a signed-in launch lands", () => {
-    expect(landing).toBe("(tabs)/active");
+    expect(landing).toBe("(tabs)/map");
   });
 
-  it("draws the card there, whatever state the trip is in", () => {
+  it("puts the card one tap away there, whatever state the trip is in", () => {
     const screen = read(`app/${landing}.tsx`);
-    // Unconditional: not inside the approved-only branch or the trip branch.
-    expect(screen).toMatch(/\n {8}<PushEnableCard \/>\n/);
+    expect(screen).toContain("useAttention(");
+    expect(screen).toMatch(/\{attention \? <AttentionChip summary=\{attention\} \/> : null\}/);
+    expect(read("hooks/useAttention.ts")).toMatch(/pushOffer\(/);
+    // Unconditional on the chip's screen: not inside any approval or trip branch.
+    expect(read("app/attention.tsx")).toMatch(/\n {8}<PushEnableCard \/>\n/);
   });
 
-  it("keeps it on Offers and Alerts too", () => {
-    expect(read("app/(tabs)/offers.tsx")).toContain("<PushEnableCard");
+  it("keeps it on Jobs and Alerts too", () => {
+    expect(read("app/(tabs)/jobs.tsx")).toContain("<PushEnableCard");
     expect(read("app/alerts.tsx")).toContain("<PushEnableCard");
   });
 

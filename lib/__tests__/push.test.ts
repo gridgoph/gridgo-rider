@@ -79,28 +79,25 @@ describe("parsePushData", () => {
 });
 
 describe("pushTargetRoute", () => {
-  it("opens Active for a job the rider already has in hand", () => {
-    // Pickup-check answers and trip steps live on Active, not on a per-order
-    // workspace — this app has none. The push carries no order state, so
-    // Active fetches the trip as it always does.
-    expect(pushTargetRoute(parsePushData({ orderId: "ord_demo_1" }))).toBe("/(tabs)/active");
+  it("opens the map for a job the rider already has in hand", () => {
+    // The trip and its steps live on the map home (#180). The push carries no
+    // order state, so the map fetches the trip as it always does.
+    expect(pushTargetRoute(parsePushData({ orderId: "ord_demo_1" }))).toBe("/(tabs)/map");
     expect(
       pushTargetRoute(
         parsePushData({ type: "pickup_escalation_resolved", orderId: "ord_demo_1" }),
       ),
-    ).toBe("/(tabs)/active");
+    ).toBe("/(tabs)/map");
   });
 
-  it("opens Offers for a dispatch offer, where Accept lives", () => {
-    // The genuine rider divergence from supplier. A shop Accepts on the job
-    // workspace; a rider Accepts on Offers. Routing an offer tap at Active
-    // would land them on an empty trip (or a different one).
+  it("opens the map's offer sheet for a dispatch offer, where Accept lives", () => {
+    // The tap is the ask: the sheet opens even while the rider is offline.
     expect(
       pushTargetRoute(parsePushData({ type: "dispatch_available", orderId: "ord_demo_1" })),
-    ).toBe("/(tabs)/offers?orderId=ord_demo_1");
+    ).toBe("/(tabs)/map?offer=ord_demo_1");
     expect(
       pushTargetRoute(parsePushData({ type: "rider_job_offered", orderId: "ord_demo_1" })),
-    ).toBe("/(tabs)/offers?orderId=ord_demo_1");
+    ).toBe("/(tabs)/map?offer=ord_demo_1");
   });
 
   it("opens the conversation for a message from the client", () => {

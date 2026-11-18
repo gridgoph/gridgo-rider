@@ -130,7 +130,7 @@ export default function PastJobsScreen() {
             title="No past jobs yet"
             body="Take a job from Offers. When it closes, the whole trail lands here."
             actionLabel="See offers"
-            onAction={() => router.replace("/(tabs)/offers")}
+            onAction={() => router.replace("/(tabs)/jobs")}
             secondaryAction
           />
         ) : null}

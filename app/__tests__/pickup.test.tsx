@@ -98,6 +98,15 @@ const OTHER_FIVE: PickupCheckCode[] = [
   "supplier_sign_off",
 ];
 
+// The same five in the order the four groups put them on screen (`pickupCheckGroups`).
+const ON_SCREEN: PickupCheckCode[] = [
+  "specification_match",
+  "documentation",
+  "visible_defects",
+  "packaging_integrity",
+  "supplier_sign_off",
+];
+
 const cardsField = () => screen.getByLabelText("Pieces counted of Business cards, expected 200");
 const flyersField = () => screen.getByLabelText("Pieces counted of A5 flyers, expected 50");
 const actionButton = () =>
@@ -111,8 +120,8 @@ const actionButton = () =>
 async function answerOthers(overrides: Partial<Record<PickupCheckCode, boolean>> = {}) {
   const passes = screen.getAllByRole("radio", { name: "Pass" });
   const problems = screen.getAllByRole("radio", { name: "Problem" });
-  const offset = passes.length - OTHER_FIVE.length;
-  for (const [index, code] of OTHER_FIVE.entries()) {
+  const offset = passes.length - ON_SCREEN.length;
+  for (const [index, code] of ON_SCREEN.entries()) {
     const passed = overrides[code] ?? true;
     await fireEvent.press((passed ? passes : problems)[index + offset]);
   }

@@ -195,7 +195,7 @@ describe("resolveAuthRedirect", () => {
   });
 
   it("sends a signed-in rider past login into Active", () => {
-    expect(resolveAuthRedirect(true, ["(auth)", "login"])).toBe("/(tabs)/active");
+    expect(resolveAuthRedirect(true, ["(auth)", "login"])).toBe("/(tabs)/map");
   });
 
   it("does not redirect a signed-in rider already in tabs", () => {

@@ -1,6 +1,7 @@
 import {
   fallbackRoute,
   parseOsrmResponse,
+  roadTimeEstimateLabel,
   routeNoteBesideSummary,
   routeSummaryLabel,
   type OsrmRouteResponse,
@@ -152,5 +153,18 @@ describe("fetchRoute", () => {
     const url = fetchImpl.mock.calls[0][0] as string;
     expect(url).toContain("125.6085,7.064");
     expect(url).toContain("125.58585,7.04749");
+  });
+});
+
+describe("roadTimeEstimateLabel", () => {
+  it("labels a routed time as the map's estimate", () => {
+    expect(roadTimeEstimateLabel({ routed: true, distanceMetres: 2400, durationSeconds: 720, coordinates: [], statusLabel: null } as never)).toBe(
+      "About 12 min by road (map estimate)",
+    );
+  });
+
+  it("gives no time when routing failed, so none is invented", () => {
+    expect(roadTimeEstimateLabel({ routed: false, distanceMetres: 2400, durationSeconds: null, coordinates: [], statusLabel: "Routing unavailable" } as never)).toBeNull();
+    expect(roadTimeEstimateLabel(null)).toBeNull();
   });
 });

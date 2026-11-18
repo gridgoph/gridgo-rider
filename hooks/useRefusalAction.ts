@@ -26,7 +26,7 @@ export function useRefusalAction(orderId: string | null, here: RefusalStep | nul
         } else if (router.canGoBack()) {
           router.back();
         } else {
-          router.replace("/(tabs)/active");
+          router.replace("/(tabs)/map");
         }
       },
     };

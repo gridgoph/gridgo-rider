@@ -67,7 +67,7 @@ export default function PlayOptInScreen() {
     return () => subscription.remove();
   }, []);
 
-  const goToActive = () => router.replace("/(tabs)/active");
+  const goToActive = () => router.replace("/(tabs)/map");
 
   if (!android) {
     return (

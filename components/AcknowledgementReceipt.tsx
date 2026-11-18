@@ -12,6 +12,8 @@ import {
 
 type Props = {
   receipt: Receipt;
+  /** Signed on screen rather than copied onto paper: nothing to copy. */
+  signed?: boolean;
 };
 
 const TABULAR = { fontVariant: ["tabular-nums" as const] };
@@ -26,7 +28,7 @@ const TABULAR = { fontVariant: ["tabular-nums" as const] };
  * takes the earnings mark, and the screen's one yellow stays on its action.
  * Rows wrap rather than truncate, so a large text size still reads in full.
  */
-export function AcknowledgementReceipt({ receipt }: Props) {
+export function AcknowledgementReceipt({ receipt, signed = false }: Props) {
   const several = receipt.payments.length > 1;
 
   return (
@@ -60,7 +62,9 @@ export function AcknowledgementReceipt({ receipt }: Props) {
           </View>
         ))}
         <Text className="text-body text-text-muted">
-          Unit rates are indicative. Copy each item&apos;s subtotal as shown.
+          {signed
+            ? "Unit rates are indicative. Each item's subtotal is what counts."
+            : "Unit rates are indicative. Copy each item's subtotal as shown."}
         </Text>
       </View>
 

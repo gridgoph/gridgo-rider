@@ -22,7 +22,7 @@ export default function WelcomeScreen() {
   const user = useSession((state) => state.user);
   const hold = useRiderAuthHold();
 
-  if (user) return <Redirect href="/(tabs)/active" />;
+  if (user) return <Redirect href="/(tabs)/map" />;
   if (hold) return <SessionWait tone={hold} role="rider" />;
 
   return (

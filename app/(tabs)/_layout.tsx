@@ -37,7 +37,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       tabBar={(props) => <GridgoTabBar {...props} />}
-      initialRouteName="active"
+      initialRouteName="map"
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.canvas },

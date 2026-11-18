@@ -1,4 +1,4 @@
-export type TabName = "offers" | "active" | "map" | "earnings" | "account";
+export type TabName = "map" | "jobs" | "earnings" | "account";
 
 export type TabDefinition = {
   /** Route file in `app/(tabs)`, without the extension. */
@@ -8,19 +8,19 @@ export type TabDefinition = {
 };
 
 /**
- * The rider tab bar: five destinations, no raised centre control.
+ * The rider tab bar: four destinations, no raised centre control (#180).
  *
- * Finding work is Offers. The job in hand, and its next step, is Active —
- * status, route, and the yellow button that advances the trip. Map is the
- * city. Earnings is today's money. Account is who this phone is.
+ * Map is home and the whole shift: going online, the one offer with its
+ * countdown, and the trip with its four steps — so a delivery never needs a
+ * second tab, and during one the bar steps aside (`GridgoTabBar`). Jobs is the
+ * offer as a list, with past jobs. Earnings is today's money. Account is who
+ * this phone is.
  *
- * Alerts is not a destination: its content already lives on Offers and the
- * trip timeline.
+ * Alerts is not a destination: it opens from the bell on the map and Jobs.
  */
 export const TABS: readonly TabDefinition[] = [
-  { name: "offers", label: "Offers" },
-  { name: "active", label: "Active" },
   { name: "map", label: "Map" },
+  { name: "jobs", label: "Jobs" },
   { name: "earnings", label: "Earnings" },
   { name: "account", label: "Account" },
 ];

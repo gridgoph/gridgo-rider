@@ -54,6 +54,11 @@ export type AcknowledgementReceipt = {
   grandTotalMinor: number;
   payments: AcknowledgementPayment[];
   note: string;
+  /**
+   * "The official invoice comes from GRIDGO." From the response envelope,
+   * not the issued receipt, which never changes. Absent from an older API.
+   */
+  invoiceNote?: string | null;
 };
 
 /**
@@ -239,18 +244,18 @@ export type ReceiptLoad =
 /**
  * Why a door delivery cannot be confirmed yet, or null.
  *
- * The rider writes the AR number on paper before handing over, and the
- * server closes the receipt to them the moment the delivery is recorded. A
- * delivery confirmed first would still get a receipt — the server issues one
- * inside the delivery — but its number would never reach the paper. So on a
- * server that has receipts, confirmation waits for arrival and a receipt on
- * screen. A server without them (`paper_only`, or a bare `404` on the route)
- * delivers as before, and the tick never holds anything.
+ * The person receiving signs the receipt on screen (#180), and the signature
+ * names the AR number on it, so the receipt has to be on screen before the
+ * handover can be confirmed; the server also closes it to the rider the moment
+ * the delivery is recorded. So on a server that has receipts, confirmation
+ * waits for arrival and a receipt on screen, and then for the signature
+ * (`receiptSignatureBlockReason`). A server without them (`paper_only`, or a
+ * bare `404` on the route) delivers as before, and the tick never holds anything.
  */
 export function receiptDeliveryHold(stage: ReceiptStage, load: ReceiptLoad): string | null {
   if (stage === "none" || stage === "paper_only") return null;
   if (stage === "before_arrival") {
-    return "Tap “I'm at the client's door” and copy the acknowledgement receipt before you hand the package over.";
+    return "Tap “I'm at the client's door” to open the acknowledgement receipt for them to sign before you hand the package over.";
   }
   switch (load.status) {
     case "ready":
@@ -258,9 +263,9 @@ export function receiptDeliveryHold(stage: ReceiptStage, load: ReceiptLoad): str
     case "problem":
       if (load.problem.kind === "unsupported") return null;
       return load.problem.kind === "retry"
-        ? "Copy the acknowledgement receipt before you hand the package over. Load it again in the receipt card."
+        ? "The client signs the acknowledgement receipt before you hand the package over. Load it again in the receipt card."
         : "The acknowledgement receipt is closed. Keep the package with you while GRIDGO checks this job, or call Operations.";
     default:
-      return "Loading the acknowledgement receipt to copy before you hand the package over.";
+      return "Loading the acknowledgement receipt for the client to sign before you hand the package over.";
   }
 }

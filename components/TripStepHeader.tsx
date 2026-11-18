@@ -12,7 +12,7 @@ type Props = {
   stopLabel: string;
   stopKind: "pickup" | "dropoff";
   /**
-   * Offer Google Maps to this stop. Only the first screen of each stop takes
+   * Offer the rider's maps app (lib/mapsNavigation) to this stop. Only the first screen of each stop takes
    * it — the rider may still be riding there. Once the supplier is signing or
    * the package is held at the counter, a way out of the app is noise.
    */

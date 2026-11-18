@@ -13,6 +13,7 @@ import {
   failedCodes,
   PICKUP_CHECK_CODES,
   PICKUP_CHECKS,
+  pickupCheckGroups,
   pickupChecksFor,
   toChecklistPayload,
   unansweredCodes,
@@ -258,5 +259,26 @@ describe("a rider_packs counter checks the items unpacked", () => {
   it("rebuilds answers from a recorded checklist", () => {
     expect(answersFromChecks(PICKUP_CHECK_CODES.map((code) => ({ code, passed: true })))).toEqual(allPass());
     expect(answersFromChecks(null)).toEqual(EMPTY_ANSWERS);
+  });
+});
+
+describe("the four groups at the counter", () => {
+  it("covers each of the six checks exactly once, so all six still go on the wire", () => {
+    const codes = pickupCheckGroups("legacy").flatMap((group) => group.codes);
+    expect([...codes].sort()).toEqual([...PICKUP_CHECK_CODES].sort());
+  });
+
+  it("maps the four onto the six as the PR documents", () => {
+    expect(Object.fromEntries(pickupCheckGroups(null).map((group) => [group.title, group.codes]))).toEqual({
+      Count: ["quantity_match"],
+      "Print matches the approved proof": ["specification_match", "documentation"],
+      "No damage": ["visible_defects"],
+      "Packaged and photographed": ["packaging_integrity", "supplier_sign_off"],
+    });
+  });
+
+  it("says the packing photo comes next on a job the rider watches packed", () => {
+    const packed = pickupCheckGroups("rider_packs").find((group) => group.key === "packed");
+    expect(packed?.detail).toMatch(/photograph the packed job/);
   });
 });

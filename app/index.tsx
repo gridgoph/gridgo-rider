@@ -28,6 +28,6 @@ export default function Index() {
   if (hold) return <SessionWait tone={hold} role="rider" />;
   if (user && legal === "unknown") return <SessionWait tone="in" role="rider" />;
   if (user && legal === "blocked") return <Redirect href={LEGAL_REVIEW_ROUTE} />;
-  if (user) return <Redirect href="/(tabs)/active" />;
+  if (user) return <Redirect href="/(tabs)/map" />;
   return <Redirect href="/(auth)/welcome" />;
 }

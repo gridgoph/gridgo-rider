@@ -100,7 +100,7 @@ export const BUBBLE_NOTICE = {
 } as const;
 
 /** Where a tap on the bubble lands: the job in hand. */
-export const BUBBLE_ROUTE = "/(tabs)/active" as const;
+export const BUBBLE_ROUTE = "/(tabs)/map" as const;
 
 /**
  * Away from GRIDGO the inbox stream is closed, so the count is re-read on the

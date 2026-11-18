@@ -130,6 +130,48 @@ export function pickupChecksFor(
   return PICKUP_CHECKS.map((check) => ({ ...check, ...UNPACKED_WORDING[check.code] }));
 }
 
+/**
+ * The four things a rider checks at the counter, as the map flow names them
+ * (gridgo-api `docs/RIDER_MAP_HOME_API.md`, "Four app steps"). Labels over
+ * the existing six checks, never a new four-code request: all six are still
+ * answered one by one and all six go on the wire.
+ *
+ * On a `rider_packs` job "Packaged and photographed" is finished after the
+ * unpacked check — the shop packs in front of the rider, who photographs it,
+ * and the shop signs — so its detail says what comes next rather than letting
+ * a tick here claim the package is already packed.
+ */
+export type PickupCheckGroupKey = "count" | "proof" | "damage" | "packed";
+
+export type PickupCheckGroup = {
+  key: PickupCheckGroupKey;
+  title: string;
+  detail: string;
+  codes: readonly PickupCheckCode[];
+};
+
+export function pickupCheckGroups(flow: HandoverFlow | null | undefined): readonly PickupCheckGroup[] {
+  const packs = flow === "rider_packs";
+  return [
+    { key: "count", title: "Count", detail: "Every piece, against the order.", codes: ["quantity_match"] },
+    {
+      key: "proof",
+      title: "Print matches the approved proof",
+      detail: "Compare the pieces with the artwork and the order slip below.",
+      codes: ["specification_match", "documentation"],
+    },
+    { key: "damage", title: "No damage", detail: "Look over every piece.", codes: ["visible_defects"] },
+    {
+      key: "packed",
+      title: "Packaged and photographed",
+      detail: packs
+        ? "Next, the shop packs these in front of you, you photograph the packed job, and the shop signs."
+        : "Next, the shop signs the handover on your phone, with the package in front of you.",
+      codes: ["packaging_integrity", "supplier_sign_off"],
+    },
+  ];
+}
+
 /** What the rider answered for one check. `null` means not answered yet. */
 export type CheckAnswer = boolean | null;
 
