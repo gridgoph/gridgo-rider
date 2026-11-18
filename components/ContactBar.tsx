@@ -1,11 +1,12 @@
 import { useRouter, type Href } from "expo-router";
 import { CircleAlert, MessageSquare, Navigation, Phone, type LucideIcon } from "lucide-react-native";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
 import { callWindow, pairOfParty } from "@/lib/orderCalls";
+import { openNavigation, type NavigationHandoff } from "@/lib/mapsNavigation";
 import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
 import type { TripChatParty } from "@/lib/tripChat";
 import { useCall } from "@/store/call";
@@ -14,8 +15,8 @@ type Props = {
   trip: Pick<Order, "id" | "state" | "deliveryChat" | "pickupChat">;
   /** Who is at the stop: the shop until pick-up, the client after. */
   party: TripChatParty;
-  /** Google Maps directions to the stop; omit to leave Navigate off the bar. */
-  directions?: string | null;
+  /** The hand-off to the rider's maps app; omit to leave Navigate off the bar. */
+  directions?: NavigationHandoff | null;
 };
 
 /**
@@ -43,9 +44,9 @@ export function ContactBar({ trip, party, directions }: Props) {
         <QuickAction
           icon={Navigation}
           label="Navigate"
-          spoken={`Navigate to ${who} in Google Maps`}
+          spoken={`Navigate to ${who} in your maps app`}
           disabled={!directions}
-          onPress={() => directions && void Linking.openURL(directions).catch(() => undefined)}
+          onPress={() => directions && void openNavigation(directions).catch(() => undefined)}
         />
       ) : null}
       <QuickAction icon={Phone} label="Call" spoken={`Call ${who}`} disabled={!callOpen} onPress={call} />

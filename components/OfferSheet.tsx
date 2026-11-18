@@ -1,4 +1,4 @@
-import { CircleX, Package, Route, Timer } from "lucide-react-native";
+import { CircleX, Package, Route, Timer, TriangleAlert } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { EarningAmount } from "@/components/EarningAmount";
@@ -91,26 +91,32 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
             accessibilityLabel={expired ? "This offer has timed out" : countdownSpoken(secondsLeft)}
             accessibilityLiveRegion={hurry ? "polite" : "none"}
           >
-            <Text className="text-overline text-text-muted">NEW DELIVERY OFFER</Text>
+            <Text className="text-overline text-text-secondary">NEW DELIVERY OFFER</Text>
             <View className="flex-row items-center gap-1.5">
-              <Timer size={16} color={hurry ? colors.warning : colors.textSecondary} strokeWidth={2} />
-              <Text
-                className={hurry ? "text-body-lg font-bold text-warning" : "text-body-lg font-bold text-text-primary"}
-                style={{ fontVariant: ["tabular-nums"] }}
-              >
-                {expired ? "Timed out" : `${countdownLabel(secondsLeft)} left`}
+              {/*
+                Urgency is said in words and an icon, never by the digits'
+                colour alone: warning orange is 2.6:1 on a Light surface, so
+                the text stays on text-primary in both themes.
+              */}
+              {hurry ? (
+                <TriangleAlert size={16} color={colors.warning} strokeWidth={2.25} />
+              ) : (
+                <Timer size={16} color={colors.textSecondary} strokeWidth={2} />
+              )}
+              <Text className="text-body-lg font-bold text-text-primary" style={{ fontVariant: ["tabular-nums"] }}>
+                {expired ? "Timed out" : hurry ? `Only ${countdownLabel(secondsLeft)} left` : `${countdownLabel(secondsLeft)} left`}
               </Text>
             </View>
           </View>
         </View>
       ) : (
-        <Text className="text-overline text-text-muted">NEW DELIVERY OFFER</Text>
+        <Text className="text-overline text-text-secondary">NEW DELIVERY OFFER</Text>
       )}
 
       <View className="gap-1">
-        <Text className="text-caption text-text-muted">You earn</Text>
+        <Text className="text-caption text-text-secondary">You earn</Text>
         <EarningAmount minor={pay.earnedMinor} size="display" className="self-start" />
-        {payDetail ? <Text className="text-caption text-text-muted">{payDetail}</Text> : null}
+        {payDetail ? <Text className="text-caption text-text-secondary">{payDetail}</Text> : null}
       </View>
 
       {distance || roadTime ? (
@@ -120,7 +126,7 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
           </View>
           <View className="min-w-0 flex-1">
             {distance ? <Text className="text-body-lg text-text-primary">{distance}</Text> : null}
-            {roadTime ? <Text className="text-caption text-text-muted">{roadTime}</Text> : null}
+            {roadTime ? <Text className="text-caption text-text-secondary">{roadTime}</Text> : null}
           </View>
         </View>
       ) : null}
@@ -144,7 +150,7 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
             </View>
           ))}
           {cargo.length > 3 ? (
-            <Text className="text-caption text-text-muted">{`and ${cargo.length - 3} more`}</Text>
+            <Text className="text-caption text-text-secondary">{`and ${cargo.length - 3} more`}</Text>
           ) : null}
         </View>
       ) : null}

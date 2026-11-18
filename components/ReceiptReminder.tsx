@@ -73,7 +73,7 @@ export function ReceiptReminder({
   return (
     <View className="gap-4 rounded-card border-2 border-accent bg-surface p-6">
       <View className="gap-1">
-        <Text className="text-overline text-text-muted">
+        <Text className="text-overline text-text-secondary">
           {digital ? "THE PERSON RECEIVING SIGNS THIS" : "HAND THIS TO THE CLIENT"}
         </Text>
         <Text className="text-h3 text-text-primary">Acknowledgement receipt</Text>
@@ -97,7 +97,7 @@ export function ReceiptReminder({
             onPress={onArrive}
             disabled={disabled || arriving}
           />
-          <Text className="text-caption text-text-muted">GRIDGO lets the client know you have arrived.</Text>
+          <Text className="text-caption text-text-secondary">GRIDGO lets the client know you have arrived.</Text>
           {arrivalError ? (
             <InlineNotice tone="error" icon="circle-x" title="Arrival not recorded" body={arrivalError} />
           ) : null}

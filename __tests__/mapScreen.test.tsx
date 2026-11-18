@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -8,6 +9,7 @@ import { useActiveTrip } from "@/store/activeTrip";
 import { resetRiderOnlineForTests, setRiderOnline } from "@/store/riderOnline";
 import { useSession } from "@/store/session";
 import { useTripArrivals } from "@/store/tripArrivals";
+import { emptyTripLocation, useTripLocation } from "@/store/tripLocation";
 
 let mockParams: Record<string, string | undefined> = {};
 jest.mock("expo-router", () => ({
@@ -55,15 +57,23 @@ jest.mock("@/components/BrowseMap", () => {
     ),
   };
 });
-jest.mock("@/components/TripMap", () => ({ TripMap: () => null }));
+let mockTripMapProps: Record<string, unknown> = {};
+jest.mock("@/components/TripMap", () => ({
+  TripMap: (props: Record<string, unknown>) => {
+    mockTripMapProps = props;
+    return null;
+  },
+}));
 jest.mock("@/components/ChatButton", () => ({ ChatButton: () => null }));
 jest.mock("@/components/AlertsButton", () => ({ AlertsButton: () => null }));
-jest.mock("@/hooks/useRoute", () => ({ useRoute: () => ({ route: null }) }));
+const mockRouteResult: { route: unknown } = { route: null };
+jest.mock("@/hooks/useRoute", () => ({ useRoute: () => mockRouteResult }));
 const mockHere = { coords: { lat: 7.07, lng: 125.61 }, accuracy: 12, fixAtMs: 1, heading: null, permission: "granted", error: null };
 jest.mock("@/hooks/useRiderLocation", () => ({ useRiderLocation: () => mockHere }));
 const mockHealth = { issues: [] };
 jest.mock("@/hooks/useLocationHealth", () => ({ useLocationHealth: () => mockHealth }));
-jest.mock("@/hooks/useAttention", () => ({ useAttention: () => null }));
+const mockUseAttention = jest.fn((_locationIssues?: number) => null);
+jest.mock("@/hooks/useAttention", () => ({ useAttention: (n?: number) => mockUseAttention(n) }));
 // Stable, like the real hook's callbacks: a fresh function each render would re-fire the focus effect forever.
 const mockHours = { opensLine: null, refresh: async () => undefined, adopt: () => undefined };
 jest.mock("@/hooks/useDispatchHours", () => ({ useDispatchHours: () => mockHours }));
@@ -146,10 +156,15 @@ function renderMap(ui: ReactElement) {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  // The online choice persists; a test that went online must not leak into the next.
+  await AsyncStorage.clear();
   jest.useFakeTimers({ now: new Date(SERVER_NOW), advanceTimers: true });
   mockParams = {};
+  mockTripMapProps = {};
+  mockRouteResult.route = null;
+  useTripLocation.setState({ ...emptyTripLocation, sharing: false, sharingError: null });
   resetRiderOnlineForTests();
   useTripArrivals.setState({ byOrder: {} });
   useSession.setState({ user: rider, loading: false, error: null, authSource: "clerk" } as never);
@@ -231,6 +246,25 @@ describe("the map home", () => {
     expect(await screen.findByText(/offering it to the next rider/)).toBeTruthy();
   });
 
+  it("says the time is short in words, not by colour alone", async () => {
+    api.listDispatchOffers.mockResolvedValue({
+      offers: [{ ...offered, dispatchOffer: { ...offered.dispatchOffer!, expiresAt: "2026-11-18T03:00:08.000Z" } }],
+      serverTime: SERVER_NOW,
+    });
+    setRiderOnline(rider.id, true);
+    await renderMap(<MapScreen />);
+    expect(await screen.findByText(/^Only 0:0\d left$/)).toBeTruthy();
+  });
+
+  it("tells assistive tech whether the rider is online", async () => {
+    await renderMap(<MapScreen />);
+    const off = await screen.findByTestId("online-switch");
+    expect(off.props.accessibilityState).toMatchObject({ checked: false });
+    expect(screen.getByTestId("map-status").props.accessibilityState).toMatchObject({ checked: false });
+    await act(async () => fireEvent.press(off));
+    expect(screen.getByTestId("map-status").props.accessibilityState).toMatchObject({ checked: true });
+  });
+
   it("never asks for offers before Operations approves the rider", async () => {
     useSession.setState({ user: { ...rider, verificationStatus: "pending" } } as never);
     await renderMap(<MapScreen />);
@@ -274,6 +308,53 @@ describe("on a job", () => {
     await act(async () => fireEvent.press(screen.getByRole("button", { name: "I'm at the shop" })));
     expect(screen.getByText(/The shop was not told you arrived/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Start the shop check" })).toBeTruthy();
+  });
+
+  describe("the position on the map always carries its age", () => {
+    const routed = { routed: true, coordinates: [[125.61, 7.07], [125.62, 7.08]], distanceMeters: 2000, durationSeconds: 300 };
+
+    it("shows a live fix's age and draws the route from it", async () => {
+      mockRouteResult.route = routed;
+      useTripLocation.setState({ coords: { lat: 7.07, lng: 125.61 }, fixAtMs: Date.now() - 3_000, permission: "granted", accuracy: 12 });
+      await renderMap(<MapScreen />);
+      await screen.findByTestId("trip-panel");
+      expect(screen.getByTestId("trip-position-age")).toHaveTextContent(/Position is live — updated \ds ago · within 12 m/);
+      expect(mockTripMapProps.routeCoordinates).toEqual(routed.coordinates);
+      expect(mockTripMapProps.riderStale).toBe(false);
+      expect(mockUseAttention).toHaveBeenLastCalledWith(0);
+    });
+
+    it("says a stale fix is stale, pauses the route, and raises the chip", async () => {
+      mockRouteResult.route = routed;
+      useTripLocation.setState({ coords: { lat: 7.07, lng: 125.61 }, fixAtMs: Date.now() - 69_000, permission: "granted", accuracy: 12 });
+      await renderMap(<MapScreen />);
+      await screen.findByTestId("trip-panel");
+      expect(screen.getByTestId("trip-position-age")).toHaveTextContent(/Position is stale — last fix 1 min ago/);
+      expect(screen.getByText("Route paused until your position updates")).toBeTruthy();
+      expect(screen.queryByText(/2\.0 km/)).toBeNull();
+      expect(mockTripMapProps.routeCoordinates).toEqual([]);
+      expect(mockTripMapProps.riderStale).toBe(true);
+      expect(mockTripMapProps.riderHeading).toBeNull();
+      expect(mockUseAttention).toHaveBeenLastCalledWith(1);
+    });
+
+    it("turns stale while the rider watches, without a new fix", async () => {
+      mockRouteResult.route = routed;
+      useTripLocation.setState({ coords: { lat: 7.07, lng: 125.61 }, fixAtMs: Date.now() - 40_000, permission: "granted", accuracy: 12 });
+      await renderMap(<MapScreen />);
+      await screen.findByTestId("trip-panel");
+      expect(screen.getByTestId("trip-position-age")).toHaveTextContent(/Position is live/);
+      await act(async () => jest.advanceTimersByTime(10_000));
+      expect(screen.getByTestId("trip-position-age")).toHaveTextContent(/Position is stale/);
+      expect(mockTripMapProps.routeCoordinates).toEqual([]);
+    });
+
+    it("says when there is no fix yet rather than drawing a dot", async () => {
+      await renderMap(<MapScreen />);
+      await screen.findByTestId("trip-panel");
+      expect(screen.getByTestId("trip-position-age")).toHaveTextContent("Finding your position");
+      expect(screen.getByText("Waiting for your position…")).toBeTruthy();
+    });
   });
 
   it("asks before going offline mid-job", async () => {

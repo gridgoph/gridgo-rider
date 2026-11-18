@@ -21,6 +21,8 @@ type Props = {
   riderAccuracy?: number | null;
   /** Course in degrees, or null while stopped — the map draws a dot then. */
   riderHeading?: number | null;
+  /** The fix is no longer live: draw the dot as last known, not "you are here". */
+  riderStale?: boolean;
   navTitle?: string | null;
   navSummary?: string | null;
   /**
@@ -82,6 +84,7 @@ export function TripMap({
   rider = null,
   riderAccuracy = null,
   riderHeading = null,
+  riderStale = false,
   navTitle = null,
   navSummary = null,
   safeTop = 0,
@@ -112,6 +115,7 @@ export function TripMap({
       rider: isValidLatLng(rider) ? rider : null,
       riderAccuracy,
       riderHeading,
+      riderStale,
       navTitle,
       navSummary,
       safeTop,
@@ -137,6 +141,7 @@ export function TripMap({
       rider,
       riderAccuracy,
       riderHeading,
+      riderStale,
       navTitle,
       navSummary,
       safeTop,

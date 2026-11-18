@@ -56,6 +56,12 @@ export type MapModel = {
    * go next.
    */
   riderHeading?: number | null;
+  /**
+   * The rider's fix has aged past `STALE_FIX_MS` (or location is off). The dot
+   * is drawn hollow and grey, without halo, cone or accuracy ring: it says
+   * "last known", never "you are here".
+   */
+  riderStale?: boolean | null;
   /** Dispatch ticket on the map: "TO THE SHOP". */
   navTitle?: string | null;
   navSummary?: string | null;
@@ -273,6 +279,9 @@ export function buildMapHtml(model: MapModel): string {
       transform-origin: 9px 20px;
     }
     .pin-rider.is-pointing .pin-halo { animation: none; opacity: 0.22; }
+    /* Last known, not live: no pulse, no colour, a hollow mark. */
+    .pin-rider.is-stale .pin-halo { display: none; }
+    .pin-rider.is-stale .pin-mark { background: #ffffff; border: 3px dashed #6b6b6b; }
     @keyframes gps-pulse {
       0% { transform: scale(0.55); opacity: 0.8; }
       100% { transform: scale(2.1); opacity: 0; }
@@ -482,13 +491,14 @@ export function buildMapHtml(model: MapModel): string {
           rider last moved is worse than no arrow: it is confidently wrong at
           exactly the moment somebody is standing still working out where to go.
         */
-        var pointing = typeof MODEL.riderHeading === 'number';
+        var stale = Boolean(MODEL.riderStale);
+        var pointing = !stale && typeof MODEL.riderHeading === 'number';
         var cone = pointing
           ? '<div class="pin-cone" style="transform: rotate(' + MODEL.riderHeading + 'deg)"></div>'
           : '';
         return L.divIcon({
           className: '',
-          html: '<div class="pin pin-rider' + (pointing ? ' is-pointing' : '') + '">'
+          html: '<div class="pin pin-rider' + (pointing ? ' is-pointing' : '') + (stale ? ' is-stale' : '') + '">'
             + '<div class="pin-halo"></div>' + cone + '<div class="pin-mark"></div></div>',
           iconSize: [28, 28],
           iconAnchor: [14, 14]
@@ -646,7 +656,7 @@ export function buildMapHtml(model: MapModel): string {
         map.removeLayer(accuracyCircle);
         accuracyCircle = null;
       }
-      if (m.rider && m.riderAccuracy && m.riderAccuracy > 0) {
+      if (m.rider && !m.riderStale && m.riderAccuracy && m.riderAccuracy > 0) {
         accuracyCircle = L.circle([m.rider.lat, m.rider.lng], {
           radius: Math.min(m.riderAccuracy, 80),
           color: '#FFDE58',
@@ -694,7 +704,7 @@ export function buildMapHtml(model: MapModel): string {
       if (m.rider) {
         var r = L.marker([m.rider.lat, m.rider.lng], {
           icon: pinIcon('rider', ''),
-          title: 'You',
+          title: m.riderStale ? 'Your last known position' : 'You',
           zIndexOffset: 800
         }).addTo(map);
         markers.push(r);

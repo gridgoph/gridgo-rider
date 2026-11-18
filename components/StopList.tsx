@@ -47,10 +47,10 @@ export function StopList({ pickup, dropoff, done }: Props) {
 
 function StopOverline({ label, done }: { label: string; done?: boolean }) {
   const colors = useThemeColors();
-  if (!done) return <Text className="text-overline text-text-muted">{label}</Text>;
+  if (!done) return <Text className="text-overline text-text-secondary">{label}</Text>;
   return (
     <View className="flex-row items-center gap-1">
-      <Text className="text-overline text-text-muted">{label} · DONE</Text>
+      <Text className="text-overline text-text-secondary">{label} · DONE</Text>
       <Check size={12} color={colors.success} strokeWidth={3} />
     </View>
   );

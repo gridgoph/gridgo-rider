@@ -51,7 +51,7 @@ export function ReceiptSignature({
   return (
     <View className="gap-3" testID="receipt-signature">
       <View className="gap-2">
-        <Text className="text-caption text-text-muted">Name of the person receiving</Text>
+        <Text className="text-caption text-text-secondary">Name of the person receiving</Text>
         <TextField
           value={signerName}
           onChange={onSignerName}

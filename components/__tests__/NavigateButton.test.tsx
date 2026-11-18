@@ -7,7 +7,7 @@ import { TripStepHeader } from "@/components/TripStepHeader";
 import type { Order } from "@/lib/api";
 import { copyAddress } from "@/lib/copyAddress";
 import { GRIDGO_OFFICE } from "@/lib/gridgoOffice";
-import { googleMapsDirectionsUrl } from "@/lib/mapsNavigation";
+import { googleMapsDirectionsUrl, navigationHandoff, openNavigation } from "@/lib/mapsNavigation";
 import { nextStop } from "@/lib/tripNav";
 import { useSession } from "@/store/session";
 
@@ -30,12 +30,10 @@ beforeEach(() => {
 it.each(["pickup", "dropoff"] as const)("opens the exact %s pin from the proof header", async (stopKind) => {
   const stop = order[stopKind]!;
   await render(<TripStepHeader order={order} stopKind={stopKind} stopLabel={stop.label} navigate />);
-  const button = screen.getByRole("button", { name: "Navigate in Google Maps" });
+  const button = screen.getByRole("button", { name: "Navigate in your maps app" });
   expect(button.props.accessibilityHint).toContain(stop.label);
   await fireEvent.press(button);
-  expect(Linking.openURL).toHaveBeenCalledWith(
-    `https://www.google.com/maps/dir/?api=1&destination=${stop.lat}%2C${stop.lng}&travelmode=driving`,
-  );
+  expect(Linking.openURL).toHaveBeenCalledWith(navigationHandoff(stop)!.primary);
   expect(screen.queryByText("Copy address")).toBeNull();
 });
 
@@ -46,40 +44,71 @@ it.each(["pickup_checks", "delivery_proof"] as const)("navigates to the active c
       <NavigateButton order={order} stopKind={stop.cardKind} />
     </NextStopCard>,
   );
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
   const point = stop.cardKind === "pickup" ? order.pickup! : order.dropoff!;
-  expect(Linking.openURL).toHaveBeenCalledWith(
-    `https://www.google.com/maps/dir/?api=1&destination=${point.lat}%2C${point.lng}&travelmode=driving`,
-  );
+  expect(Linking.openURL).toHaveBeenCalledWith(navigationHandoff(point)!.primary);
 });
 
 it("uses the map's GRIDGO Office pin for a collection job", async () => {
   await render(<NavigateButton order={{ ...order, fulfillmentMode: "pickup", dropoff: null }} stopKind="dropoff" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
-  expect(Linking.openURL).toHaveBeenCalledWith(
-    `https://www.google.com/maps/dir/?api=1&destination=${GRIDGO_OFFICE.lat}%2C${GRIDGO_OFFICE.lng}&travelmode=driving`,
-  );
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
+  expect(Linking.openURL).toHaveBeenCalledWith(navigationHandoff(GRIDGO_OFFICE)!.primary);
+});
+
+describe("the hand-off to the rider's maps app", () => {
+  const pin = { lat: 7.064123, lng: 125.608567 };
+
+  it("lets Android pick the app with a geo intent on the exact pin", () => {
+    expect(navigationHandoff(pin, "android")?.primary).toBe("geo:7.064123,125.608567?q=7.064123%2C125.608567");
+  });
+
+  it("hands iOS directions to the system maps handler", () => {
+    expect(navigationHandoff(pin, "ios")?.primary).toBe("maps:?daddr=7.064123%2C125.608567&dirflg=d");
+  });
+
+  it("keeps Google Maps web as the fallback only, and the only target in a browser", () => {
+    const web = googleMapsDirectionsUrl(pin);
+    expect(navigationHandoff(pin, "android")?.fallback).toBe(web);
+    expect(navigationHandoff(pin, "web")).toEqual({ primary: web, fallback: web });
+    expect(navigationHandoff(null, "android")).toBeNull();
+  });
+
+  it("opens the fallback only when no app answers the hand-off", async () => {
+    const handoff = navigationHandoff(pin, "android")!;
+    jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No activity"));
+    await openNavigation(handoff);
+    expect(jest.mocked(Linking.openURL).mock.calls).toEqual([[handoff.primary], [handoff.fallback]]);
+
+    jest.mocked(Linking.openURL).mockClear();
+    await openNavigation(handoff);
+    expect(jest.mocked(Linking.openURL).mock.calls).toEqual([[handoff.primary]]);
+  });
+
+  it("fails honestly when neither opens", async () => {
+    jest.mocked(Linking.openURL).mockRejectedValue(new Error("Nothing"));
+    await expect(openNavigation(navigationHandoff(pin, "android")!)).rejects.toThrow("Nothing");
+  });
 });
 
 it("recovers from a rejected open with a copy action and supports retry", async () => {
-  jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler"));
+  jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler")).mockRejectedValueOnce(new Error("No browser"));
   await render(<NavigateButton order={order} stopKind="pickup" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
-  expect(screen.getByText("Google Maps did not open")).toBeTruthy();
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
+  expect(screen.getByText("Maps did not open")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Copy address" }));
   expect(copyAddress).toHaveBeenCalledWith("Shop & print");
   expect(screen.getByRole("button", { name: "Address copied" })).toBeTruthy();
   // The address is already on screen; a successful copy does not print it twice.
   expect(screen.queryByText("Shop & print")).toBeNull();
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
   expect(screen.queryByText("Copy address")).toBeNull();
 });
 
 it("keeps the address selectable if copying fails", async () => {
-  jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler"));
+  jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler")).mockRejectedValueOnce(new Error("No browser"));
   jest.mocked(copyAddress).mockRejectedValueOnce(new Error("Unavailable"));
   await render(<NavigateButton order={order} stopKind="dropoff" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
   await fireEvent.press(screen.getByRole("button", { name: "Copy address" }));
   expect(screen.getByText(/Could not copy/)).toBeTruthy();
   expect(screen.getByText("Client door").props.selectable).toBe(true);
@@ -96,9 +125,9 @@ it.each(["delivered", "cancelled", "awaiting_collection"])("hides navigation aft
 });
 
 it("removes failure recovery on reassignment or sign-out", async () => {
-  jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler"));
+  jest.mocked(Linking.openURL).mockRejectedValueOnce(new Error("No handler")).mockRejectedValueOnce(new Error("No browser"));
   const view = await render(<NavigateButton order={order} stopKind="pickup" />);
-  await fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
   await view.rerender(<NavigateButton order={{ ...order, riderId: "another_rider" }} stopKind="pickup" />);
   expect(screen.queryByRole("button")).toBeNull();
   await view.rerender(<NavigateButton order={order} stopKind="pickup" />);
@@ -132,14 +161,14 @@ it("opens Maps once while a launch is in flight", async () => {
   jest.mocked(Linking.openURL).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
   await render(<NavigateButton order={order} stopKind="pickup" />);
   // Not awaited: the press is still waiting on Maps while we look at it.
-  void fireEvent.press(screen.getByRole("button", { name: "Navigate in Google Maps" }));
+  void fireEvent.press(screen.getByRole("button", { name: "Navigate in your maps app" }));
   expect(await screen.findByText("Opening Maps…")).toBeTruthy();
-  const busy = screen.getByRole("button", { name: "Navigate in Google Maps" });
+  const busy = screen.getByRole("button", { name: "Navigate in your maps app" });
   expect(busy.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
   void fireEvent.press(busy);
   expect(Linking.openURL).toHaveBeenCalledTimes(1);
   await act(async () => finish(true));
   await screen.findByText("Navigate");
-  expect(screen.getByRole("button", { name: "Navigate in Google Maps" }).props.accessibilityState)
+  expect(screen.getByRole("button", { name: "Navigate in your maps app" }).props.accessibilityState)
     .toMatchObject({ busy: false, disabled: false });
 });

@@ -23,6 +23,9 @@ export function OnlineSwitch({ online, disabled = false, onToggle }: Props) {
       accessibilityRole="switch"
       accessibilityLabel="Online"
       accessibilityState={{ checked: online, disabled }}
+      // react-native-web reads only aria-* for state; without it a browser
+      // announces "Online, switch" with no on or off.
+      aria-checked={online}
       accessibilityHint={online ? "Turns delivery offers off on this phone" : "Shows delivery offers on the map"}
       hitSlop={8}
       className="min-h-14 flex-row items-center gap-3"

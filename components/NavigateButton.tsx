@@ -1,11 +1,11 @@
 import { Check, CircleAlert, Copy, ExternalLink, MapPinOff, Navigation } from "lucide-react-native";
 import { useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { copyAddress } from "@/lib/copyAddress";
-import { googleMapsDirectionsUrl } from "@/lib/mapsNavigation";
+import { navigationHandoff, openNavigation, type NavigationHandoff } from "@/lib/mapsNavigation";
 import { isActiveTripState } from "@/lib/riderOrder";
 import { tripDestination, tripShop } from "@/lib/tripNav";
 import { useSession } from "@/store/session";
@@ -17,14 +17,16 @@ export function NavigateButton({ order, stopKind }: Props) {
   const riderId = useSession((s) => s.user?.id);
   if (!riderId || order.riderId !== riderId || !isActiveTripState(order.state)) return null;
   const stop = stopKind === "pickup" ? tripShop(order) : tripDestination(order);
-  const url = googleMapsDirectionsUrl(stop.point);
-  return <NavigateAction key={`${order.id}:${stopKind}:${url}:${stop.label}`} url={url} address={stop.label} />;
+  const url = navigationHandoff(stop.point);
+  return <NavigateAction key={`${order.id}:${stopKind}:${url?.primary}:${stop.label}`} url={url} address={stop.label} />;
 }
 
 type CopyState = "idle" | "copied" | "failed";
 
 /**
- * Hands the ride to Google Maps, and stays honest when that cannot happen.
+ * Hands the ride to the rider's own maps app (`openNavigation`: the phone's
+ * neutral hand-off, Google Maps web only when nothing answers it), and stays
+ * honest when that cannot happen.
  *
  * Monochrome on purpose: it sits right above the screen's yellow step, and a
  * second loud button would make the rider choose between them. Height and the
@@ -32,7 +34,7 @@ type CopyState = "idle" | "copied" | "failed";
  * app. A failed open or a missing pin keeps the stop reachable by copying the
  * address — never by sending a label for Maps to geocode somewhere else.
  */
-function NavigateAction({ url, address }: { url: string | null; address: string }) {
+function NavigateAction({ url, address }: { url: NavigationHandoff | null; address: string }) {
   const colors = useThemeColors();
   const [opening, setOpening] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -44,7 +46,7 @@ function NavigateAction({ url, address }: { url: string | null; address: string 
     setFailed(false);
     setCopy("idle");
     try {
-      await Linking.openURL(url);
+      await openNavigation(url);
     } catch {
       setFailed(true);
     } finally {
@@ -66,7 +68,7 @@ function NavigateAction({ url, address }: { url: string | null; address: string 
       {url ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Navigate in Google Maps"
+          accessibilityLabel="Navigate in your maps app"
           accessibilityHint={`Opens directions to ${address}`}
           accessibilityState={{ busy: opening, disabled: opening }}
           disabled={opening}
@@ -100,7 +102,7 @@ function NavigateAction({ url, address }: { url: string | null; address: string 
             )}
             <View className="min-w-0 flex-1 gap-0.5">
               <Text className="text-body font-bold text-text-primary">
-                {url ? "Google Maps did not open" : "No exact pin for this stop"}
+                {url ? "Maps did not open" : "No exact pin for this stop"}
               </Text>
               <Text className="text-body text-text-secondary">
                 {url

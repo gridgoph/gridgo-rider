@@ -168,6 +168,15 @@ describe("buildMapHtml", () => {
     expect(html).toMatch(/getBoundsZoom/);
   });
 
+  it("draws an aged fix as last known: hollow, no cone, no accuracy ring", () => {
+    const html = buildMapHtml({ ...base, rider: { lat: 7.07, lng: 125.61 }, riderAccuracy: 20, riderHeading: 90, riderStale: true });
+    expect(html).toContain('"riderStale":true');
+    expect(html).toMatch(/var pointing = !stale && typeof MODEL\.riderHeading === 'number'/);
+    expect(html).toMatch(/\.pin-rider\.is-stale \.pin-halo \{ display: none; \}/);
+    expect(html).toMatch(/if \(m\.rider && !m\.riderStale && m\.riderAccuracy/);
+    expect(html).toContain("'Your last known position'");
+  });
+
   it("keeps the navigation banner clear of the phone's own status bar", () => {
     // The full-screen map is drawn edge to edge on purpose, which puts the
     // clock and battery straight over anything the map draws at the top. Only

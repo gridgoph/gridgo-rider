@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ChevronRight, CircleAlert, CircleCheck } from "lucide-react-native";
+import { ChevronRight, CircleAlert, CircleCheck, CircleX, Clock, TriangleAlert } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { ContactBar } from "@/components/ContactBar";
@@ -8,7 +8,8 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
-import { googleMapsDirectionsUrl } from "@/lib/mapsNavigation";
+import type { LocationFreshness } from "@/lib/locationFreshness";
+import { navigationHandoff } from "@/lib/mapsNavigation";
 import { signOffPrompt, owesSignOff, type TripPhase } from "@/lib/riderOrder";
 import { riderPay } from "@/lib/riderPay";
 import type { TripChatParty } from "@/lib/tripChat";
@@ -24,6 +25,8 @@ type Props = {
   stop: NextStop | null;
   /** "2.4 km · 9 min", or a state such as "Waiting for GPS". */
   routeSummary: string | null;
+  /** How old the position on the map is (`classifyLocation`); never a dot without its age. */
+  position?: LocationFreshness | null;
   busy: boolean;
   error: string | null;
   onAction: () => void;
@@ -46,6 +49,7 @@ export function TripPanel({
   action,
   stop,
   routeSummary,
+  position = null,
   busy,
   error,
   onAction,
@@ -64,7 +68,7 @@ export function TripPanel({
           <Text className="text-h3 text-text-primary">{note}</Text>
         </View>
         <View className="gap-1">
-          <Text className="text-caption text-text-muted">You earned</Text>
+          <Text className="text-caption text-text-secondary">You earned</Text>
           <EarningAmount minor={riderPay(trip).earnedMinor} size="h1" className="self-start" />
         </View>
         <PrimaryButton label="Back to the map" onPress={onDone} size="large" />
@@ -73,14 +77,14 @@ export function TripPanel({
   }
 
   const party: TripChatParty = stop?.kind === "shop" ? "shop" : "client";
-  const directions = stop?.point ? googleMapsDirectionsUrl(stop.point) : null;
+  const directions = stop?.point ? navigationHandoff(stop.point) : null;
 
   return (
     <View className="gap-4 rounded-t-card border border-b-0 border-outline bg-surface px-4 pb-4 pt-4" testID="trip-panel">
       <View className="gap-1">
         {stop ? (
           <>
-            <Text className="text-caption text-text-muted">
+            <Text className="text-caption text-text-secondary">
               {stop.kind === "shop" ? "Pick up at" : stop.kind === "office" ? "Drop off at" : "Deliver to"}
             </Text>
             <Text className="text-h3 text-text-primary" numberOfLines={2}>
@@ -89,12 +93,13 @@ export function TripPanel({
           </>
         ) : null}
         {routeSummary ? <Text className="text-body text-text-secondary">{routeSummary}</Text> : null}
+        {position ? <PositionAge position={position} /> : null}
         {note ? <Text className="text-body text-text-secondary">{note}</Text> : null}
       </View>
 
       {signOff ? (
         <View className="gap-1 rounded-field border-2 border-accent p-3">
-          <Text className="text-caption text-text-muted">Say this to the shop before you ride</Text>
+          <Text className="text-caption text-text-secondary">Say this to the shop before you ride</Text>
           <Text className="text-body-lg font-bold text-text-primary">{signOff}</Text>
         </View>
       ) : null}
@@ -127,6 +132,46 @@ export function TripPanel({
         <Text className="text-body font-bold text-text-primary">Trip details</Text>
         <ChevronRight size={20} color={colors.textSecondary} strokeWidth={2} />
       </Pressable>
+    </View>
+  );
+}
+
+const POSITION_ICONS = {
+  "circle-check": CircleCheck,
+  "triangle-alert": TriangleAlert,
+  clock: Clock,
+  "circle-x": CircleX,
+} as const;
+
+/**
+ * The fix's age beside the route it feeds. Icon + words + colour, so a stale
+ * position reads in grayscale; the words stay on text tokens because the
+ * warning hue fails contrast as small text on a Light surface.
+ */
+function PositionAge({ position }: { position: LocationFreshness }) {
+  const colors = useThemeColors();
+  const Icon = POSITION_ICONS[position.icon];
+  const tint =
+    position.tone === "success" ? colors.success : position.tone === "warning" ? colors.warning : colors.textMuted;
+  const degraded = position.level === "stale" || position.level === "off";
+  return (
+    <View
+      className="flex-row items-start gap-2"
+      testID="trip-position-age"
+      accessibilityRole={degraded ? "alert" : "text"}
+      accessibilityLiveRegion={degraded ? "polite" : "none"}
+    >
+      <View className="pt-0.5">
+        <Icon size={16} color={tint} strokeWidth={2} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text className={degraded ? "text-body font-bold text-text-primary" : "text-body text-text-secondary"}>
+          {position.label}
+        </Text>
+        {degraded && position.detail ? (
+          <Text className="text-body text-text-secondary">{position.detail}</Text>
+        ) : null}
+      </View>
     </View>
   );
 }

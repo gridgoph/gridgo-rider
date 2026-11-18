@@ -15,6 +15,7 @@ import { TripMap } from "@/components/TripMap";
 import { TripPanel } from "@/components/TripPanel";
 import { DAVAO_MAP_CENTER, DAVAO_MAP_ZOOM } from "@/data/placeholderShops";
 import { useAttention } from "@/hooks/useAttention";
+import { FRESHNESS_TICK_MS, fixNeedsAttention, useTripFixFreshness } from "@/hooks/useTripFixFreshness";
 import { useDispatchHours } from "@/hooks/useDispatchHours";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLocationHealth } from "@/hooks/useLocationHealth";
@@ -36,6 +37,7 @@ import {
   serverClockOffsetMs,
 } from "@/lib/dispatchOffer";
 import type { MapView } from "@/lib/mapHtml";
+import { STALE_FIX_MS } from "@/lib/locationFreshness";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { approvalPresentation } from "@/lib/riderApproval";
 import { summariseEarnings } from "@/lib/riderEarnings";
@@ -199,11 +201,13 @@ export default function MapHomeScreen() {
   const offer = !trip && approval.canWork ? currentOffer(offers ?? NO_ORDERS, userId, serverNow) : null;
   const showOffer = Boolean(offer && !inTrip && (online || offer.id === pushedOffer));
 
+  // The countdown ticks fast; otherwise a slow tick keeps a fix's age honest.
+  const tickMs = offer ? COUNTDOWN_TICK_MS : focused ? FRESHNESS_TICK_MS : null;
   useEffect(() => {
-    if (!offer) return;
-    const handle = setInterval(() => setNow(Date.now()), COUNTDOWN_TICK_MS);
+    if (tickMs == null) return;
+    const handle = setInterval(() => setNow(Date.now()), tickMs);
     return () => clearInterval(handle);
-  }, [offer]);
+  }, [tickMs]);
 
   /*
     An offer that leaves the screen without a tap timed out or was taken back.
@@ -232,14 +236,25 @@ export default function MapHomeScreen() {
   const idleLocation = useRiderLocation({ enabled: focused && !inTrip });
   // Published by the root-mounted `useTripTracking`, which owns GPS on a job.
   const tripLocation = useTripLocation();
+  /*
+    Never a position without its age (`lib/locationFreshness.ts`). On a job the
+    panel says how old the fix is, and a fix that is not live draws no route —
+    an old origin would make a confident line out of where the rider was. The
+    idle map draws a dot that has gone stale as last known, hollow and grey.
+  */
+  const tripFreshness = useTripFixFreshness(inTrip ? trip : null);
+  const liveFix = tripFreshness?.level === "live";
+  const idleFresh = idleLocation.fixAtMs != null && now - idleLocation.fixAtMs < STALE_FIX_MS;
   const here = inTrip ? tripLocation.coords : idleLocation.coords;
   const heading = trip && step && step !== "done" ? nextStop(trip, phase) : null;
-  const routeFrom = useSnappedOrigin(inTrip ? tripLocation.coords : null);
+  const snapped = useSnappedOrigin(inTrip ? tripLocation.coords : null);
+  const routeFrom = liveFix ? snapped : null;
   const { route } = useRoute({
     from: routeFrom,
     to: heading?.point ?? null,
     enabled: inTrip && Boolean(heading?.point) && Boolean(routeFrom),
   });
+  const shownRoute = liveFix ? route : null;
 
   useEffect(() => {
     if (centeredOnMe.current || !idleLocation.coords) return;
@@ -260,7 +275,8 @@ export default function MapHomeScreen() {
     enabled: focused && approval.canWork && audience != null,
     watcher: audience ?? "client",
   });
-  const attention = useAttention(locationHealth.issues.length);
+  // A stale or switched-off fix on a job is a location problem too.
+  const attention = useAttention(locationHealth.issues.length + (fixNeedsAttention(tripFreshness) ? 1 : 0));
 
   const todayMinor = useMemo(
     () => (orders ? summariseEarnings(orders, userId).todayMinor : null),
@@ -413,11 +429,12 @@ export default function MapHomeScreen() {
             pickupKind="shop"
             dropoffKind={destination?.kind === "office" ? "office" : "client"}
             focus={heading?.cardKind ?? null}
-            routeCoordinates={route?.coordinates ?? []}
-            routeUnavailable={Boolean(route && !route.routed)}
+            routeCoordinates={shownRoute?.coordinates ?? []}
+            routeUnavailable={Boolean(shownRoute && !shownRoute.routed)}
             rider={tripLocation.coords}
             riderAccuracy={tripLocation.accuracy}
-            riderHeading={tripLocation.heading}
+            riderHeading={liveFix ? tripLocation.heading : null}
+            riderStale={Boolean(tripLocation.coords) && !liveFix}
             safeTop={topHeight}
             safeBottom={bottomHeight}
           />
@@ -425,7 +442,8 @@ export default function MapHomeScreen() {
           <BrowseMap
             places={places}
             rider={here}
-            riderHeading={idleLocation.heading}
+            riderHeading={idleFresh ? idleLocation.heading : null}
+            riderStale={Boolean(here) && !idleFresh}
             view={view}
             interactive={focused}
             safeTop={topHeight}
@@ -518,12 +536,17 @@ export default function MapHomeScreen() {
                 routeSummary={
                   !heading
                     ? null
-                    : !routeFrom
-                      ? "Waiting for your position…"
-                      : route
-                        ? routeSummaryLabel(route)
-                        : "Measuring the route…"
+                    : tripFreshness?.level === "stale"
+                      ? "Route paused until your position updates"
+                      : tripFreshness?.level === "off"
+                        ? "Route paused while location is off"
+                        : !routeFrom
+                          ? "Waiting for your position…"
+                          : shownRoute
+                            ? routeSummaryLabel(shownRoute)
+                            : "Measuring the route…"
                 }
+                position={tripFreshness}
                 busy={stepBusy}
                 error={stepError}
                 onAction={() => void runStep()}

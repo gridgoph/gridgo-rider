@@ -47,6 +47,8 @@ export function MapStatusStrip({ status, todayMinor, online, onToggleOnline }: P
         accessibilityRole={onToggleOnline ? "switch" : "text"}
         accessibilityLabel={onToggleOnline ? "Online" : `Status: ${STATUS_LABEL[status]}`}
         accessibilityState={onToggleOnline ? { checked: online } : undefined}
+        // react-native-web reads only aria-* for state (see OnlineSwitch).
+        aria-checked={onToggleOnline ? online : undefined}
         className="h-11 flex-row items-center gap-2 rounded-pill border border-outline bg-surface px-3"
         style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
         testID="map-status"
@@ -62,7 +64,7 @@ export function MapStatusStrip({ status, todayMinor, online, onToggleOnline }: P
           accessibilityLabel={`Earned today: ${(todayMinor / 100).toFixed(2)} pesos`}
           testID="map-today"
         >
-          <Text className="text-caption text-text-muted">Today</Text>
+          <Text className="text-caption text-text-secondary">Today</Text>
           <EarningAmount minor={todayMinor} size="body" />
         </View>
       ) : null}
