@@ -4,10 +4,7 @@ import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, RefreshControl, ScrollView, Text, View } from "react-native";
 
-import { AlertsButton } from "@/components/AlertsButton";
-import { ChatButton } from "@/components/ChatButton";
 import { MissedCallCard } from "@/components/MissedCallCard";
-import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { DeliveryPart } from "@/components/DeliveryPart";
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
@@ -21,16 +18,12 @@ import { LocationHealthCard } from "@/components/LocationHealthCard";
 import { LocationSharingBanner } from "@/components/LocationSharingBanner";
 import { NextStopCard } from "@/components/NextStopCard";
 import { NavigateButton } from "@/components/NavigateButton";
-import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
-import { PushEnableCard } from "@/components/PushEnableCard";
-import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { RiderPayRows } from "@/components/RiderPayRows";
 import { StatusChip } from "@/components/StatusChip";
 import { TripMap } from "@/components/TripMap";
 import { TripContacts } from "@/components/TripContacts";
 import { TripTimeline } from "@/components/TripTimeline";
-import { TesterSlot } from "@/components/TesterSlot";
 import { useOrderCalls } from "@/hooks/useOrderCalls";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useTripLocation } from "@/store/tripLocation";
@@ -79,7 +72,10 @@ const FRESHNESS_TICK_MS = 5_000;
 const MAP_HEIGHT = Math.min(520, Math.max(320, Math.round(Dimensions.get("window").height * 0.52)));
 
 /**
- * The trip in hand.
+ * The trip in hand, in full: pushed from the map's trip panel ("Trip
+ * details"). The map carries the route and the step; this is everything else
+ * about the job — both stops, contacts, location health, specs, artwork and
+ * history. It used to be the Active tab, before the map became home (#180).
  *
  * Reading order is the order a rider needs it in: both stops and the step that
  * gets it done, then where you are going right now and how far, then the map,
@@ -91,7 +87,7 @@ const MAP_HEIGHT = Math.min(520, Math.max(320, Math.round(Dimensions.get("window
  * Operations says so, and the spoken sign-off, which the rider owes the
  * supplier before the wheels turn.
  */
-export default function ActiveScreen() {
+export default function TripDetailsScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const user = useSession((s) => s.user);
@@ -242,10 +238,10 @@ export default function ActiveScreen() {
   }
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={[]}>
       <ScrollView
         className="flex-1"
-        contentContainerClassName="gg-page gap-6 pb-8 pt-3"
+        contentContainerClassName="gg-page gap-6 pb-8 pt-4"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -254,36 +250,7 @@ export default function ActiveScreen() {
           />
         }
       >
-        <ScreenHeader
-          title="Active trip"
-          /*
-            Only once the answer is in. While the job is still loading there is
-            no basis for saying nothing is in hand — and saying it anyway, over
-            a skeleton of the trip that is about to appear, is the screen
-            contradicting itself.
-          */
-          subtitle={approval.canWork && loaded && !trip ? "Nothing with you right now." : null}
-          status={<ApprovalChip />}
-          action={
-            <View className="flex-row items-center gap-2">
-              <ChatButton />
-              <AlertsButton />
-            </View>
-          }
-        />
-
         {!approval.canWork ? <ApprovalNotice /> : null}
-
-        {/* An editorial policy change: said once, on the landing screen, never blocking. */}
-        <LegalNoticeBanner />
-
-        <PushEnableCard />
-
-        {/*
-          A Google Play tester's day (nothing for anyone else). Only with no
-          job in hand, and only once that is known, so it never moves a trip.
-        */}
-        {!approval.canWork || (loaded && !trip) ? <TesterSlot /> : null}
 
         {approval.canWork ? (
           <>
@@ -304,9 +271,9 @@ export default function ActiveScreen() {
               <EmptyState
                 icon="trip"
                 title="No job in hand"
-                body="Accept an offer and it appears here with the route, the stops, and every step you need to close it."
-                actionLabel="Browse offers"
-                onAction={() => router.push("/(tabs)/offers")}
+                body="Go online on the map and accept an offer. Its route, stops and steps appear there."
+                actionLabel="Back to the map"
+                onAction={() => router.replace("/(tabs)/map")}
               />
             ) : null}
           </>
@@ -375,8 +342,8 @@ export default function ActiveScreen() {
                   icon="circle-check"
                   title="Delivered"
                   body={`The client has ${issueWindowLabel(issueWindowHours)} to raise an issue. Nothing else is needed from you.`}
-                  actionLabel="Browse offers"
-                  onAction={() => router.push("/(tabs)/offers")}
+                  actionLabel="Back to the map"
+                  onAction={() => router.replace("/(tabs)/map")}
                 />
               ) : null}
 

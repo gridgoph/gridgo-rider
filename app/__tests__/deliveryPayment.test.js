@@ -35,6 +35,8 @@ jest.mock("@/components/HandoffReminderCard", () => ({ HandoffReminderCard: "Han
 jest.mock("@/components/InlineNotice", () => ({ InlineNotice: "InlineNotice" }));
 jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));
 jest.mock("@/components/ReceiptReminder", () => ({ ReceiptReminder: "ReceiptReminder" }));
+jest.mock("@/components/ReceiptSignature", () => ({ ReceiptSignature: "ReceiptSignature" }));
+jest.mock("@/lib/proofPhoto", () => ({ receiptSignatureEvidence: jest.fn() }));
 // The receipt has its own suite (deliveryReceipt); payment is the subject here.
 jest.mock("@/hooks/useAcknowledgementReceipt", () => ({ useAcknowledgementReceipt: () => ({
   stage: "none", load: { status: "none" }, retry: jest.fn(), arrive: jest.fn(), arriving: false, arrivalError: null,

@@ -158,12 +158,23 @@ describe("buildMapHtml", () => {
     // it back afterwards.
     const html = buildMapHtml({ ...base, rider: { lat: 7.0592, lng: 125.6 } });
     expect(html).toMatch(/followRider/);
-    expect(html).toMatch(/map\.setView\(\[m\.rider\.lat, m\.rider\.lng\], zoom\)/);
+    expect(html).toMatch(/centreInView\(\[m\.rider\.lat, m\.rider\.lng\], zoom\)/);
+    // Centred in the strip the host's panels leave visible, not behind them.
+    expect(buildMapHtml({ ...base, safeBottom: 320 })).toMatch(/var shift = \(padBottom - padTop\) \/ 2;/);
     expect(html).toMatch(/dragstart/);
     // The opening zoom mirrors the stop across the rider, so centring on them
     // cannot push where they are going off the edge.
     expect(html).toMatch(/2 \* m\.rider\.lat - stop\.lat/);
     expect(html).toMatch(/getBoundsZoom/);
+  });
+
+  it("draws an aged fix as last known: hollow, no cone, no accuracy ring", () => {
+    const html = buildMapHtml({ ...base, rider: { lat: 7.07, lng: 125.61 }, riderAccuracy: 20, riderHeading: 90, riderStale: true });
+    expect(html).toContain('"riderStale":true');
+    expect(html).toMatch(/var pointing = !stale && typeof MODEL\.riderHeading === 'number'/);
+    expect(html).toMatch(/\.pin-rider\.is-stale \.pin-halo \{ display: none; \}/);
+    expect(html).toMatch(/if \(m\.rider && !m\.riderStale && m\.riderAccuracy/);
+    expect(html).toContain("'Your last known position'");
   });
 
   it("keeps the navigation banner clear of the phone's own status bar", () => {

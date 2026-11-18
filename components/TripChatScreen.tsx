@@ -18,7 +18,7 @@ export function TripChatScreen({ party }: { party: TripChatParty }) {
 
   const backToTrip = () => {
     if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/active");
+    else router.replace("/(tabs)/map");
   };
 
   if (!id) {

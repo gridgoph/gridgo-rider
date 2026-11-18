@@ -198,7 +198,7 @@ describe("the auth gate while terms wait", () => {
 
   it("moves on to Active once agreed, and holds the landing while unanswered", () => {
     expect(resolveAuthRedirect(true, ["legal", "review"], false, false, null, "clear")).toBe(
-      "/(tabs)/active",
+      "/(tabs)/map",
     );
     expect(resolveAuthRedirect(true, ["(auth)", "login"], false, false, null, "unknown")).toBe("/");
     expect(resolveAuthRedirect(true, ["(tabs)", "active"], false, false, null, "unknown")).toBe("/");

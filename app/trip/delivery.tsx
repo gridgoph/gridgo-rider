@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
@@ -12,6 +12,8 @@ import { HandoverCodePrompt, HandoverCodeRow } from "@/components/HandoverCodePr
 import { InlineNotice } from "@/components/InlineNotice";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ReceiptReminder } from "@/components/ReceiptReminder";
+import { ReceiptSignature } from "@/components/ReceiptSignature";
+import type { SignaturePadHandle } from "@/components/SignaturePad";
 import { Screen } from "@/components/Screen";
 import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
@@ -26,7 +28,7 @@ import { useTripOrder } from "@/hooks/useTripOrder";
 import { useCustodyNeedsUpdate } from "@/hooks/useUpdateRequired";
 import { receiptDeliveryHold, receiptStage } from "@/lib/acknowledgementReceipt";
 import * as api from "@/lib/api";
-import { DELIVERY_TARGETS, PACKAGE_PHOTO_TARGETS } from "@/lib/attachments";
+import { DELIVERY_TARGETS, PACKAGE_PHOTO_TARGETS, RECEIPT_SIGNATURE_TARGETS, uploadEvidence } from "@/lib/attachments";
 import {
   handoffReminderBlockReason,
   handoffReminderFields,
@@ -41,7 +43,9 @@ import {
   riderChecksHandoverCode,
   type HandoverRefusal,
 } from "@/lib/handoverCode";
-import { evidenceBlockReason } from "@/lib/proofEvidence";
+import { evidenceBlockReason, UPLOAD_IDLE, type EvidenceUpload } from "@/lib/proofEvidence";
+import { receiptSignatureEvidence } from "@/lib/proofPhoto";
+import { receiptSignatureBlockReason, signatureFileRefused } from "@/lib/receiptSignature";
 import {
   endsAtOffice,
   isBalanceConfirmed,
@@ -120,6 +124,15 @@ export default function DeliveryProofScreen() {
   const [photoConsent, setPhotoConsent] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptOpenedFor, setPromptOpenedFor] = useState<string | null>(null);
+  // The receiving person's signature on the digital receipt. In memory only:
+  // it belongs to this handover and nothing else.
+  const padRef = useRef<SignaturePadHandle>(null);
+  const [signerName, setSignerName] = useState("");
+  const [signed, setSigned] = useState(false);
+  const [inked, setInked] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const [signatureUpload, setSignatureUpload] = useState<EvidenceUpload>(UPLOAD_IDLE);
+  const [signatureFileId, setSignatureFileId] = useState<string | null>(null);
 
   // Tell the rider up front when this server cannot hold files, rather than
   // letting them photograph a doorway and discover it on the upload.
@@ -218,6 +231,11 @@ export default function DeliveryProofScreen() {
     setReminded(false);
     setPhotoConsent(false);
     setPromptOpen(false);
+    setSignerName("");
+    setSigned(false);
+    setInked(false);
+    setSignatureUpload(UPLOAD_IDLE);
+    setSignatureFileId(null);
   }
 
   // The card follows the door photo: by then the package is in the client's
@@ -237,6 +255,39 @@ export default function DeliveryProofScreen() {
     if (!value) packagePhoto.clear();
   }
 
+  // The map flow's door handover: the receipt is signed on screen and sent
+  // with the delivery (`receiptMode: "digital"`). Paper stays for an API that
+  // shows no receipt (`paper_only`, or a bare 404 on the route).
+  const digitalReceipt = receiptCard && receipt.stage === "at_door" && receipt.load.status === "ready";
+  const receiptArNumber = receipt.load.status === "ready" ? receipt.load.receipt.arNumber : null;
+
+  function signatureChanged(nextInked: boolean) {
+    setInked(nextInked);
+    // New ink is a new signature; a file stored for the old one no longer stands.
+    setSignatureFileId(null);
+    setSignatureUpload(UPLOAD_IDLE);
+    setSubmitError(null);
+  }
+
+  /** The PNG on the server and attached to this assignment, or the one already there. */
+  async function storeReceiptSignature(orderIdToAttach: string): Promise<string> {
+    if (signatureFileId) return signatureFileId;
+    const uri = await padRef.current?.toPngFile();
+    if (!uri) throw new Error("signature_pad_not_ready");
+    const file = await receiptSignatureEvidence(uri);
+    const handle = uploadEvidence({
+      orderId: orderIdToAttach,
+      evidence: file,
+      targets: RECEIPT_SIGNATURE_TARGETS,
+      onPhase: setSignatureUpload,
+    });
+    const stored = await handle.result;
+    const fileId = stored.acknowledgement_signature;
+    if (!fileId) throw new Error("signature_not_stored");
+    setSignatureFileId(fileId);
+    return fileId;
+  }
+
   const blocked = !order
     ? "Loading the job."
     : balanceHeld
@@ -247,7 +298,9 @@ export default function DeliveryProofScreen() {
           toOffice
             ? "Photograph the package where you left it at the office. If the camera will not open, capture a signature instead."
             : "Photograph the package at the door. If the camera will not open, capture a signature instead.",
-        ) ?? reminderBlock;
+        ) ?? (digitalReceipt
+          ? receiptSignatureBlockReason({ signerName, signed, upload: signatureUpload })
+          : null) ?? reminderBlock;
 
   async function confirmDelivery() {
     if (!order || busy || escalating || blocked || !evidenceFileId) return;
@@ -257,7 +310,16 @@ export default function DeliveryProofScreen() {
     // job that has already closed without it.
     if (withoutPackagePhoto) packagePhoto.clear();
     try {
+      const signature =
+        digitalReceipt && receiptArNumber
+          ? {
+              arNumber: receiptArNumber,
+              fileId: await storeReceiptSignature(order.id),
+              signerName: signerName.trim(),
+            }
+          : null;
       const updated = await api.recordDelivery(order.id, {
+        ...(signature ? { receiptMode: "digital" as const, acknowledgementSignature: signature } : {}),
         evidenceFileId,
         evidenceType: evidence.evidence?.kind === "signature" ? "signature" : "photo",
         ...(handover.load.status === "ready" ? { otp } : {}),
@@ -281,6 +343,7 @@ export default function DeliveryProofScreen() {
         return;
       }
       if (isPackagePhotoRefusal(api.apiErrorCode(e))) packagePhoto.clear();
+      if (signatureFileRefused(api.apiErrorCode(e))) setSignatureFileId(null);
       setSubmitError(
         api.tripRefusal(
           e,
@@ -385,7 +448,11 @@ export default function DeliveryProofScreen() {
 
       {/* Hidden, not unmounted, under the prompt: nothing the rider has done here is lost. */}
       <View style={promptShown ? HIDDEN : FILL}>
-        <FormScroll contentClassName="gg-page gap-8 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
+        <FormScroll
+          contentClassName="gg-page gap-8 pb-8 pt-6"
+          stickyActionHeight={actionBarHeight}
+          scrollEnabled={!drawing}
+        >
           {loading ? <ProofStepSkeleton /> : null}
 
           {loadError ? (
@@ -429,6 +496,28 @@ export default function DeliveryProofScreen() {
                   handedOver={receiptHandedOver}
                   onToggle={() => setReceiptHandedOver((v) => !v)}
                   disabled={busy}
+                  signing={
+                    <ReceiptSignature
+                      padRef={padRef}
+                      signerName={signerName}
+                      onSignerName={setSignerName}
+                      inked={inked}
+                      onSignedChange={setSigned}
+                      onInkChange={signatureChanged}
+                      onDrawingChange={setDrawing}
+                      upload={signatureUpload}
+                      onClear={() => {
+                        padRef.current?.clear();
+                        signatureChanged(false);
+                      }}
+                      onUndo={() => {
+                        padRef.current?.undo();
+                        setSignatureFileId(null);
+                        setSignatureUpload(UPLOAD_IDLE);
+                      }}
+                      disabled={busy}
+                    />
+                  }
                 />
               ) : null}
 

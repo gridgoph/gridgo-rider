@@ -141,7 +141,7 @@ it("opens the active job when the bubble is tapped", async () => {
   const [event, listener] = mockNative.addListener.mock.calls[0];
   expect(event).toBe("onOpen");
   listener();
-  expect(router.navigate).toHaveBeenCalledWith("/(tabs)/active");
+  expect(router.navigate).toHaveBeenCalledWith("/(tabs)/map");
 });
 
 it("re-reads the inbox and the job on background fixes, at most every 30 seconds", async () => {

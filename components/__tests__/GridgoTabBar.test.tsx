@@ -19,10 +19,12 @@ import {
   tabBarHeight,
   tabBarMetrics,
   tabBarPaddingBottom,
+  tabBarHiddenOn,
   tabBarTopGap,
 } from "@/components/GridgoTabBar";
 import { TABS } from "@/constants/tabs";
 import type { VerificationStatus } from "@/lib/api";
+import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
 
 jest.mock("react-native", () => {
@@ -107,20 +109,14 @@ describe("GridgoTabBar", () => {
     useSession.setState({ user: null });
   });
 
-  it("draws five destination tabs and no Find work disc", () => {
-    expect(TABS.map((tab) => tab.name)).toEqual([
-      "offers",
-      "active",
-      "map",
-      "earnings",
-      "account",
-    ]);
+  it("draws four destination tabs and no Find work disc", () => {
+    expect(TABS.map((tab) => tab.name)).toEqual(["map", "jobs", "earnings", "account"]);
   });
 
   it("labels every destination, so none is an icon alone", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    expect(screen.queryAllByRole("tab")).toHaveLength(5);
+    expect(screen.queryAllByRole("tab")).toHaveLength(4);
     for (const tab of TABS) {
       expect(screen.getByText(tab.label)).toBeTruthy();
     }
@@ -134,7 +130,7 @@ describe("GridgoTabBar", () => {
 
       await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-      expect(screen.queryAllByRole("tab")).toHaveLength(5);
+      expect(screen.queryAllByRole("tab")).toHaveLength(4);
       for (const tab of TABS) {
         expect(screen.getByRole("tab", { name: tab.label })).toBeTruthy();
       }
@@ -170,7 +166,7 @@ describe("GridgoTabBar", () => {
   it("stays put when the open tab is pressed again", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Offers" }));
+    fireEvent.press(screen.getByRole("tab", { name: "Map" }));
 
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -180,9 +176,37 @@ describe("GridgoTabBar", () => {
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Active" }));
+    fireEvent.press(screen.getByRole("tab", { name: "Jobs" }));
 
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  describe("on a job (#180)", () => {
+    afterEach(() => useActiveTrip.setState({ order: null }));
+
+    it("steps aside on the map, where the trip panel owns the bottom", async () => {
+      useActiveTrip.setState({ order: { id: "ord_1", state: "rider_assigned" } as never });
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+      expect(screen.queryByTestId("gridgo-tab-bar")).toBeNull();
+    });
+
+    it("stays on any other tab reached mid-job, so there is a way back", async () => {
+      useActiveTrip.setState({ order: { id: "ord_1", state: "picked_up" } as never });
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(2)} />);
+      expect(screen.getByTestId("gridgo-tab-bar")).toBeTruthy();
+    });
+
+    it("comes back once the job has left the rider's hands", async () => {
+      useActiveTrip.setState({ order: { id: "ord_1", state: "delivered" } as never });
+      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+      expect(screen.getByTestId("gridgo-tab-bar")).toBeTruthy();
+    });
+
+    it("is hidden only on the map and only on a job", () => {
+      expect(tabBarHiddenOn("map", true)).toBe(true);
+      expect(tabBarHiddenOn("jobs", true)).toBe(false);
+      expect(tabBarHiddenOn("map", false)).toBe(false);
+    });
   });
 
   describe("bottom padding: the platform's reservation is the breathing room", () => {

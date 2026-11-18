@@ -21,6 +21,8 @@ type Props = {
   riderAccuracy?: number | null;
   /** Course in degrees, or null while stopped — the map draws a dot then. */
   riderHeading?: number | null;
+  /** The fix is no longer live: draw the dot as last known, not "you are here". */
+  riderStale?: boolean;
   navTitle?: string | null;
   navSummary?: string | null;
   /**
@@ -30,6 +32,8 @@ type Props = {
    * it and nothing of the phone's own is drawn over it.
    */
   safeTop?: number;
+  /** Depth of a panel drawn over the bottom of the map; the camera frames above it. */
+  safeBottom?: number;
   routeUnavailable?: boolean;
   /** Fixed height for offer cards; omit for flex fill on Active. */
   height?: number;
@@ -80,9 +84,11 @@ export function TripMap({
   rider = null,
   riderAccuracy = null,
   riderHeading = null,
+  riderStale = false,
   navTitle = null,
   navSummary = null,
   safeTop = 0,
+  safeBottom = 0,
   routeUnavailable = false,
   height,
   compact = false,
@@ -109,9 +115,11 @@ export function TripMap({
       rider: isValidLatLng(rider) ? rider : null,
       riderAccuracy,
       riderHeading,
+      riderStale,
       navTitle,
       navSummary,
       safeTop,
+      safeBottom,
       routeUnavailable,
       // A card keeps its zoom — a button tap and a pinch cost the page
       // nothing — and gives up only the drag the page itself needs.
@@ -133,9 +141,11 @@ export function TripMap({
       rider,
       riderAccuracy,
       riderHeading,
+      riderStale,
       navTitle,
       navSummary,
       safeTop,
+      safeBottom,
       routeUnavailable,
       onExpand,
       chromeLeft,

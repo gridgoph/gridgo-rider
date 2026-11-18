@@ -203,3 +203,8 @@ export async function signatureEvidence(
 export function handoffSignatureEvidence(uri: string): Promise<ProofEvidence> {
   return signatureEvidence(uri, Date.now(), "pickup");
 }
+
+/** The receiving person's signature on the digital acknowledgement receipt, as evidence. */
+export function receiptSignatureEvidence(uri: string): Promise<ProofEvidence> {
+  return signatureEvidence(uri, Date.now(), "delivery");
+}

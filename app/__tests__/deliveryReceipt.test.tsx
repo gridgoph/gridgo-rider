@@ -81,6 +81,52 @@ jest.mock("@/components/HandoffReminderCard", () => ({
   },
 }));
 
+// The pad draws on a native canvas; here it is a button that "signs", and a
+// handle whose PNG is a fixed path.
+jest.mock("@/components/SignaturePad", () => {
+  const React = jest.requireActual<typeof import("react")>("react");
+  const { Pressable } = jest.requireActual<typeof import("react-native")>("react-native");
+  return {
+    SignaturePad: React.forwardRef(function MockPad(
+      props: { onSignedChange?: (signed: boolean) => void; onStrokesChange?: (strokes: unknown[], width: number) => void },
+      ref: React.Ref<unknown>,
+    ) {
+      React.useImperativeHandle(ref, () => ({
+        toPngFile: async () => "file:///cache/receipt-signature.png",
+        clear: () => undefined,
+        undo: () => undefined,
+      }));
+      return (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Sign here"
+          onPress={() => {
+            props.onStrokesChange?.([[{ x: 1, y: 1 }]], 300);
+            props.onSignedChange?.(true);
+          }}
+        />
+      );
+    }),
+  };
+});
+
+const mockUploadEvidence = jest.fn();
+jest.mock("@/lib/attachments", () => ({
+  ...jest.requireActual("@/lib/attachments"),
+  uploadEvidence: (...args: unknown[]) => mockUploadEvidence(...args),
+}));
+jest.mock("@/lib/proofPhoto", () => ({
+  ...jest.requireActual("@/lib/proofPhoto"),
+  receiptSignatureEvidence: async (uri: string) => ({
+    kind: "signature",
+    uri,
+    fileName: "delivery-signature.png",
+    mimeType: "image/png",
+    capturedAt: "2026-10-21T01:01:00.000Z",
+    sizeBytes: 900,
+  }),
+}));
+
 // The screen is imported after its native pieces are mocked above.
 // eslint-disable-next-line import/first
 import DeliveryProofScreen from "@/app/trip/delivery";
@@ -188,6 +234,15 @@ const tick = () => screen.getByRole("checkbox", { name: "Receipt handed over" })
 const confirm = () => screen.getByRole("button", { name: /confirm delivery/i });
 const arrive = () => screen.getByRole("button", { name: "I'm at the client's door" });
 const held = () => confirm().props.accessibilityState?.disabled === true;
+/** The person receiving types their name and signs on the rider's phone. */
+async function sign(name = "José Muñoz") {
+  await fireEvent.changeText(screen.getByLabelText("Name of the person receiving the package"), name);
+  await fireEvent.press(screen.getByRole("button", { name: "Sign here" }));
+}
+const SIGNED = {
+  receiptMode: "digital",
+  acknowledgementSignature: { arNumber: "AR-0000000001", fileId: "fil_sig", signerName: "José Muñoz" },
+};
 /** Any peso figure at all on screen. */
 const amounts = () => screen.queryAllByText(/₱/);
 
@@ -206,6 +261,10 @@ describe("the acknowledgement receipt at the door", () => {
     api.recordArrival.mockResolvedValue(atDoor);
     api.getAcknowledgementReceipt.mockResolvedValue(receipt);
     api.prepareAcknowledgementReceipt.mockResolvedValue(receipt);
+    mockUploadEvidence.mockImplementation(() => ({
+      result: Promise.resolve({ acknowledgement_signature: "fil_sig" }),
+      cancel: () => undefined,
+    }));
   });
 
   describe("before arrival", () => {
@@ -214,7 +273,7 @@ describe("the acknowledgement receipt at the door", () => {
       await screen.findByText("Acknowledgement receipt");
 
       expect(screen.getByText("HAND THIS TO THE CLIENT")).toBeTruthy();
-      expect(screen.getByText(/acknowledgement receipt with the package/)).toBeTruthy();
+      expect(screen.getByText(/to sign on your phone/)).toBeTruthy();
       expect(arrive()).toBeTruthy();
       expect(amounts()).toEqual([]);
       expect(screen.queryByText(/AR-/)).toBeNull();
@@ -419,10 +478,11 @@ describe("the acknowledgement receipt at the door", () => {
       expect(tick().props.accessibilityState).toMatchObject({ checked: false });
     });
 
-    it("does not hold the delivery back, and sends the server evidence only", async () => {
-      api.getOrder.mockResolvedValue(atDoor);
+    it("never holds the paper delivery back, and sends the server evidence only", async () => {
+      // An API older than arrival tracking: the paper receipt and its tick.
+      api.getOrder.mockResolvedValue({ ...onTheWay, deliveryMilestones: undefined });
       await render(<DeliveryProofScreen />);
-      await screen.findByText("AR-0000000001");
+      await screen.findByText("Acknowledgement receipt");
 
       // Unticked, and still the button is live.
       expect(confirm().props.accessibilityState).not.toMatchObject({ disabled: true });
@@ -439,6 +499,7 @@ describe("the acknowledgement receipt at the door", () => {
         remindedClient: true,
         clientAgreedToPhoto: false,
       });
+      expect(mockUploadEvidence).not.toHaveBeenCalled();
     });
 
     it("explains a delivery the server refused because the receipt could not be issued", async () => {
@@ -447,11 +508,78 @@ describe("the acknowledgement receipt at the door", () => {
       await render(<DeliveryProofScreen />);
       await screen.findByText("AR-0000000001");
 
+      await sign();
       await fireEvent.press(confirm());
 
       await screen.findByText("Delivery not recorded");
       expect(screen.getByText(/amounts do not add up/)).toBeTruthy();
       expect(mockRouter.back).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the person receiving signs on screen", () => {
+    beforeEach(() => {
+      api.getOrder.mockResolvedValue(atDoor);
+      api.getAcknowledgementReceipt.mockResolvedValue({ ...receipt, invoiceNote: "The official invoice comes from GRIDGO." });
+    });
+
+    it("shows GRIDGO's invoice note under the receipt, and no paper tick", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      expect(screen.getByText("The official invoice comes from GRIDGO.")).toBeTruthy();
+      expect(screen.getByText("THE PERSON RECEIVING SIGNS THIS")).toBeTruthy();
+      expect(screen.queryByRole("checkbox", { name: "Receipt handed over" })).toBeNull();
+    });
+
+    it("holds the delivery for a name and a signature, saying which is missing", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+
+      expect(held()).toBe(true);
+      expect(screen.getByText(/Type the name of the person receiving/)).toBeTruthy();
+      await fireEvent.changeText(screen.getByLabelText("Name of the person receiving the package"), "José Muñoz");
+      expect(held()).toBe(true);
+      expect(screen.getByText(/Ask the person receiving the package to sign/)).toBeTruthy();
+      await fireEvent.press(screen.getByRole("button", { name: "Sign here" }));
+      expect(held()).toBe(false);
+    });
+
+    it("uploads the signature as acknowledgement_signature, then sends it with the delivery", async () => {
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+      await sign("  José Muñoz  ");
+      await fireEvent.press(confirm());
+
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+      expect(mockUploadEvidence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: "ord_1",
+          targets: [{ purpose: "acknowledgement_signature" }],
+          evidence: expect.objectContaining({ kind: "signature", mimeType: "image/png" }),
+        }),
+      );
+      expect(api.recordDelivery).toHaveBeenCalledWith("ord_1", expect.objectContaining({ evidenceFileId: "fil_door", ...SIGNED }));
+    });
+
+    it("reuses the stored signature on a retry, and asks for a new one when the server refuses it", async () => {
+      api.recordDelivery
+        .mockRejectedValueOnce(new TypeError("Network request failed"))
+        .mockRejectedValueOnce(refused(422, "invalid_acknowledgement_signature"))
+        .mockResolvedValue({ ...atDoor, state: "issue_window_open" });
+      await render(<DeliveryProofScreen />);
+      await screen.findByText("AR-0000000001");
+      await sign();
+
+      await fireEvent.press(confirm());
+      await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledTimes(1));
+      await fireEvent.press(confirm());
+      await screen.findByText(/could not use that signature/);
+      expect(mockUploadEvidence).toHaveBeenCalledTimes(1);
+
+      await fireEvent.press(confirm());
+      await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+      expect(mockUploadEvidence).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -461,7 +589,7 @@ describe("the acknowledgement receipt at the door", () => {
       await screen.findByText("Acknowledgement receipt");
 
       expect(held()).toBe(true);
-      expect(screen.getByText(/Tap “I'm at the client's door” and copy/)).toBeTruthy();
+      expect(screen.getByText(/Tap “I'm at the client's door” to open the acknowledgement receipt/)).toBeTruthy();
       await fireEvent.press(confirm());
       expect(api.recordDelivery).not.toHaveBeenCalled();
     });
@@ -473,6 +601,7 @@ describe("the acknowledgement receipt at the door", () => {
 
       await fireEvent.press(arrive());
       await screen.findByText("AR-0000000001");
+      await sign();
       expect(held()).toBe(false);
 
       await fireEvent.press(confirm());
@@ -508,6 +637,7 @@ describe("the acknowledgement receipt at the door", () => {
 
       await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
       await screen.findByText("AR-0000000001");
+      await sign();
       expect(held()).toBe(false);
     });
 
@@ -654,6 +784,7 @@ describe("the acknowledgement receipt at the door", () => {
       await render(<DeliveryProofScreen />);
       await screen.findByText("AR-0000000001");
 
+      await sign();
       await fireEvent.press(confirm());
 
       await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());

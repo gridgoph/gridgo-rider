@@ -1,8 +1,7 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import {
-  Inbox,
+  ClipboardList,
   Map,
-  Navigation,
   User,
   Wallet,
   type LucideIcon,
@@ -11,6 +10,10 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TABS, type TabName } from "@/constants/tabs";
+import { approvalPresentation } from "@/lib/riderApproval";
+import { isActiveTripState } from "@/lib/riderOrder";
+import { useActiveTrip } from "@/store/activeTrip";
+import { useSession } from "@/store/session";
 import { useThemeColors } from "@/hooks/useTheme";
 
 /**
@@ -18,9 +21,8 @@ import { useThemeColors } from "@/hooks/useTheme";
  * so the row reads as one set.
  */
 const ICONS: Record<TabName, LucideIcon> = {
-  offers: Inbox,
-  active: Navigation,
   map: Map,
+  jobs: ClipboardList,
   earnings: Wallet,
   account: User,
 };
@@ -273,6 +275,13 @@ export function tabBarHeight(platformOS: string, insetBottom: number): number {
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const onJob = useActiveTrip((s) => Boolean(s.order && isActiveTripState(s.order.state)));
+  const canWork = useSession((s) => approvalPresentation(s.user).canWork);
+
+  // On a job the map is the whole screen: the trip panel owns the bottom and
+  // nothing else should be one stray tap away (#180). Any other tab reached
+  // mid-job (from an alert, say) keeps the bar, so there is always a way back.
+  if (tabBarHiddenOn(state.routes[state.index]?.name, onJob && canWork)) return null;
 
   return (
     <View
@@ -390,4 +399,9 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
       )}
     </Pressable>
   );
+}
+
+/** The bar hides only on the map, and only while a job is in hand. */
+export function tabBarHiddenOn(routeName: string | undefined, onJob: boolean): boolean {
+  return onJob && routeName === "map";
 }

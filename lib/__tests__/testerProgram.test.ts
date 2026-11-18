@@ -201,10 +201,10 @@ describe("feedbackToShow", () => {
 });
 
 describe("a tapped reminder", () => {
-  it("opens Active, where the check-in card is, not the alerts list", () => {
+  it("opens Jobs, where the check-in card is, not the alerts list", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { parsePushData, pushTargetRoute } = require("@/lib/push");
-    expect(pushTargetRoute(parsePushData({ type: "tester_reminder" }))).toBe("/(tabs)/active");
+    expect(pushTargetRoute(parsePushData({ type: "tester_reminder" }))).toBe("/(tabs)/jobs");
   });
 });
 

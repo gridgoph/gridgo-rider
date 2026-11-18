@@ -319,6 +319,10 @@ function RootStack() {
         options={{ title: "Chat", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
+        name="attention"
+        options={{ title: "Needs your attention", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
         name="past-jobs"
         options={{ title: "Past jobs", ...multiOriginPushedScreenOptions }}
       />
@@ -409,8 +413,12 @@ function RootStack() {
         quiet under it.
       */}
       <Stack.Screen
+        name="trip/details"
+        options={{ title: "Trip details", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
         name="trip/pickup"
-        options={{ title: "Pickup checks", ...multiOriginPushedScreenOptions }}
+        options={{ title: "Shop check", ...multiOriginPushedScreenOptions }}
       />
       <Stack.Screen
         name="trip/pack"

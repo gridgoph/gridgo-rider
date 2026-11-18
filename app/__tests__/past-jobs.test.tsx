@@ -107,7 +107,7 @@ describe("Past jobs", () => {
 
     expect(await screen.findByText("No past jobs yet")).toBeTruthy();
     await fireEvent.press(screen.getByText("See offers"));
-    expect(jest.requireMock("expo-router").router.replace).toHaveBeenCalledWith("/(tabs)/offers");
+    expect(jest.requireMock("expo-router").router.replace).toHaveBeenCalledWith("/(tabs)/jobs");
   });
 });
 

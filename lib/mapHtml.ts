@@ -21,6 +21,8 @@ export type MapPlace = {
   lng: number;
   /** Browse-map pin fill. Trip maps use pickupKind / dropoffKind instead. */
   kind?: MapPinKind;
+  /** Orders at this shop for this rider — the offer or the job in hand. */
+  badge?: number;
 };
 
 export type MapView = {
@@ -54,6 +56,12 @@ export type MapModel = {
    * go next.
    */
   riderHeading?: number | null;
+  /**
+   * The rider's fix has aged past `STALE_FIX_MS` (or location is off). The dot
+   * is drawn hollow and grey, without halo, cone or accuracy ring: it says
+   * "last known", never "you are here".
+   */
+  riderStale?: boolean | null;
   /** Dispatch ticket on the map: "TO THE SHOP". */
   navTitle?: string | null;
   navSummary?: string | null;
@@ -66,6 +74,13 @@ export type MapModel = {
    * overlays start below it.
    */
   safeTop?: number | null;
+  /**
+   * Depth, in CSS pixels, of the panel the host draws over the bottom of the
+   * map (the map home's offer sheet or trip panel). The camera centres and
+   * fits inside the strip left between `safeTop` and this, so a stop is never
+   * framed behind the panel.
+   */
+  safeBottom?: number | null;
   /** When true, show an on-map note that routing failed. */
   routeUnavailable: boolean;
   /**
@@ -166,6 +181,15 @@ export function buildMapHtml(model: MapModel): string {
       width: 34px;
     }
     .pin-stack { position: relative; width: 34px; height: 48px; }
+    /* Orders waiting at a shop for this rider: a count on the pin's shoulder. */
+    .pin-badge {
+      position: absolute; top: -6px; right: -10px; z-index: 2;
+      min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box;
+      border-radius: 999px; border: 2px solid #ffffff;
+      background: #1a1a1a; color: #ffffff;
+      font: 800 12px/18px system-ui, -apple-system, sans-serif; text-align: center;
+    }
+    .dark-attr .pin-badge { background: #f0f0f0; color: #000000; border-color: #000000; }
     .pin-head {
       position: relative; z-index: 3;
       display: block; width: 34px; height: 48px;
@@ -255,6 +279,9 @@ export function buildMapHtml(model: MapModel): string {
       transform-origin: 9px 20px;
     }
     .pin-rider.is-pointing .pin-halo { animation: none; opacity: 0.22; }
+    /* Last known, not live: no pulse, no colour, a hollow mark. */
+    .pin-rider.is-stale .pin-halo { display: none; }
+    .pin-rider.is-stale .pin-mark { background: #ffffff; border: 3px dashed #6b6b6b; }
     @keyframes gps-pulse {
       0% { transform: scale(0.55); opacity: 0.8; }
       100% { transform: scale(2.1); opacity: 0; }
@@ -456,7 +483,7 @@ export function buildMapHtml(model: MapModel): string {
         + '</svg>';
     }
 
-    function pinIcon(kind, shortLabel, selected, longLabel) {
+    function pinIcon(kind, shortLabel, selected, longLabel, badge) {
       if (kind === 'rider') {
         /*
           Pointing only when the phone actually knows the course. Stationary,
@@ -464,13 +491,14 @@ export function buildMapHtml(model: MapModel): string {
           rider last moved is worse than no arrow: it is confidently wrong at
           exactly the moment somebody is standing still working out where to go.
         */
-        var pointing = typeof MODEL.riderHeading === 'number';
+        var stale = Boolean(MODEL.riderStale);
+        var pointing = !stale && typeof MODEL.riderHeading === 'number';
         var cone = pointing
           ? '<div class="pin-cone" style="transform: rotate(' + MODEL.riderHeading + 'deg)"></div>'
           : '';
         return L.divIcon({
           className: '',
-          html: '<div class="pin pin-rider' + (pointing ? ' is-pointing' : '') + '">'
+          html: '<div class="pin pin-rider' + (pointing ? ' is-pointing' : '') + (stale ? ' is-stale' : '') + '">'
             + '<div class="pin-halo"></div>' + cone + '<div class="pin-mark"></div></div>',
           iconSize: [28, 28],
           iconAnchor: [14, 14]
@@ -488,6 +516,7 @@ export function buildMapHtml(model: MapModel): string {
           + '<div class="pin-ring"></div>'
           + '<div class="pin-tip"></div>'
           + pinHead(skin, String(shortLabel == null ? '' : shortLabel))
+          + (badge > 0 ? '<div class="pin-badge">' + escapeHtml(String(badge > 9 ? '9+' : badge)) + '</div>' : '')
           + '</div>'
           + labelHtml
           + '</div>',
@@ -627,7 +656,7 @@ export function buildMapHtml(model: MapModel): string {
         map.removeLayer(accuracyCircle);
         accuracyCircle = null;
       }
-      if (m.rider && m.riderAccuracy && m.riderAccuracy > 0) {
+      if (m.rider && !m.riderStale && m.riderAccuracy && m.riderAccuracy > 0) {
         accuracyCircle = L.circle([m.rider.lat, m.rider.lng], {
           radius: Math.min(m.riderAccuracy, 80),
           color: '#FFDE58',
@@ -675,7 +704,7 @@ export function buildMapHtml(model: MapModel): string {
       if (m.rider) {
         var r = L.marker([m.rider.lat, m.rider.lng], {
           icon: pinIcon('rider', ''),
-          title: 'You',
+          title: m.riderStale ? 'Your last known position' : 'You',
           zIndexOffset: 800
         }).addTo(map);
         markers.push(r);
@@ -691,8 +720,8 @@ export function buildMapHtml(model: MapModel): string {
         var letter = placeKind === 'office' ? 'GO' : (place.name || '?').charAt(0).toUpperCase();
         var placeTitle = place.name || (placeKind === 'office' ? 'GRIDGO Office' : 'Shop');
         var shop = L.marker([place.lat, place.lng], {
-          icon: pinIcon(placeKind, letter, selected, selected ? placeTitle : ''),
-          title: placeTitle,
+          icon: pinIcon(placeKind, letter, selected, selected ? placeTitle : '', Number(place.badge) || 0),
+          title: place.badge > 0 ? placeTitle + ', ' + place.badge + (place.badge === 1 ? ' order for you' : ' orders for you') : placeTitle,
           zIndexOffset: selected ? 400 : (placeKind === 'office' ? 300 : 0)
         }).addTo(map);
         shop.on('click', (function (id) {
@@ -701,6 +730,16 @@ export function buildMapHtml(model: MapModel): string {
         markers.push(shop);
         bounds.push([place.lat, place.lng]);
       }
+
+      var padTop = typeof m.safeTop === 'number' && m.safeTop > 0 ? m.safeTop : 0;
+      var padBottom = typeof m.safeBottom === 'number' && m.safeBottom > 0 ? m.safeBottom : 0;
+      // Centre a point in the strip of map the host's panels leave visible.
+      function centreInView(latlng, zoom) {
+        var shift = (padBottom - padTop) / 2;
+        if (!shift) { map.setView(latlng, zoom); return; }
+        map.setView(map.unproject(map.project(latlng, zoom).add([0, shift]), zoom), zoom);
+      }
+      var fitPadding = { paddingTopLeft: [36, 36 + padTop], paddingBottomRight: [36, 36 + padBottom] };
 
       var viewKey = m.view && isFinite(m.view.lat) && isFinite(m.view.lng)
         ? m.view.lat + ',' + m.view.lng + ',' + (m.view.zoom || 15)
@@ -711,7 +750,7 @@ export function buildMapHtml(model: MapModel): string {
       var shouldFitTrip = Boolean(m.pickup || m.dropoff || routeLayer) && tripKey !== lastTripKey;
       var hasRider = Boolean(m.rider) && isFinite(m.rider.lat) && isFinite(m.rider.lng);
       if (viewKey && viewKey !== lastViewKey) {
-        map.setView([m.view.lat, m.view.lng], m.view.zoom || 15);
+        centreInView([m.view.lat, m.view.lng], m.view.zoom || 15);
         lastViewKey = viewKey;
         cameraReady = true;
       } else if (hasRider && followRider) {
@@ -736,20 +775,20 @@ export function buildMapHtml(model: MapModel): string {
               [stop.lat, stop.lng],
               [2 * m.rider.lat - stop.lat, 2 * m.rider.lng - stop.lng]
             ]).pad(0.25);
-            zoom = Math.min(map.getBoundsZoom(mirrored), 17);
+            zoom = Math.min(map.getBoundsZoom(mirrored, false, L.point(0, padTop + padBottom)), 17);
           } else {
             zoom = RIDER_ZOOM;
           }
         }
-        map.setView([m.rider.lat, m.rider.lng], zoom);
+        centreInView([m.rider.lat, m.rider.lng], zoom);
         lastTripKey = tripKey;
         cameraReady = true;
       } else if (!cameraReady || shouldFitTrip) {
         if (routeLayer) {
-          try { map.fitBounds(routeLayer.getBounds().pad(0.15)); }
+          try { map.fitBounds(routeLayer.getBounds().pad(0.15), fitPadding); }
           catch (e) { /* keep previous view */ }
         } else if (bounds.length >= 2) {
-          map.fitBounds(bounds, { padding: [36, 36] });
+          map.fitBounds(bounds, fitPadding);
         } else if (bounds.length === 1) {
           map.setView(bounds[0], 15);
         } else {

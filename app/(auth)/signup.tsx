@@ -120,7 +120,7 @@ export default function SignupScreen() {
     return () => clearTimeout(timer);
   }, [resendIn]);
 
-  if (user) return <Redirect href="/(tabs)/active" />;
+  if (user) return <Redirect href="/(tabs)/map" />;
 
   const consentDocuments = signupDocuments(libraryDocuments);
   const consentSignature = consentDocuments?.map((doc) => doc.id).join("|") ?? "";

@@ -36,7 +36,7 @@ export type RiderAction = {
   spoken: string;
   /** Route the disc opens. Trip routes carry `?orderId=`. */
   route:
-    | "/(tabs)/offers"
+    | "/(tabs)/map"
     | "/alerts"
     | "/trip/pickup"
     | "/trip/pack"
@@ -52,7 +52,7 @@ const FIND_WORK: RiderAction = {
   glyph: "search",
   label: "Find work",
   spoken: "Find work. Opens the open offers.",
-  route: "/(tabs)/offers",
+  route: "/(tabs)/map",
   needsOrderId: false,
 };
 

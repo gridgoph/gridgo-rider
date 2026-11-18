@@ -381,6 +381,41 @@ export type Order = {
    */
   forcedByGridgo?: boolean;
   forcedSteps?: { at: string; from: string; to: string; reasonCode: string; note: string }[];
+  /**
+   * This rider's exclusive, timed reservation on a `ready_for_dispatch` job
+   * (gridgo-api `docs/RIDER_MAP_HOME_API.md`). Only the recipient sees it.
+   * Absent on an API older than exclusive offers. Read through
+   * `lib/dispatchOffer.ts`.
+   */
+  dispatchOffer?: DispatchOffer | null;
+  /** What the rider will carry, on the offers read only. */
+  cargoSummary?: CargoSummary | null;
+  /**
+   * Stored shop-to-destination distance, on the offers read only. The API has
+   * no routing provider, so `durationSeconds` is always null.
+   */
+  travelEstimate?: TravelEstimate | null;
+};
+
+export type DispatchOffer = {
+  id?: string;
+  status: "offered" | "accepted" | "declined" | "expired" | "withdrawn" | "waiting" | "exhausted";
+  riderId?: string;
+  offeredAt?: string;
+  timeoutSeconds?: number;
+  expiresAt?: string;
+  respondedAt?: string;
+};
+
+export type CargoSummary = {
+  lines: { lineItemId: string; description: string | null; quantity: number }[];
+  totalQuantity: number;
+};
+
+export type TravelEstimate = {
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  source: string;
 };
 
 export type DeliveryMilestone = {
@@ -1176,10 +1211,48 @@ export async function getOrder(orderId: string): Promise<Order> {
   return result.order;
 }
 
-export async function acceptOffer(orderId: string): Promise<Order> {
+/**
+ * The offers read with the server's clock, for a countdown that does not
+ * depend on the phone's. `serverTime` is null from an API without timed offers.
+ */
+export async function listDispatchOffers(): Promise<{ offers: Order[]; serverTime: string | null }> {
+  const result = await request<{ offers: Order[]; serverTime?: string }>("/dispatch/offers");
+  return { offers: result.offers, serverTime: typeof result.serverTime === "string" ? result.serverTime : null };
+}
+
+/**
+ * Accept this rider's reservation. `offerId` names the exact offer read, so a
+ * reservation that has moved on is refused (`409 dispatch_offer_stale`) rather
+ * than a newer one being taken by a tap on an old screen.
+ */
+export async function acceptOffer(orderId: string, offerId?: string | null): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/accept`, {
     method: "POST",
-    body: "{}",
+    body: JSON.stringify(offerId ? { offerId } : {}),
+  });
+  return result.order;
+}
+
+/** Pass on this rider's reservation; the server offers it to the next rider at once. */
+export async function declineOffer(orderId: string, offerId: string): Promise<void> {
+  await request<{ ok: boolean }>(`/dispatch/${encodeURIComponent(orderId)}/decline`, {
+    method: "POST",
+    body: JSON.stringify({ offerId }),
+  });
+}
+
+/**
+ * Tell the shop and the client how far the rider has got on the way to the
+ * shop (`POST /dispatch/:id/milestones`). Changes no order state; door
+ * deliveries only, and repeating one is harmless.
+ */
+export async function recordShopMilestone(
+  orderId: string,
+  milestone: "heading_to_shop" | "at_shop",
+): Promise<Order> {
+  const result = await request<{ order: Order }>(`/dispatch/${encodeURIComponent(orderId)}/milestones`, {
+    method: "POST",
+    body: JSON.stringify({ milestone }),
   });
   return result.order;
 }
@@ -1303,10 +1376,18 @@ export async function recordArrival(orderId: string): Promise<Order> {
  * gridgo-api `docs/ACKNOWLEDGEMENT_RECEIPTS_API.md`. Never store the result.
  */
 export async function getAcknowledgementReceipt(orderId: string): Promise<AcknowledgementReceipt> {
-  const result = await request<{ receipt: AcknowledgementReceipt }>(
+  const result = await request<ReceiptEnvelope>(
     `/orders/${encodeURIComponent(orderId)}/acknowledgement-receipt`,
   );
-  return result.receipt;
+  return withInvoiceNote(result);
+}
+
+type ReceiptEnvelope = { receipt: AcknowledgementReceipt; invoiceNote?: unknown };
+
+/** The response's invoice note travels with the receipt the screen holds. */
+function withInvoiceNote(result: ReceiptEnvelope): AcknowledgementReceipt {
+  const note = typeof result.invoiceNote === "string" && result.invoiceNote.trim() ? result.invoiceNote : null;
+  return note ? { ...result.receipt, invoiceNote: note } : result.receipt;
 }
 
 /**
@@ -1314,11 +1395,11 @@ export async function getAcknowledgementReceipt(orderId: string): Promise<Acknow
  * idempotency key, so a retry never takes a second number.
  */
 export async function prepareAcknowledgementReceipt(orderId: string): Promise<AcknowledgementReceipt> {
-  const result = await request<{ receipt: AcknowledgementReceipt }>(
+  const result = await request<ReceiptEnvelope>(
     `/orders/${encodeURIComponent(orderId)}/acknowledgement-receipt`,
     { method: "POST", body: JSON.stringify({}) },
   );
-  return result.receipt;
+  return withInvoiceNote(result);
 }
 
 /**
@@ -1337,6 +1418,12 @@ export async function recordDelivery(
     evidenceFileId: string;
     evidenceType: "photo" | "signature";
     otp?: string;
+    /**
+     * The map-flow door handover: the receiving person signs the numbered
+     * receipt on screen. `"digital"` makes the server require the signature.
+     */
+    receiptMode?: "digital";
+    acknowledgementSignature?: { arNumber: string; fileId: string; signerName: string };
   } & HandoffReminderFields,
 ): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {

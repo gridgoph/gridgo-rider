@@ -212,9 +212,9 @@ export default function AlertsScreen() {
           <EmptyState
             icon="offers"
             title="Nothing from dispatch"
-            body="When a job is ready for you, or Operations needs something, it lands here. Until then the open offers are the place to look."
-            actionLabel="Browse offers"
-            onAction={() => router.replace("/(tabs)/offers")}
+            body="When a job is ready for you, or Operations needs something, it lands here. Until then, go online on the map to get offers."
+            actionLabel="Open the map"
+            onAction={() => router.replace("/(tabs)/map")}
             secondaryAction
           />
         ) : null}
