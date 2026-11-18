@@ -18,6 +18,12 @@ type Props = {
   handedOver: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  /**
+   * The digital receipt's signature section (`ReceiptSignature`). Given, a
+   * ready receipt is signed on screen by the person receiving it and the
+   * paper tick goes; absent — an older API — the paper flow stays as it was.
+   */
+  signing?: React.ReactNode;
 };
 
 export const RECEIPT_TICK_LABEL = "Receipt handed over";
@@ -59,13 +65,17 @@ export function ReceiptReminder({
   handedOver,
   onToggle,
   disabled = false,
+  signing,
 }: Props) {
   const colors = useThemeColors();
+  const digital = Boolean(signing) && load.status === "ready";
 
   return (
     <View className="gap-4 rounded-card border-2 border-accent bg-surface p-6">
       <View className="gap-1">
-        <Text className="text-overline text-text-muted">HAND THIS TO THE CLIENT</Text>
+        <Text className="text-overline text-text-muted">
+          {digital ? "THE PERSON RECEIVING SIGNS THIS" : "HAND THIS TO THE CLIENT"}
+        </Text>
         <Text className="text-h3 text-text-primary">Acknowledgement receipt</Text>
       </View>
 
@@ -78,9 +88,9 @@ export function ReceiptReminder({
       {stage === "before_arrival" ? (
         <>
           <Text className="text-body text-text-secondary">
-            Give the client an acknowledgement receipt with the package, as well as your thank-you.
-            When you reach their door, tell GRIDGO you have arrived and the details to copy onto the
-            paper receipt open here.
+            {signing
+              ? "When you reach their door, tell GRIDGO you have arrived. The receipt opens here for the person receiving the package to sign on your phone."
+              : "Give the client an acknowledgement receipt with the package, as well as your thank-you. When you reach their door, tell GRIDGO you have arrived and the details to copy onto the paper receipt open here."}
           </Text>
           <SecondaryButton
             label={arriving ? "Recording arrival…" : "I'm at the client's door"}
@@ -108,7 +118,21 @@ export function ReceiptReminder({
         </View>
       ) : null}
 
-      {load.status === "ready" ? (
+      {load.status === "ready" && digital ? (
+        <>
+          <Text className="text-body text-text-secondary">
+            Show this to the person receiving the package. They check it, then sign below to
+            acknowledge they received it.
+          </Text>
+          <AcknowledgementReceipt receipt={load.receipt} signed />
+          {load.receipt.invoiceNote ? (
+            <Text className="text-body font-bold text-text-primary" testID="receipt-invoice-note">
+              {load.receipt.invoiceNote}
+            </Text>
+          ) : null}
+          {signing}
+        </>
+      ) : load.status === "ready" ? (
         <>
           <Text className="text-body text-text-secondary">
             Copy these onto the paper acknowledgement receipt exactly as shown, then collect the
@@ -129,6 +153,7 @@ export function ReceiptReminder({
         />
       ) : null}
 
+      {digital ? null : (
       <Pressable
         onPress={onToggle}
         disabled={disabled}
@@ -149,6 +174,7 @@ export function ReceiptReminder({
         </View>
         <Text className="text-body-lg text-text-primary">{RECEIPT_TICK_LABEL}</Text>
       </Pressable>
+      )}
     </View>
   );
 }

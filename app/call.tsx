@@ -102,7 +102,7 @@ export default function CallScreen() {
   const leave = useCallback(() => {
     if (!callInProgress(useCall.getState().snapshot)) useCall.getState().clear();
     if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/active");
+    else router.replace("/(tabs)/map");
   }, [router]);
 
   /** Show what an outgoing call needs next, and place it when nothing is missing. */
@@ -129,7 +129,7 @@ export default function CallScreen() {
         }
         const current = useCall.getState().snapshot;
         if (current && current.direction === "incoming" && callInProgress(current)) setGate("none");
-        else router.replace("/(tabs)/active");
+        else router.replace("/(tabs)/map");
       })();
       return;
     }

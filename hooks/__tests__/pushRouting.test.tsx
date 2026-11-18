@@ -31,7 +31,7 @@ it("waits for a real navigator then opens a pending applicant's authorized decis
   mockReady=true;await view.rerender(undefined);
   await act(async()=>{jest.advanceTimersByTime(100);});
   expect(mockPush).toHaveBeenCalledTimes(1);
-  expect(mockPush).toHaveBeenCalledWith("/(tabs)/active");
+  expect(mockPush).toHaveBeenCalledWith("/(tabs)/map");
 });
 it("retains an offline tap and retries after reconnect",async()=>{
   mockReady=true;
@@ -72,7 +72,7 @@ it.each(["cold start", "background"])("opens the exact authorized offer from %s 
   }
   await act(async () => { jest.advanceTimersByTime(100); });
   expect(mockPush).toHaveBeenCalledTimes(1);
-  expect(mockPush).toHaveBeenCalledWith("/(tabs)/offers?orderId=actual-job");
+  expect(mockPush).toHaveBeenCalledWith("/(tabs)/map?offer=actual-job");
 });
 
 

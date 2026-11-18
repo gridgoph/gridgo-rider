@@ -67,7 +67,7 @@ export default function LoginScreen() {
     return () => clearTimeout(timer);
   }, [resendIn]);
 
-  if (user) return <Redirect href="/(tabs)/active" />;
+  if (user) return <Redirect href="/(tabs)/map" />;
   if (hold) return <SessionWait tone={hold} role="rider" />;
 
   async function sendSecondFactor(factor: ClerkSecondFactorStrategy) {

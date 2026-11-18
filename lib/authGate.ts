@@ -15,7 +15,7 @@ export type AuthRedirect =
   | "/(auth)/welcome"
   | "/(auth)/login"
   | "/(auth)/signup"
-  | "/(tabs)/active"
+  | "/(tabs)/map"
   | "/legal/review"
   | null;
 
@@ -194,11 +194,11 @@ export function resolveAuthRedirect(
       return onLegalReview(segments) || LEGAL_OPEN_ROOTS.has(root) ? null : LEGAL_REVIEW_ROUTE;
     }
     // Agreed (or nothing was waiting): the agreement screen has done its job.
-    if (onLegalReview(segments)) return legal === "clear" ? "/(tabs)/active" : null;
+    if (onLegalReview(segments)) return legal === "clear" ? "/(tabs)/map" : null;
     // Not answered yet: wait on the launch screen rather than paint Active
     // and snatch it away. A deep link elsewhere is left where it landed.
     if (legal === "unknown" && (inAuth || root === "(tabs)")) return "/";
-    if (inAuth) return "/(tabs)/active";
+    if (inAuth) return "/(tabs)/map";
   }
 
   // index is public: launch redirect stays in app/index.tsx.

@@ -198,7 +198,7 @@ describe("call pushes", () => {
       "/call?orderId=ord_1&incoming=1",
     );
     expect(pushTargetRoute(parsePushData({ type: "order_call_missed", orderId: "ord_1", notificationId: "n2" }))).toBe(
-      "/(tabs)/active",
+      "/trip/details?orderId=ord_1",
     );
   });
 });

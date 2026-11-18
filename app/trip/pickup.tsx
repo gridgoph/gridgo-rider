@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
+import { ContactBar } from "@/components/ContactBar";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
 import { HandoverSteps } from "@/components/HandoverSteps";
@@ -34,6 +35,7 @@ import {
   checklistBlockReason,
   checklistConsequence,
   EMPTY_ANSWERS,
+  pickupCheckGroups,
   pickupChecksFor,
   toChecklistPayload,
   type ChecklistAnswers,
@@ -158,6 +160,9 @@ export default function PickupChecklistScreen() {
   const flow = order?.handoverFlow ?? null;
   const packs = order ? ridersPack(order) : false;
   const checks = pickupChecksFor(flow);
+  // Four groups over the six checks; rows are numbered in the order worked.
+  const groups = pickupCheckGroups(flow);
+  const workOrder = groups.flatMap((group) => group.codes);
   const inspectedId = order ? currentInspectionId(order) : null;
   const packedBeforeCheck = order ? arrivedPackedAt(order) : null;
   // What will be sent: in count mode the quantity check is read off the numbers.
@@ -291,6 +296,7 @@ export default function PickupChecklistScreen() {
         {order && escalated ? (
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
+            <ContactBar trip={order} party="shop" />
             <PickupBlockedPanel order={order} />
           </>
         ) : null}
@@ -298,6 +304,8 @@ export default function PickupChecklistScreen() {
         {order && !escalated ? (
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} navigate />
+
+            <ContactBar trip={order} party="shop" />
 
             {packs ? <HandoverSteps current="check" /> : null}
 
@@ -354,9 +362,6 @@ export default function PickupChecklistScreen() {
               />
             ) : null}
 
-            <ProductionSpecifications order={order} />
-            <ArtworkPanel order={order} />
-
             {order.pickupChecklist?.status === "escalation_resolved" ? (
               <InlineNotice
                 tone="info"
@@ -366,47 +371,65 @@ export default function PickupChecklistScreen() {
               />
             ) : null}
 
-            <View className="gg-card-flush">
-              {checks.map((check, index) => (
-                <PickupCheckRow
-                  key={check.code}
-                  index={index}
-                  check={
-                    check.code === "quantity_match" && mode.kind !== "legacy"
-                      ? { ...check, label: "Count the pieces", verify: packs ? COUNT_VERIFY_UNPACKED : COUNT_VERIFY }
-                      : check
-                  }
-                  answer={effective[check.code]}
-                  onAnswer={(passed) => answer(check.code, passed)}
-                  disabled={busy || !canRunPickupChecks(order)}
-                >
-                  {check.code !== "quantity_match" ? undefined : mode.kind === "count" ? (
-                    <View className="overflow-hidden rounded-field bg-surface-variant">
-                      {mode.items.map((item, line) => (
-                        <View
-                          key={countKey(item.lineItemId)}
-                          className={line > 0 ? "border-t border-outline" : undefined}
-                        >
-                          <PickupCountField
-                            item={item}
-                            counted={counts[countKey(item.lineItemId)] ?? null}
-                            onChange={(next) => count(countKey(item.lineItemId), next)}
-                            disabled={busy || !canRunPickupChecks(order)}
-                          />
+            {groups.map((group) => (
+              <View key={group.key} className="gap-3" testID={`pickup-group-${group.key}`}>
+                <View className="gap-0.5">
+                  <Text className="text-h3 text-text-primary" accessibilityRole="header">
+                    {group.title}
+                  </Text>
+                  <Text className="text-body text-text-secondary">{group.detail}</Text>
+                </View>
+                {group.key === "proof" ? (
+                  <>
+                    <ProductionSpecifications order={order} />
+                    <ArtworkPanel order={order} />
+                  </>
+                ) : null}
+                <View className="gg-card-flush">
+                  {checks
+                    .filter((check) => group.codes.includes(check.code))
+                    .map((check) => (
+                    <PickupCheckRow
+                      key={check.code}
+                      index={workOrder.indexOf(check.code)}
+                      check={
+                        check.code === "quantity_match" && mode.kind !== "legacy"
+                          ? { ...check, label: "Count the pieces", verify: packs ? COUNT_VERIFY_UNPACKED : COUNT_VERIFY }
+                          : check
+                      }
+                      answer={effective[check.code]}
+                      onAnswer={(passed) => answer(check.code, passed)}
+                      disabled={busy || !canRunPickupChecks(order)}
+                    >
+                      {check.code !== "quantity_match" ? undefined : mode.kind === "count" ? (
+                        <View className="overflow-hidden rounded-field bg-surface-variant">
+                          {mode.items.map((item, line) => (
+                            <View
+                              key={countKey(item.lineItemId)}
+                              className={line > 0 ? "border-t border-outline" : undefined}
+                            >
+                              <PickupCountField
+                                item={item}
+                                counted={counts[countKey(item.lineItemId)] ?? null}
+                                onChange={(next) => count(countKey(item.lineItemId), next)}
+                                disabled={busy || !canRunPickupChecks(order)}
+                              />
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
-                  ) : mode.kind === "unavailable" ? (
-                    <InlineNotice
-                      tone="warning"
-                      icon="triangle-alert"
-                      title="No count to check against"
-                      body="This order is missing the number of pieces ordered, so the pickup cannot be recorded. Call Operations to review it before you take anything."
-                    />
-                  ) : undefined}
-                </PickupCheckRow>
-              ))}
-            </View>
+                      ) : mode.kind === "unavailable" ? (
+                        <InlineNotice
+                          tone="warning"
+                          icon="triangle-alert"
+                          title="No count to check against"
+                          body="This order is missing the number of pieces ordered, so the pickup cannot be recorded. Call Operations to review it before you take anything."
+                        />
+                      ) : undefined}
+                    </PickupCheckRow>
+                    ))}
+                </View>
+              </View>
+            ))}
 
             {failing ? (
               <>

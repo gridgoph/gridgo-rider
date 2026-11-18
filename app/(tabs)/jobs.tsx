@@ -1,6 +1,7 @@
 import { useReadVersion } from "@/hooks/useReadVersion";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { History } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 
@@ -8,6 +9,7 @@ import { AlertsButton } from "@/components/AlertsButton";
 import { ChatButton } from "@/components/ChatButton";
 import { ApprovalChip } from "@/components/ApprovalChip";
 import { ApprovalNotice } from "@/components/ApprovalNotice";
+import { DestinationRow } from "@/components/DestinationRow";
 import { EmptyState } from "@/components/EmptyState";
 import { InlineNotice } from "@/components/InlineNotice";
 import { PushEnableCard } from "@/components/PushEnableCard";
@@ -15,11 +17,13 @@ import { Screen } from "@/components/Screen";
 import { OfferListSkeleton } from "@/components/SkeletonScreens";
 import { OfferCard } from "@/components/OfferCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { TesterSlot } from "@/components/TesterSlot";
 import { useDispatchHours } from "@/hooks/useDispatchHours";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { closedFromRefusal, DISPATCH_CLOSED_TITLE, dispatchClosedSentence } from "@/lib/dispatchHours";
 import { approvalPresentation } from "@/lib/riderApproval";
+import { offerIdOf } from "@/lib/dispatchOffer";
 import { selectOffers } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useSession } from "@/store/session";
@@ -35,13 +39,16 @@ const ACCEPTED_BEAT_MS = 900;
 const ACCEPT_CONNECTION_FAILED = "Check this phone’s connection, then try again.";
 
 /**
- * The open dispatch pool.
+ * Jobs: the offer reserved for this rider and the way to past jobs.
+ *
+ * The map is home and shows the same offer with its countdown; this is the
+ * list view of it, for a rider who wants every detail before accepting.
  *
  * A rider carries one job at a time, so the screen's first duty when a trip is
  * already in hand is to say so and send them back to it, rather than offering
  * jobs they cannot take.
  */
-export default function OffersScreen() {
+export default function JobsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ orderId?: string | string[] }>();
   const selectedId = typeof params.orderId === "string" ? params.orderId : null;
@@ -151,7 +158,8 @@ export default function OffersScreen() {
     setError(null);
     setAcceptError(null);
     try {
-      setOrder(await api.acceptOffer(id));
+      const listed = offers?.find((job) => job.id === id);
+      setOrder(await api.acceptOffer(id, listed ? offerIdOf(listed) : null));
       // A pool read already in flight would answer without this job and take
       // the card, confirmation and all, off the screen. Retire it.
       nextRead();
@@ -159,7 +167,7 @@ export default function OffersScreen() {
       acceptedTimerRef.current = setTimeout(() => {
         acceptedTimerRef.current = null;
         setAcceptedId(null);
-        router.push("/(tabs)/active");
+        router.push("/(tabs)/map");
       }, ACCEPTED_BEAT_MS);
     } catch (e) {
       // A fetch that never reached GRIDGO throws a bare TypeError whose text
@@ -198,9 +206,9 @@ export default function OffersScreen() {
         }
       >
         <ScreenHeader
-          title="Offers"
+          title="Jobs"
           subtitle={
-            approval.canWork ? "Jobs ready for pickup. You carry one at a time." : null
+            approval.canWork ? "Your delivery offer, with every detail. You carry one at a time." : null
           }
           status={<ApprovalChip />}
           action={
@@ -214,6 +222,12 @@ export default function OffersScreen() {
         {!approval.canWork ? <ApprovalNotice /> : null}
 
         <PushEnableCard />
+
+        {/*
+          A Google Play tester's day (nothing for anyone else). Only with no
+          job in hand, so it never moves a trip.
+        */}
+        {!approval.canWork || !hasActive ? <TesterSlot /> : null}
 
         {/*
           With nothing else to show, closed is the whole answer and takes the
@@ -260,8 +274,8 @@ export default function OffersScreen() {
                 ? "Close it out, and the next offers appear here once dispatch opens."
                 : "Close it out, and the next offers appear here straight away."
             }
-            actionLabel="Open my trip"
-            onAction={() => router.push("/(tabs)/active")}
+            actionLabel="Open my trip on the map"
+            onAction={() => router.push("/(tabs)/map")}
           />
         ) : approval.canWork && showJobInHand ? (
           <InlineNotice
@@ -269,8 +283,8 @@ export default function OffersScreen() {
             icon="info"
             title="You already have a job in hand"
             body="Close it out before taking another. These stay open for other riders in the meantime."
-            actionLabel="Open my trip"
-            onAction={() => router.push("/(tabs)/active")}
+            actionLabel="Open my trip on the map"
+            onAction={() => router.push("/(tabs)/map")}
           />
         ) : null}
 
@@ -328,9 +342,19 @@ export default function OffersScreen() {
           <EmptyState
             icon="offers"
             title="No open offers"
-            body="A job appears here the moment a shop marks it ready, with its route and what you earn. Pull down to check again."
+            body="GRIDGO offers you one job at a time, with what you earn and a countdown. Go online on the map to see it there too."
           />
         ) : null}
+
+        <View className="gg-card-flush">
+          <DestinationRow
+            icon={History}
+            label="Past jobs"
+            detail="Jobs you delivered"
+            onPress={() => router.push("/past-jobs")}
+            last
+          />
+        </View>
       </ScrollView>
     </Screen>
   );

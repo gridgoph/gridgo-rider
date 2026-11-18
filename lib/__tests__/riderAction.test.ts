@@ -78,7 +78,7 @@ describe("the raised centre disc is an action, not a destination", () => {
     for (const phase of ["idle", "complete"] as TripPhase[]) {
       expect(riderAction(phase, ORDER)).toMatchObject({
         kind: "find-work",
-        route: "/(tabs)/offers",
+        route: "/(tabs)/map",
         needsOrderId: false,
       });
     }

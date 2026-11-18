@@ -20,7 +20,7 @@ export default function SsoCallbackScreen() {
 
   useEffect(() => {
     if (user) {
-      router.replace("/(tabs)/active");
+      router.replace("/(tabs)/map");
       return;
     }
     if (showErrorOnLogin) {

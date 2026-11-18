@@ -59,7 +59,28 @@ const REFUSALS: Record<string, Entry> = {
 
   // Accepting a new job.
   not_offerable: {
-    message: "This job is no longer available. Pull down to refresh the list.",
+    message: "This job is no longer available to you. It timed out or went to another rider.",
+    step: null,
+  },
+  // The digital acknowledgement receipt at the door.
+  acknowledgement_signature_required: {
+    message: "The person receiving the package has to sign the receipt on your phone first.",
+    step: null,
+  },
+  acknowledgement_signer_name_required: {
+    message: "Type the full name of the person receiving the package, then confirm again.",
+    step: null,
+  },
+  acknowledgement_receipt_mismatch: {
+    message: "The receipt changed while you were here. Ask them to sign again on the receipt shown now.",
+    step: null,
+  },
+  invalid_acknowledgement_signature: {
+    message: "GRIDGO could not use that signature. Ask them to sign again, then confirm.",
+    step: null,
+  },
+  dispatch_offer_stale: {
+    message: "This offer has changed since you opened it. Check the new one before you accept.",
     step: null,
   },
   dispatch_paused: {

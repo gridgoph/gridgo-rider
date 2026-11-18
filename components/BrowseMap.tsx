@@ -20,6 +20,15 @@ type Props = {
    * surface and keeps eating clicks on Active after you leave Map.
    */
   interactive?: boolean;
+  /**
+   * The offer in front of the rider: its shop and drop-off, pinned over the
+   * city so the two stops are read before Accept. No route is drawn — a
+   * straight line would look like one.
+   */
+  stops?: { pickup: LatLng | null; dropoff: LatLng | null; pickupLabel: string; dropoffLabel: string } | null;
+  /** Depth of what the host draws over the top and bottom; the camera centres between them. */
+  safeTop?: number;
+  safeBottom?: number;
 };
 
 /**
@@ -36,6 +45,9 @@ export function BrowseMap({
   view = null,
   onSelectPlace,
   interactive = true,
+  stops = null,
+  safeTop = 0,
+  safeBottom = 0,
 }: Props) {
   const theme = useThemeName();
   const colors = useThemeColors();
@@ -45,10 +57,12 @@ export function BrowseMap({
   const model: MapModel = useMemo(
     () => ({
       theme: theme === "dark" ? "dark" : "light",
-      pickup: null,
-      dropoff: null,
-      pickupLabel: "",
-      dropoffLabel: "",
+      pickup: stops && isValidLatLng(stops.pickup) ? stops.pickup : null,
+      dropoff: stops && isValidLatLng(stops.dropoff) ? stops.dropoff : null,
+      pickupLabel: stops?.pickupLabel ?? "",
+      dropoffLabel: stops?.dropoffLabel ?? "",
+      pickupKind: "shop",
+      dropoffKind: "client",
       routeCoordinates: [],
       routeColor: colors.actionYellow,
       rider: isValidLatLng(rider) ? rider : null,
@@ -57,8 +71,10 @@ export function BrowseMap({
       places,
       selectedPlaceId,
       view,
+      safeTop,
+      safeBottom,
     }),
-    [theme, colors.actionYellow, rider, riderHeading, places, selectedPlaceId, view],
+    [theme, colors.actionYellow, rider, riderHeading, places, selectedPlaceId, view, stops, safeTop, safeBottom],
   );
 
   const html = useMemo(() => buildMapHtml(model), [model.theme]); // eslint-disable-line react-hooks/exhaustive-deps

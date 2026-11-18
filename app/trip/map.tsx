@@ -99,7 +99,7 @@ export default function TripMapScreen() {
         >
           <Pressable
             // Opened from a link there is nothing behind it; the trip is home.
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/active"))}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/map"))}
             accessibilityRole="button"
             accessibilityLabel="Close the full screen map"
             hitSlop={8}

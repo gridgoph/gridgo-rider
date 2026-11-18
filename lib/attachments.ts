@@ -53,13 +53,17 @@ import {
  *
  * The fifth is the optional package photo at the door, taken only when the
  * client agreed to it (`lib/handoffReminder.ts`).
+ *
+ * The sixth is the receiving person's signature on the digital
+ * acknowledgement receipt at the door.
  */
 export type EvidencePurpose =
   | "delivery_photo"
   | "fulfilment_proof"
   | "handoff_signature"
   | "packing_photo"
-  | "delivery_package_photo";
+  | "delivery_package_photo"
+  | "acknowledgement_signature";
 
 export type EvidenceTarget = {
   purpose: EvidencePurpose;
@@ -89,6 +93,15 @@ export const PACKING_PHOTO_TARGETS: readonly EvidenceTarget[] = [
 ];
 
 /** What the client-agreed package photo is stored as. Never the delivery proof. */
+/**
+ * The receiving person's signature on the digital acknowledgement receipt at
+ * the door (gridgo-api `docs/RIDER_MAP_HOME_API.md`): a PNG, bound by the
+ * server to this assignment, and separate from the shop's handoff signature.
+ */
+export const RECEIPT_SIGNATURE_TARGETS: readonly EvidenceTarget[] = [
+  { purpose: "acknowledgement_signature" },
+];
+
 export const PACKAGE_PHOTO_TARGETS: readonly EvidenceTarget[] = [
   { purpose: "delivery_package_photo" },
 ];

@@ -7,7 +7,7 @@ describe("resolveOnboardingExit", () => {
   });
 
   it("returns Offers when replayed from the wait screen", () => {
-    expect(resolveOnboardingExit("offers")).toBe("/(tabs)/offers");
+    expect(resolveOnboardingExit("offers")).toBe("/(tabs)/jobs");
     expect(onboardingShouldPop("offers")).toBe(true);
     expect(onboardingShouldPop(["offers"])).toBe(true);
   });

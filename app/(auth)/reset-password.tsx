@@ -33,7 +33,7 @@ export default function ResetPasswordScreen() {
   const [checkedPassword, setCheckedPassword] = useState(false);
   const confirmationField = useRef<TextInput>(null);
 
-  if (user) return <Redirect href="/(tabs)/active" />;
+  if (user) return <Redirect href="/(tabs)/map" />;
 
   async function sendCode() {
     if (fetchStatus === "fetching" || !email.trim() || busy) return;

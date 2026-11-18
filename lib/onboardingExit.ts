@@ -9,7 +9,7 @@
  * First-run / deep-link still dismisses to the launcher.
  */
 
-export type OnboardingExit = "/settings" | "/(tabs)/offers" | "/";
+export type OnboardingExit = "/settings" | "/(tabs)/jobs" | "/";
 
 /**
  * @param from - `useLocalSearchParams().from`, when present
@@ -17,7 +17,7 @@ export type OnboardingExit = "/settings" | "/(tabs)/offers" | "/";
 export function resolveOnboardingExit(from: string | string[] | undefined): OnboardingExit {
   const value = Array.isArray(from) ? from[0] : from;
   if (value === "settings") return "/settings";
-  if (value === "offers") return "/(tabs)/offers";
+  if (value === "offers") return "/(tabs)/jobs";
   return "/";
 }
 

@@ -216,7 +216,7 @@ it("does not reopen ringing for a stale push: it lands on the trip", async () =>
   await renderScreen(<CallScreen />);
 
   await act(async () => undefined);
-  expect(mockRouter.replace).toHaveBeenCalledWith("/(tabs)/active");
+  expect(mockRouter.replace).toHaveBeenCalledWith("/(tabs)/map");
   expect(stopRing).not.toHaveBeenCalled();
   expect(useCall.getState().snapshot).toBeNull();
 });

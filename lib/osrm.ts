@@ -169,3 +169,16 @@ export function routeNoteBesideSummary(route: RouteResult | null): string | null
   if (!route.routed && route.distanceMetres > 0) return null;
   return route.statusLabel;
 }
+
+/**
+ * A road travel time, labelled as the router's estimate, or null.
+ *
+ * gridgo-api has no routing provider and sends no travel time
+ * (`docs/RIDER_MAP_HOME_API.md`). The public OpenStreetMap router can give
+ * one, so the offer may show it — named for what it is, and never when the
+ * route fell back to a straight line.
+ */
+export function roadTimeEstimateLabel(route: RouteResult | null): string | null {
+  if (!route?.routed || route.durationSeconds == null || route.durationSeconds <= 0) return null;
+  return `About ${formatDurationSeconds(route.durationSeconds)} by road (map estimate)`;
+}

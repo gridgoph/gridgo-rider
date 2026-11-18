@@ -8,7 +8,7 @@ import { useNotifications } from "@/store/notifications";
 import { usePush } from "@/store/push";
 import { useSession } from "@/store/session";
 
-import OffersScreen from "@/app/(tabs)/offers";
+import OffersScreen from "@/app/(tabs)/jobs";
 
 let mockOrderId: string | undefined;
 jest.mock("expo-router", () => ({
@@ -242,7 +242,7 @@ describe("Offers accept button", () => {
     expect(screen.queryByText("You already have a job in hand")).toBeNull();
     expect(router.push).not.toHaveBeenCalled();
 
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(tabs)/active"), { timeout: 2000 });
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(tabs)/map"), { timeout: 2000 });
     expect(api.acceptOffer).toHaveBeenCalledTimes(1);
   });
 
@@ -286,7 +286,7 @@ describe("Offers accept button", () => {
 
     expect(screen.getByText("Job accepted. Opening your trip…")).toBeTruthy();
     expect(screen.queryByText("Check this phone’s connection, then try again.")).toBeNull();
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(tabs)/active"), { timeout: 2000 });
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/(tabs)/map"), { timeout: 2000 });
     expect(api.acceptOffer).toHaveBeenCalledTimes(2);
   });
 

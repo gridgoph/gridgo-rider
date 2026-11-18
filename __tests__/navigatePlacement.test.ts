@@ -33,8 +33,14 @@ describe("Navigate placement", () => {
     found.forEach((header) => expect(header).not.toContain(" navigate "));
   });
 
-  it("keeps Maps off Active's card while the package is held at the shop", () => {
-    expect(read("app/(tabs)/active.tsx")).toMatch(
+  it("keeps Maps off the trip panel while the package is held at the shop", () => {
+    expect(read("components/TripPanel.tsx")).toMatch(
+      /directions=\{phase === "pickup_blocked" \? undefined : directions\}/,
+    );
+  });
+
+  it("keeps Maps off Trip details' card while the package is held at the shop", () => {
+    expect(read("app/trip/details.tsx")).toMatch(
       /phase !== "pickup_blocked" \? \(\s*<NavigateButton order=\{trip\} stopKind=\{heading\.cardKind\} \/>/,
     );
   });

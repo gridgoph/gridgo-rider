@@ -158,7 +158,9 @@ describe("buildMapHtml", () => {
     // it back afterwards.
     const html = buildMapHtml({ ...base, rider: { lat: 7.0592, lng: 125.6 } });
     expect(html).toMatch(/followRider/);
-    expect(html).toMatch(/map\.setView\(\[m\.rider\.lat, m\.rider\.lng\], zoom\)/);
+    expect(html).toMatch(/centreInView\(\[m\.rider\.lat, m\.rider\.lng\], zoom\)/);
+    // Centred in the strip the host's panels leave visible, not behind them.
+    expect(buildMapHtml({ ...base, safeBottom: 320 })).toMatch(/var shift = \(padBottom - padTop\) \/ 2;/);
     expect(html).toMatch(/dragstart/);
     // The opening zoom mirrors the stop across the rider, so centring on them
     // cannot push where they are going off the edge.

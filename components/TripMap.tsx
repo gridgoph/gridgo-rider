@@ -30,6 +30,8 @@ type Props = {
    * it and nothing of the phone's own is drawn over it.
    */
   safeTop?: number;
+  /** Depth of a panel drawn over the bottom of the map; the camera frames above it. */
+  safeBottom?: number;
   routeUnavailable?: boolean;
   /** Fixed height for offer cards; omit for flex fill on Active. */
   height?: number;
@@ -83,6 +85,7 @@ export function TripMap({
   navTitle = null,
   navSummary = null,
   safeTop = 0,
+  safeBottom = 0,
   routeUnavailable = false,
   height,
   compact = false,
@@ -112,6 +115,7 @@ export function TripMap({
       navTitle,
       navSummary,
       safeTop,
+      safeBottom,
       routeUnavailable,
       // A card keeps its zoom — a button tap and a pinch cost the page
       // nothing — and gives up only the drag the page itself needs.
@@ -136,6 +140,7 @@ export function TripMap({
       navTitle,
       navSummary,
       safeTop,
+      safeBottom,
       routeUnavailable,
       onExpand,
       chromeLeft,

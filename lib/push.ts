@@ -166,12 +166,11 @@ export function parsePushData(raw: unknown): PushData {
 /**
  * Types that mean "there is a job in the pool you can take".
  *
- * A shop has one job workspace where Accept lives. A rider does not: Accept
- * is on Offers, and the trip in hand is on Active. Routing an offer tap at
- * Active would land them on an empty trip (or a different one) and hide the
- * Accept. The set is explicit so an unknown `type` never invents a screen —
- * the contract's instruction for those is the alerts list, except when an
- * `orderId` is present, in which case Active is the job.
+ * Accept lives on the map's offer sheet, which an offer tap opens even while
+ * the rider is offline (the tap is the ask). The set is explicit so an
+ * unknown `type` never invents a screen — the contract's instruction for
+ * those is the alerts list, except when an `orderId` is present, in which
+ * case the map holds the job.
  */
 export const DISPATCH_OFFER_TYPES = new Set([
   "dispatch_available",
@@ -188,7 +187,7 @@ export const DISPATCH_OFFER_TYPES = new Set([
  * - An **announcement**, or any alert with no job, opens **Alerts** — the
  *   contract's instruction for `type: "announcement"` and for an unknown
  *   type. Alerts is a pushed route here, not a tab.
- * - A **dispatch offer** opens that job in **Offers**, where Accept lives.
+ * - A **dispatch offer** opens the **map** with its offer sheet up.
  * - A **message from the client** opens that delivery's conversation, and a
  *   **message from the shop** opens the shop's — two threads, two routes.
  * - A **reply from Operations** opens that exact support conversation, read
@@ -199,29 +198,30 @@ export const DISPATCH_OFFER_TYPES = new Set([
  *   and rings only for one that is still ringing; a stale push lands on the
  *   trip instead. A **missed call** opens the trip, where it waits with
  *   Call back.
- * - Any other alert that names a job opens **Active**, which is the trip
+ * - Any other alert that names a job opens the **map**, which is the trip
  *   in hand (pickup checks, sign-off, delivery). The push carries no order
- *   state, so Active fetches the trip as it always does.
+ *   state, so the map fetches the trip as it always does.
  */
 export function pushTargetRoute(data: PushData, threadId: string | null = null): string {
   if (data.type === "support_message") {
     return isChatThreadId(threadId ?? undefined) ? `/chat/${encodeURIComponent(threadId as string)}` : CHAT_LIST_ROUTE;
   }
-  // A tester's daily reminder is local and names no job; Active holds the check-in card.
-  if (data.type === TESTER_REMINDER_TYPE) return "/(tabs)/active";
+  // A tester's daily reminder is local and names no job; Jobs holds the check-in card.
+  if (data.type === TESTER_REMINDER_TYPE) return "/(tabs)/jobs";
   // GRIDGO's ask to become a Play tester opens the steps themselves.
   if (data.type === PLAY_OPTIN_PUSH_TYPE) return `${PLAY_OPTIN_ROUTE}?from=push`;
   if (data.type === "announcement" || !data.orderId) return "/alerts";
-  if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/offers?orderId=${encodeURIComponent(data.orderId)}`;
+  // An offer opens the map with its sheet up, online or not: the tap is the ask (#180).
+  if (data.type && DISPATCH_OFFER_TYPES.has(data.type)) return `/(tabs)/map?offer=${encodeURIComponent(data.orderId)}`;
   // A message from the client opens the conversation itself (gridgo-client#198).
   if (data.type === "delivery_message") return `/trip/messages?orderId=${encodeURIComponent(data.orderId)}`;
   // A message from the shop opens the shop's conversation, never the client's (C2BE8E7A).
   if (data.type === "pickup_chat_message") return `/trip/shop-messages?orderId=${encodeURIComponent(data.orderId)}`;
   // A call ringing in opens the call screen, which rings only if it still is (16B159C0).
   if (data.type === "order_call_incoming") return `/call?orderId=${encodeURIComponent(data.orderId)}&incoming=1`;
-  // A missed call opens the trip, where the missed call waits with a Call back.
-  if (data.type === "order_call_missed") return "/(tabs)/active";
-  return "/(tabs)/active";
+  // A missed call opens the trip details, where the missed call waits with a Call back.
+  if (data.type === "order_call_missed") return `/trip/details?orderId=${encodeURIComponent(data.orderId)}`;
+  return "/(tabs)/map";
 }
 
 /**
