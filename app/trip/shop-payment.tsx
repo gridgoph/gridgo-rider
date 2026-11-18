@@ -31,9 +31,9 @@ import { useSession } from "@/store/session";
  * then opens the pickup checks — a receipt never skips the count, the six
  * checks, the packing photo or the shop's signature.
  *
- * One key per tap-through: a retry after a dropped connection returns the
- * first answer instead of recording a second payment. A new photo is a new
- * request, so it gets a new key.
+ * A retry after a dropped connection resends the first request exactly, key
+ * and body, so it returns the first answer instead of conflicting with it. A
+ * new photo, or a definite refusal, starts a new request with a new key.
  */
 export default function ShopPaymentScreen() {
   const router = useRouter();
@@ -50,7 +50,12 @@ export default function ShopPaymentScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionBarHeight, setActionBarHeight] = useState(0);
-  const [attempt, setAttempt] = useState<{ fileId: string; key: string } | null>(null);
+  // The first request, kept whole while its outcome is unknown: a retry after a
+  // lost reply resends exactly it under the same key.
+  const [attempt, setAttempt] = useState<{
+    body: { expectedVersion: number; amountMinor: number; receiptFileId: string };
+    key: string;
+  } | null>(null);
 
   const blocked = !order
     ? "Loading the job."
@@ -66,22 +71,28 @@ export default function ShopPaymentScreen() {
 
   async function submit() {
     if (!order || !amounts || !cash.detail || !receipt.fileId || blocked || busy) return;
-    const key = attempt?.fileId === receipt.fileId ? attempt.key : newIdempotencyKey("shop-payment");
-    setAttempt({ fileId: receipt.fileId, key });
+    const next =
+      attempt?.body.receiptFileId === receipt.fileId
+        ? attempt
+        : {
+            body: { expectedVersion: cash.detail.version, amountMinor: amounts.shopMinor, receiptFileId: receipt.fileId },
+            key: newIdempotencyKey("shop-payment"),
+          };
+    setAttempt(next);
     setBusy(true);
     setError(null);
     try {
-      await api.payShopCash(
-        order.id,
-        { expectedVersion: cash.detail.version, amountMinor: amounts.shopMinor, receiptFileId: receipt.fileId },
-        key,
-      );
+      await api.payShopCash(order.id, next.body, next.key);
       await refreshTrip(userId, "refresh");
       router.replace({ pathname: "/trip/pickup", params: { orderId: order.id } });
     } catch (e) {
       const code = api.apiErrorCode(e);
+      // A definite refusal recorded nothing; no reply or a server error may have.
+      if (e instanceof api.ApiError && e.status < 500) setAttempt(null);
       if (code === "cash_evidence_already_bound" || code === "cash_evidence_required") receipt.forget();
-      if (code === "cash_stale") void cash.reload();
+      if (code === "cash_stale" || code === "cash_idempotency_conflict" || code === "cash_shop_payment_not_available") {
+        void cash.reload();
+      }
       setError(api.tripRefusal(e, "The shop payment was not recorded. Keep the receipt and try again.").message);
     } finally {
       setBusy(false);

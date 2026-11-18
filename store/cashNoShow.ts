@@ -9,11 +9,14 @@ import { create } from "zustand";
  * report went in. So this keeps exactly those two facts per job — when the
  * server accepted the start, and when it accepted the report — so a relaunch
  * at the door shows the same timer and does not ask for a second report.
+ * It is only ever a stand-in for the server: `noShowFromServer` clears or
+ * replaces it as soon as the server's record says otherwise.
  * Times, a contact method and nothing else: no photo, no reason, no money.
  */
 export type CashNoShowRecord = {
   startedAtMs: number;
-  contactMethod: "call" | "message";
+  /** Null when the record came from the server, which does not say. */
+  contactMethod: "call" | "message" | null;
   reportedAtMs: number | null;
 };
 
@@ -27,6 +30,8 @@ type State = {
   hydrate: () => Promise<void>;
   started: (orderId: string, contactMethod: "call" | "message", atMs: number) => void;
   reported: (orderId: string, atMs: number) => void;
+  /** The server's word replaces this phone's (`noShowFromServer`): adopt it, or forget the job. */
+  replace: (orderId: string, record: CashNoShowRecord | null) => void;
 };
 
 function save(byOrder: Record<string, CashNoShowRecord>) {
@@ -38,7 +43,7 @@ function valid(value: unknown): value is CashNoShowRecord {
   return (
     typeof record === "object" && record !== null &&
     Number.isFinite(record.startedAtMs) &&
-    (record.contactMethod === "call" || record.contactMethod === "message") &&
+    (record.contactMethod === "call" || record.contactMethod === "message" || record.contactMethod === null) &&
     (record.reportedAtMs === null || Number.isFinite(record.reportedAtMs))
   );
 }
@@ -64,6 +69,13 @@ export const useCashNoShow = create<State>((set, get) => ({
   },
   started: (orderId, contactMethod, atMs) => {
     const byOrder = { ...get().byOrder, [orderId]: { startedAtMs: atMs, contactMethod, reportedAtMs: null } };
+    set({ byOrder });
+    save(byOrder);
+  },
+  replace: (orderId, record) => {
+    const byOrder = { ...get().byOrder };
+    if (record) byOrder[orderId] = record;
+    else delete byOrder[orderId];
     set({ byOrder });
     save(byOrder);
   },

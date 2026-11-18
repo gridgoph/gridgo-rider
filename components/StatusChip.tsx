@@ -39,13 +39,20 @@ type Props = {
   icon: StatusIconName;
 };
 
-const TONE = {
-  success: { border: "border-success", text: "text-success", token: "success" },
-  warning: { border: "border-warning", text: "text-warning", token: "warning" },
-  error: { border: "border-error", text: "text-error", token: "error" },
-  info: { border: "border-info", text: "text-info", token: "info" },
-  neutral: { border: "border-outline", text: "text-text-secondary", token: "textSecondary" },
+/*
+  `label` names the token the words are set in. Light `warning` is 2.65:1 on
+  white — under AA for 12px text — so a warning chip keeps its colour on the
+  border and icon and sets its words in ink. Every label token is held to
+  4.5:1 on `surface` in both themes by `StatusChip.test.tsx`.
+*/
+export const STATUS_CHIP_TONES = {
+  success: { border: "border-success", text: "text-success", token: "success", label: "success" },
+  warning: { border: "border-warning", text: "text-text-primary", token: "warning", label: "textPrimary" },
+  error: { border: "border-error", text: "text-error", token: "error", label: "error" },
+  info: { border: "border-info", text: "text-info", token: "info", label: "info" },
+  neutral: { border: "border-outline", text: "text-text-secondary", token: "textSecondary", label: "textSecondary" },
 } as const;
+const TONE = STATUS_CHIP_TONES;
 
 /**
  * Colour never carries meaning alone. A status is always icon + label +

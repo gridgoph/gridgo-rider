@@ -24,6 +24,7 @@ import { UpdateRequiredPanel } from "@/components/UpdateRequired";
 import { tripDestination } from "@/lib/tripNav";
 import { useAcknowledgementReceipt } from "@/hooks/useAcknowledgementReceipt";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
+import { useCashNoShowRecord } from "@/hooks/useCashNoShowRecord";
 import { useOrderCash } from "@/hooks/useOrderCash";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
@@ -57,7 +58,6 @@ import {
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 import { cashAmountsOf, isCashOrder, newIdempotencyKey } from "@/lib/cash";
 import { useActiveTrip } from "@/store/activeTrip";
-import { useCashNoShow } from "@/store/cashNoShow";
 
 const FILL = { flex: 1 } as const;
 const HIDDEN = { display: "none" } as const;
@@ -149,13 +149,13 @@ export default function DeliveryProofScreen() {
   const [signatureFileId, setSignatureFileId] = useState<string | null>(null);
   // Cash at the door: the rider's tick, and one key per collection or delivery body.
   const [cashReceived, setCashReceived] = useState(false);
-  const [collectKey, setCollectKey] = useState<{ fileId: string; key: string } | null>(null);
+  // The first collection request, kept whole: a retry after a lost reply must send
+  // the same body under the same key, or the server refuses it as a conflict.
+  const [collectAttempt, setCollectAttempt] = useState<{
+    body: { expectedVersion: number; amountReceivedMinor: number; evidenceFileId: string };
+    key: string;
+  } | null>(null);
   const [deliveryKey, setDeliveryKey] = useState<{ body: string; key: string } | null>(null);
-  const noShow = useCashNoShow((s) => (id ? s.byOrder[id] : undefined));
-  const hydrateNoShow = useCashNoShow((s) => s.hydrate);
-  useEffect(() => {
-    void hydrateNoShow();
-  }, [hydrateNoShow]);
 
   // Tell the rider up front when this server cannot hold files, rather than
   // letting them photograph a doorway and discover it on the upload.
@@ -240,14 +240,19 @@ export default function DeliveryProofScreen() {
   const cashJob = order ? isCashOrder(order) : false;
   const amounts = cashAmountsOf(order);
   const orderCash = useOrderCash(cashJob ? order : null);
+  const noShow = useCashNoShowRecord(cashJob ? id : null, order, orderCash.detail);
   const noShowReported = Boolean(cashJob && noShow?.reportedAtMs);
   const receipt = useAcknowledgementReceipt(receiptCard && !noShowReported ? order : null, {
     onOrder: adoptOrder,
     verify: verifyOrder,
     onClosed: reopenOrder,
     cash: cashJob,
+    cashMark: cashJob ? `${order?.cash?.version ?? 0}|${orderCash.detail?.collectedAt ?? ""}` : null,
   });
-  const cashDue = cashJob && receipt.load.status === "cash_due";
+  // Once the server has the collection, the collect action never shows again;
+  // the receipt it issued is read back instead (`cashMark`).
+  const collectedOnServer = Boolean(orderCash.detail?.collectedAt) || order?.cash?.status === "collected";
+  const cashDue = cashJob && receipt.load.status === "cash_due" && !collectedOnServer;
 
   const [previousId, setPreviousId] = useState(id);
   if (previousId !== id) {
@@ -266,7 +271,7 @@ export default function DeliveryProofScreen() {
     setSignatureUpload(UPLOAD_IDLE);
     setSignatureFileId(null);
     setCashReceived(false);
-    setCollectKey(null);
+    setCollectAttempt(null);
     setDeliveryKey(null);
   }
 
@@ -332,18 +337,30 @@ export default function DeliveryProofScreen() {
 
   async function collectCash() {
     if (!order || !amounts || !orderCash.detail || !evidenceFileId || collectBlocked || busy) return;
-    const key = collectKey?.fileId === evidenceFileId ? collectKey.key : newIdempotencyKey("collect");
-    setCollectKey({ fileId: evidenceFileId, key });
+    // The same door photo is the same intent: resend the first request exactly.
+    const attempt =
+      collectAttempt?.body.evidenceFileId === evidenceFileId
+        ? collectAttempt
+        : {
+            body: { expectedVersion: orderCash.detail.version, amountReceivedMinor: amounts.collectMinor, evidenceFileId },
+            key: newIdempotencyKey("collect"),
+          };
+    setCollectAttempt(attempt);
     setBusy(true);
     setSubmitError(null);
     try {
-      await receipt.collect(
-        { expectedVersion: orderCash.detail.version, amountReceivedMinor: amounts.collectMinor, evidenceFileId },
-        key,
-      );
+      await receipt.collect(attempt.body, attempt.key);
       void orderCash.reload();
     } catch (e) {
-      if (api.apiErrorCode(e) === "cash_stale") void orderCash.reload();
+      const code = api.apiErrorCode(e);
+      // A definite refusal recorded nothing, so the next tap is a new request.
+      // No reply, or a server error, may have committed: keep the first body.
+      if (e instanceof api.ApiError && e.status < 500) setCollectAttempt(null);
+      // The server may already hold this collection: read the money record and the receipt again.
+      if (code === "cash_stale" || code === "cash_idempotency_conflict" || code === "cash_collection_not_available") {
+        void orderCash.reload();
+        void receipt.retry();
+      }
       setSubmitError(api.tripRefusal(e, "The cash was not recorded. Keep it with you and try again."));
     } finally {
       setBusy(false);

@@ -450,6 +450,14 @@ export type OrderCashDetail = {
   noShowApprovedAt: string | null;
   repaymentConfirmedAt: string | null;
   amounts?: CashAmounts;
+  /**
+   * The no-show wait and report as the server holds them. Not in the rider
+   * projection of gridgo-api dev 140e418; when present they are the truth
+   * (`noShowFromServer`), and both read null again after Operations rejects
+   * a report.
+   */
+  noShowStartedAt?: string | null;
+  noShowReportedAt?: string | null;
 };
 
 export type DispatchOffer = {

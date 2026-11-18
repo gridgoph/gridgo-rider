@@ -9,6 +9,7 @@ import {
   deltaLabel,
   isCashOrder,
   newIdempotencyKey,
+  noShowFromServer,
   noShowReportBlockReason,
   noShowSecondsLeft,
   normaliseReference,
@@ -18,6 +19,7 @@ import {
   topupAmounts,
   topupBlockReason,
   waitMinutesLabel,
+  outsideWalletLabel,
   walletRows,
 } from "@/lib/cash";
 
@@ -212,5 +214,56 @@ describe("the no-show wait", () => {
     expect(noShowReportBlockReason({ secondsLeft: 0, reason: "x", photo: "sending" })).toMatch(/finish sending/);
     expect(noShowReportBlockReason({ secondsLeft: 0, reason: " ", photo: "stored" })).toMatch(/one sentence/);
     expect(noShowReportBlockReason({ secondsLeft: 0, reason: "No answer", photo: "stored" })).toBeNull();
+  });
+});
+
+describe("the phone's no-show record against the server (cash review P1-2)", () => {
+  const STARTED = "2026-11-18T01:00:00.000Z";
+  const REPORTED = "2026-11-18T01:11:00.000Z";
+  const reported = { startedAtMs: Date.parse(STARTED), contactMethod: "call" as const, reportedAtMs: Date.parse(REPORTED) };
+  const job = { riderId: "user_rider", state: "out_for_delivery", cash: { method: "cash", version: 5, status: "due", noShowWaitSeconds: 600 } } as Pick<
+    Order,
+    "riderId" | "state" | "cash"
+  >;
+  const plain = { collectedAt: null, noShowApprovedAt: null };
+
+  it("keeps a report the server still holds", () => {
+    expect(noShowFromServer(reported, job, { ...plain, noShowStartedAt: STARTED, noShowReportedAt: REPORTED }, "user_rider")).toEqual({ kind: "keep" });
+  });
+
+  it("forgets it once Operations rejects the report, which clears the wait too", () => {
+    expect(noShowFromServer(reported, job, { ...plain, noShowStartedAt: null, noShowReportedAt: null }, "user_rider")).toEqual({ kind: "clear" });
+    // A projection that carries only the report field is enough to tell.
+    expect(noShowFromServer(reported, job, { ...plain, noShowReportedAt: null }, "user_rider")).toEqual({ kind: "clear" });
+  });
+
+  it("forgets it once the cash is collected, the return approved, or the job is someone else's", () => {
+    expect(noShowFromServer(reported, job, { ...plain, collectedAt: "2026-11-18T02:00:00Z" }, "user_rider")).toEqual({ kind: "clear" });
+    expect(noShowFromServer(reported, job, { ...plain, noShowApprovedAt: "2026-11-18T02:00:00Z" }, "user_rider")).toEqual({ kind: "clear" });
+    expect(noShowFromServer(reported, { ...job, riderId: "user_other" }, plain, "user_rider")).toEqual({ kind: "clear" });
+    expect(noShowFromServer(reported, { ...job, state: "awaiting_collection" }, plain, "user_rider")).toEqual({ kind: "clear" });
+  });
+
+  it("takes the server's wait when this phone lost track of it", () => {
+    expect(noShowFromServer(undefined, job, { ...plain, noShowStartedAt: STARTED, noShowReportedAt: null }, "user_rider")).toEqual({
+      kind: "adopt",
+      record: { startedAtMs: Date.parse(STARTED), contactMethod: null, reportedAtMs: null },
+    });
+  });
+
+  it("does not guess on a projection without the no-show fields", () => {
+    expect(noShowFromServer(reported, job, plain, "user_rider")).toEqual({ kind: "keep" });
+  });
+});
+
+describe("wallet history with cash off (cash review P3)", () => {
+  it("keeps every row, worded without cash", () => {
+    const [held] = walletRows(
+      [{ id: "h", type: "wallet_reserved", orderId: "o", at: "2026-11-18T01:00:00Z", balanceDeltaMinor: 0, availableDeltaMinor: -2_230, reservedDeltaMinor: 2_230, amountMinor: 2_230 }],
+      { cashOn: false },
+    );
+    expect(held.title).toBe("Held for a job");
+    expect(outsideWalletLabel(false)).toBe("Outside wallet");
+    expect(outsideWalletLabel(true)).toBe("In cash");
   });
 });

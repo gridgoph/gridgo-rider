@@ -15,7 +15,15 @@ import { SkeletonText } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { chipPesos, deltaLabel, topupAmounts, topupStatusChip, walletRows, type WalletRow } from "@/lib/cash";
+import {
+  chipPesos,
+  deltaLabel,
+  outsideWalletLabel,
+  topupAmounts,
+  topupStatusChip,
+  walletRows,
+  type WalletRow,
+} from "@/lib/cash";
 import { earningsDayLabel } from "@/lib/riderEarnings";
 
 type WalletRead = Awaited<ReturnType<typeof api.getRiderWallet>>;
@@ -67,7 +75,8 @@ export function WalletCard({ wallet, error, cashOn, onRetry, onTopup }: Props) {
   }
 
   const { balanceMinor, availableMinor, reservedMinor, lowBalance } = wallet.wallet;
-  const rows = walletRows(wallet.activity);
+  const rows = walletRows(wallet.activity, { cashOn });
+  const outside = outsideWalletLabel(cashOn);
   const openClaims = wallet.incidents.filter((incident) => incident.remainingMinor > 0);
 
   return (
@@ -150,7 +159,7 @@ export function WalletCard({ wallet, error, cashOn, onRetry, onTopup }: Props) {
                       : "min-h-14 flex-row items-start gap-3 border-b border-outline-subtle p-4"
                   }
                   accessibilityRole="text"
-                  accessibilityLabel={`${row.title}${chip ? `, ${chip.label}` : ""}, ${amount}${row.cashMinor != null && !row.topup ? " in cash" : ""}, ${earningsDayLabel(row.at)}${row.detail ? `, ${row.detail}` : ""}`}
+                  accessibilityLabel={`${row.title}${chip ? `, ${chip.label}` : ""}, ${amount}${row.cashMinor != null && !row.topup ? `, ${outside.toLowerCase()}` : ""}, ${earningsDayLabel(row.at)}${row.detail ? `, ${row.detail}` : ""}`}
                   testID="wallet-activity-row"
                 >
                   <View className="pt-0.5">
@@ -168,7 +177,7 @@ export function WalletCard({ wallet, error, cashOn, onRetry, onTopup }: Props) {
                     {chip ? (
                       <StatusChip tone={chip.tone} icon={chip.icon} label={chip.label} />
                     ) : row.cashMinor != null ? (
-                      <Text className="text-caption text-text-muted">In cash</Text>
+                      <Text className="text-caption text-text-secondary">{outside}</Text>
                     ) : null}
                   </View>
                 </View>

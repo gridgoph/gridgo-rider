@@ -27,6 +27,13 @@ type Options = {
    * refused while the cash is unpaid.
    */
   cash?: boolean;
+  /**
+   * A cash job's money record as last read (its cash version and whether the
+   * server has the collection). When it moves, the receipt is read again: a
+   * collection whose reply was lost still issued the receipt, and the rider
+   * gets it from the read instead of an action that would only be refused.
+   */
+  cashMark?: string | null;
 };
 
 const UNVERIFIED: ReceiptProblem = {
@@ -55,7 +62,10 @@ const UNVERIFIED: ReceiptProblem = {
  * means the server has closed the window; `onClosed` re-reads the job to
  * learn why.
  */
-export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, verify, onClosed, cash = false }: Options) {
+export function useAcknowledgementReceipt(
+  order: api.Order | null,
+  { onOrder, verify, onClosed, cash = false, cashMark = null }: Options,
+) {
   const stage = receiptStage(order);
   const orderId = order?.id ?? null;
 
@@ -130,13 +140,16 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
         adopt({ status: "problem", problem });
         if (problem.kind === "closed" || problem.kind === "gone") latest.current.onClosed();
       });
-  }, [openKey, orderId, nextRead, cash]);
+    // `cashMark` is a dependency for its change alone: a moved money record re-reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey, orderId, nextRead, cash, cash ? cashMark : null]);
 
   /*
     The client's exact cash, recorded at the door. The server issues the
     receipt, marked Cash, in the same step and returns it; it is adopted here
     and nowhere else, like a read. A key per attempt: the caller keeps it
-    across retries of the same evidence so a lost reply cannot record twice.
+    across retries with the same body, so a lost reply returns the first
+    answer instead of conflicting with it.
   */
   const [collecting, setCollecting] = useState(false);
   const collect = useCallback(

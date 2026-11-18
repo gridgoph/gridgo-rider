@@ -185,6 +185,20 @@ const TITLES: Record<string, { title: string; icon: WalletRow["icon"] }> = {
   cash_incident_resolution: { title: "Shop returned your cash", icon: "claim" },
 };
 
+/*
+  With cash off the history stays — it is the rider's money — but nothing on
+  the screen talks about cash jobs. These replace the titles that do.
+*/
+const TITLES_CASH_OFF: Record<string, string> = {
+  wallet_reserved: "Held for a job",
+  cash_incident_resolution: "Shop repaid you",
+};
+
+/** The marker beside money that moved outside the wallet. */
+export function outsideWalletLabel(cashOn: boolean): string {
+  return cashOn ? "In cash" : "Outside wallet";
+}
+
 const CASH_HANDS = new Set(["shop_paid", "cash_collected", "cash_incident_opened", "cash_incident_resolution"]);
 
 /**
@@ -195,7 +209,7 @@ const CASH_HANDS = new Set(["shop_paid", "cash_collected", "cash_incident_opened
  * decision is always the later one). A pending top-up has not changed what the
  * rider can spend, so it shows its amount without a sign.
  */
-export function walletRows(activity: readonly WalletActivity[]): WalletRow[] {
+export function walletRows(activity: readonly WalletActivity[], { cashOn = true }: { cashOn?: boolean } = {}): WalletRow[] {
   const sorted = [...activity].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const decided = new Map<string, WalletActivity[]>();
   for (const row of sorted) {
@@ -228,7 +242,7 @@ export function walletRows(activity: readonly WalletActivity[]): WalletRow[] {
     rows.push({
       id: row.id,
       at: row.at,
-      title: known.title,
+      title: (!cashOn && TITLES_CASH_OFF[row.type]) || known.title,
       detail: null,
       deltaMinor: CASH_HANDS.has(row.type) || delta === 0 ? null : delta,
       cashMinor: CASH_HANDS.has(row.type) || delta === 0 ? row.amountMinor : null,
@@ -258,6 +272,57 @@ export function topupStatusChip(status: TopupStatus): {
       return { label: "Checking", tone: "warning", icon: "clock" };
   }
 }
+
+/**
+ * What the server's records say about this phone's no-show record for a job.
+ *
+ * - `clear`: the no-show is over — the client's cash was collected, Operations
+ *   approved the return, or the job is no longer this rider's to deliver.
+ * - `adopt`: the server projects the wait and report (`noShowStartedAt`,
+ *   `noShowReportedAt`) and they differ from the phone — including both null
+ *   after Operations rejected a report, which lets the rider wait again or
+ *   collect.
+ * - `keep`: nothing on the server contradicts the phone. On a projection
+ *   without those two fields a rejected report cannot be told apart from a
+ *   pending one, so the phone keeps what it saw rather than guess.
+ */
+export function noShowFromServer(
+  local: CashNoShowLike | undefined,
+  order: Pick<Order, "riderId" | "state" | "cash"> | null,
+  detail: Pick<OrderCashDetail, "collectedAt" | "noShowApprovedAt" | "noShowStartedAt" | "noShowReportedAt"> | null,
+  riderId: string | null,
+): { kind: "keep" } | { kind: "clear" } | { kind: "adopt"; record: CashNoShowLike } {
+  if (!order || !detail) return { kind: "keep" };
+  const mine = Boolean(riderId) && order.riderId === riderId && ACTIVE_DELIVERY.has(order.state);
+  if (!mine || detail.collectedAt || detail.noShowApprovedAt || order.cash?.status === "online_repayment_required") {
+    return local ? { kind: "clear" } : { kind: "keep" };
+  }
+  const knowsReport = "noShowReportedAt" in detail;
+  const knowsStart = "noShowStartedAt" in detail;
+  if (!knowsReport && !knowsStart) return { kind: "keep" };
+  const reportedAtMs = timeOf(detail.noShowReportedAt);
+  const startedAtMs = knowsStart ? timeOf(detail.noShowStartedAt) : (local?.startedAtMs ?? reportedAtMs);
+  // No wait on the server, or a report this phone sent that the server no
+  // longer holds: Operations rejected it and cleared the wait with it.
+  if (startedAtMs == null || (knowsReport && reportedAtMs == null && local?.reportedAtMs)) {
+    return local ? { kind: "clear" } : { kind: "keep" };
+  }
+  const record = {
+    startedAtMs,
+    contactMethod: local?.contactMethod ?? null,
+    reportedAtMs: knowsReport ? reportedAtMs : (local?.reportedAtMs ?? null),
+  };
+  if (local && local.startedAtMs === record.startedAtMs && local.reportedAtMs === record.reportedAtMs) return { kind: "keep" };
+  return { kind: "adopt", record };
+}
+
+function timeOf(value: string | null | undefined): number | null {
+  const ms = value ? Date.parse(value) : NaN;
+  return Number.isFinite(ms) ? ms : null;
+}
+
+type CashNoShowLike = { startedAtMs: number; contactMethod: "call" | "message" | null; reportedAtMs: number | null };
+const ACTIVE_DELIVERY = new Set(["rider_assigned", "picked_up", "out_for_delivery"]);
 
 /** Seconds left on the no-show wait, never below zero. Null before the wait starts. */
 export function noShowSecondsLeft(startedAtMs: number | null, waitSeconds: number, nowMs: number): number | null {

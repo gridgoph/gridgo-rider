@@ -40,7 +40,7 @@ jest.mock("@/components/CashSlip", () => ({ ExactCash: "ExactCash" }));
 jest.mock("@/components/CheckboxRow", () => ({ CheckboxRow: "CheckboxRow" }));
 jest.mock("@/components/SecondaryButton", () => ({ SecondaryButton: "SecondaryButton" }));
 jest.mock("@/hooks/useOrderCash", () => ({ useOrderCash: () => ({ detail: null, fresh: false, error: null, reload: jest.fn() }) }));
-jest.mock("@/store/cashNoShow", () => ({ useCashNoShow: (select) => select({ byOrder: {}, hydrate: () => Promise.resolve() }) }));
+jest.mock("@/hooks/useCashNoShowRecord", () => ({ useCashNoShowRecord: () => undefined }));
 jest.mock("@/components/ReceiptSignature", () => ({ ReceiptSignature: "ReceiptSignature" }));
 jest.mock("@/lib/proofPhoto", () => ({ receiptSignatureEvidence: jest.fn() }));
 // The receipt has its own suite (deliveryReceipt); payment is the subject here.

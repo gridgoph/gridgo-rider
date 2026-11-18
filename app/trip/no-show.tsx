@@ -14,6 +14,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { ProofStepSkeleton } from "@/components/SkeletonScreens";
 import { StickyActionBar, StickyActionFallback } from "@/components/StickyActionBar";
+import { useCashNoShowRecord } from "@/hooks/useCashNoShowRecord";
 import { useCashPhoto } from "@/hooks/useCashPhoto";
 import { useOrderCash } from "@/hooks/useOrderCash";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -55,8 +56,7 @@ export default function CashNoShowScreen() {
   const id = typeof orderId === "string" ? orderId : null;
   const { order, loading, error: loadError } = useTripOrder(id);
   const cash = useOrderCash(order);
-  const record = useCashNoShow((s) => (id ? s.byOrder[id] : undefined));
-  const hydrate = useCashNoShow((s) => s.hydrate);
+  const record = useCashNoShowRecord(id, order, cash.detail);
   const markStarted = useCashNoShow((s) => s.started);
   const markReported = useCashNoShow((s) => s.reported);
   const photo = useCashPhoto("cash_no_show_photo", "camera");
@@ -66,12 +66,14 @@ export default function CashNoShowScreen() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [actionBarHeight, setActionBarHeight] = useState(0);
-  const [startKey] = useState(() => newIdempotencyKey("no-show-start"));
-  const [reportKey, setReportKey] = useState<{ body: string; key: string } | null>(null);
-
-  useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
+  const [startAttempt, setStartAttempt] = useState<{
+    body: { expectedVersion: number; contactMethod: "call" | "message" };
+    key: string;
+  } | null>(null);
+  const [reportAttempt, setReportAttempt] = useState<{
+    body: { expectedVersion: number; reason: string; photoFileId: string };
+    key: string;
+  } | null>(null);
 
   const waitSeconds = order?.cash?.noShowWaitSeconds ?? 600;
   const secondsLeft = noShowSecondsLeft(record?.startedAtMs ?? null, waitSeconds, now);
@@ -88,13 +90,18 @@ export default function CashNoShowScreen() {
     if (!order || !cash.detail || busy) return;
     setBusy("start");
     setError(null);
+    const body = { expectedVersion: cash.detail.version, contactMethod: contact };
+    const attempt =
+      startAttempt && startAttempt.body.contactMethod === contact ? startAttempt : { body, key: newIdempotencyKey("no-show-start") };
+    setStartAttempt(attempt);
     try {
-      await api.startCashNoShow(order.id, { expectedVersion: cash.detail.version, contactMethod: contact }, startKey);
+      await api.startCashNoShow(order.id, attempt.body, attempt.key);
       markStarted(order.id, contact, Date.now());
       setNow(Date.now());
       void cash.reload();
     } catch (e) {
       const code = api.apiErrorCode(e);
+      if (e instanceof api.ApiError && e.status < 500) setStartAttempt(null);
       if (code === "cash_stale") void cash.reload();
       if (code === "cash_no_show_not_available" && !record) {
         // The server already has a wait for this job that this phone lost
@@ -113,17 +120,21 @@ export default function CashNoShowScreen() {
 
   async function report() {
     if (!order || !cash.detail || !photo.fileId || reportBlocked || busy) return;
-    const body = { expectedVersion: cash.detail.version, reason: reason.trim(), photoFileId: photo.fileId };
-    const text = JSON.stringify(body);
-    const key = reportKey?.body === text ? reportKey.key : newIdempotencyKey("no-show-report");
-    setReportKey({ body: text, key });
+    const fresh = { expectedVersion: cash.detail.version, reason: reason.trim(), photoFileId: photo.fileId };
+    // Same photo and words as an unanswered report: resend it exactly, key and version.
+    const attempt =
+      reportAttempt && reportAttempt.body.photoFileId === fresh.photoFileId && reportAttempt.body.reason === fresh.reason
+        ? reportAttempt
+        : { body: fresh, key: newIdempotencyKey("no-show-report") };
+    setReportAttempt(attempt);
     setBusy("report");
     setError(null);
     try {
-      await api.reportCashNoShow(order.id, body, key);
+      await api.reportCashNoShow(order.id, attempt.body, attempt.key);
       markReported(order.id, Date.now());
     } catch (e) {
       const code = api.apiErrorCode(e);
+      if (e instanceof api.ApiError && e.status < 500) setReportAttempt(null);
       if (code === "cash_stale") void cash.reload();
       if (code === "cash_evidence_already_bound" || code === "cash_evidence_required") photo.forget();
       setError(api.tripRefusal(e, "The report was not sent. Stay at the door and try again.").message);

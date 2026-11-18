@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 
+import { ApprovalNotice } from "@/components/ApprovalNotice";
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { CashPhotoField } from "@/components/CashPhotoField";
 import { FormScroll } from "@/components/FormScroll";
@@ -25,6 +26,8 @@ import {
   topupAmounts,
   topupBlockReason,
 } from "@/lib/cash";
+import { approvalPresentation } from "@/lib/riderApproval";
+import { useSession } from "@/store/session";
 
 type Loaded = { settings: api.OperationalSettings | null; amounts: number[] };
 
@@ -40,10 +43,15 @@ type Loaded = { settings: api.OperationalSettings | null; amounts: number[] };
  * The QR is whatever a Super Admin last activated; with none, the screen says
  * so rather than inventing an account number. One key per body, so a retry
  * after a lost reply cannot file the same payment twice.
+ *
+ * Like the Wallet tab, it is closed to a rider Operations has not approved:
+ * the approval notice instead of a payment form, and no wallet read at all.
+ * Opening the route directly (a link, a restored stack) must not get round it.
  */
 export default function WalletTopupScreen() {
   const router = useRouter();
   const { amount } = useLocalSearchParams<{ amount?: string }>();
+  const canWork = approvalPresentation(useSession((s) => s.user)).canWork;
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [amountMinor, setAmountMinor] = useState<number | null>(() => {
@@ -60,6 +68,7 @@ export default function WalletTopupScreen() {
   const [qrFailed, setQrFailed] = useState(false);
 
   useEffect(() => {
+    if (!canWork) return;
     let live = true;
     void Promise.allSettled([api.getSettings(), api.getRiderWallet()]).then(([settings, wallet]) => {
       if (!live) return;
@@ -74,7 +83,7 @@ export default function WalletTopupScreen() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [canWork]);
 
   const cashOn = cashEnabled(loaded?.settings);
   const qrUrl = paymentQrUrl(loaded?.settings);
@@ -86,7 +95,7 @@ export default function WalletTopupScreen() {
       : topupBlockReason({ amountMinor: chosen, reference, screenshot: screenshot.phase });
 
   async function submit() {
-    if (blocked || busy || chosen == null) return;
+    if (!canWork || blocked || busy || chosen == null) return;
     const body = {
       amountMinor: chosen,
       reference: normaliseReference(reference),
@@ -107,6 +116,19 @@ export default function WalletTopupScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!canWork) {
+    return (
+      <Screen edges={[]}>
+        <FormScroll contentClassName="gg-page gap-6 pb-8 pt-6" stickyActionHeight={actionBarHeight}>
+          <ApprovalNotice />
+        </FormScroll>
+        <StickyActionBar onHeight={setActionBarHeight} note={null}>
+          <PrimaryButton label="Back to wallet" onPress={() => router.back()} size="large" />
+        </StickyActionBar>
+      </Screen>
+    );
   }
 
   if (sent) {
