@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, View } from "react-native";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
+import { ExactCash } from "@/components/CashSlip";
+import { CheckboxRow } from "@/components/CheckboxRow";
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
@@ -22,6 +24,8 @@ import { UpdateRequiredPanel } from "@/components/UpdateRequired";
 import { tripDestination } from "@/lib/tripNav";
 import { useAcknowledgementReceipt } from "@/hooks/useAcknowledgementReceipt";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
+import { useCashNoShowRecord } from "@/hooks/useCashNoShowRecord";
+import { useOrderCash } from "@/hooks/useOrderCash";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
 import { useRefusalAction } from "@/hooks/useRefusalAction";
 import { useTripOrder } from "@/hooks/useTripOrder";
@@ -52,6 +56,7 @@ import {
   owesAcknowledgementReceipt,
 } from "@/lib/riderOrder";
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
+import { cashAmountsOf, isCashOrder, newIdempotencyKey } from "@/lib/cash";
 import { useActiveTrip } from "@/store/activeTrip";
 
 const FILL = { flex: 1 } as const;
@@ -99,6 +104,15 @@ const HIDDEN = { display: "none" } as const;
  * is required to close a door delivery; the client-agreed package photo is
  * optional. A refusal of that photo removes it and keeps the door photo, so
  * the rider confirms again without retaking anything.
+ *
+ * A cash job adds one step before the receipt (gridgo-api
+ * `docs/CASH_ON_DELIVERY_API.md`, step 3): the door photo first, then the
+ * client's exact cash, ticked as received and recorded with
+ * `POST /dispatch/:id/cash/collect`. That call issues the receipt marked Cash,
+ * which the client then signs as on any job. Collection and the signed
+ * handover are two facts: recording the cash never fakes a signature, and the
+ * delivery still needs one. If the client is not there or will not pay, the
+ * no-show screen takes over (`/trip/no-show`).
  */
 export default function DeliveryProofScreen() {
   const router = useRouter();
@@ -133,6 +147,15 @@ export default function DeliveryProofScreen() {
   const [drawing, setDrawing] = useState(false);
   const [signatureUpload, setSignatureUpload] = useState<EvidenceUpload>(UPLOAD_IDLE);
   const [signatureFileId, setSignatureFileId] = useState<string | null>(null);
+  // Cash at the door: the rider's tick, and one key per collection or delivery body.
+  const [cashReceived, setCashReceived] = useState(false);
+  // The first collection request, kept whole: a retry after a lost reply must send
+  // the same body under the same key, or the server refuses it as a conflict.
+  const [collectAttempt, setCollectAttempt] = useState<{
+    body: { expectedVersion: number; amountReceivedMinor: number; evidenceFileId: string };
+    key: string;
+  } | null>(null);
+  const [deliveryKey, setDeliveryKey] = useState<{ body: string; key: string } | null>(null);
 
   // Tell the rider up front when this server cannot hold files, rather than
   // letting them photograph a doorway and discover it on the upload.
@@ -214,11 +237,22 @@ export default function DeliveryProofScreen() {
   // Hidden while the balance or the code holds the package: the rider has just
   // been told not to hand anything over, so the receipt is not held either.
   const receiptCard = Boolean(order && owesAcknowledgementReceipt(order) && !balanceHeld && !codeHeld);
-  const receipt = useAcknowledgementReceipt(receiptCard ? order : null, {
+  const cashJob = order ? isCashOrder(order) : false;
+  const amounts = cashAmountsOf(order);
+  const orderCash = useOrderCash(cashJob ? order : null);
+  const noShow = useCashNoShowRecord(cashJob ? id : null, order, orderCash.detail);
+  const noShowReported = Boolean(cashJob && noShow?.reportedAtMs);
+  const receipt = useAcknowledgementReceipt(receiptCard && !noShowReported ? order : null, {
     onOrder: adoptOrder,
     verify: verifyOrder,
     onClosed: reopenOrder,
+    cash: cashJob,
+    cashMark: cashJob ? `${order?.cash?.version ?? 0}|${orderCash.detail?.collectedAt ?? ""}` : null,
   });
+  // Once the server has the collection, the collect action never shows again;
+  // the receipt it issued is read back instead (`cashMark`).
+  const collectedOnServer = Boolean(orderCash.detail?.collectedAt) || order?.cash?.status === "collected";
+  const cashDue = cashJob && receipt.load.status === "cash_due" && !collectedOnServer;
 
   const [previousId, setPreviousId] = useState(id);
   if (previousId !== id) {
@@ -236,6 +270,9 @@ export default function DeliveryProofScreen() {
     setInked(false);
     setSignatureUpload(UPLOAD_IDLE);
     setSignatureFileId(null);
+    setCashReceived(false);
+    setCollectAttempt(null);
+    setDeliveryKey(null);
   }
 
   // The card follows the door photo: by then the package is in the client's
@@ -288,9 +325,53 @@ export default function DeliveryProofScreen() {
     return fileId;
   }
 
+  const collectBlocked = !cashDue
+    ? null
+    : !amounts || !orderCash.detail
+      ? "Loading this job's cash amounts."
+      : !evidenceFileId
+        ? "Take the door photo first. It is GRIDGO's record of where you collected the cash."
+        : !cashReceived
+          ? `Count the client's cash, then tick that you received exactly ${api.formatPhp(amounts.collectMinor)}.`
+          : null;
+
+  async function collectCash() {
+    if (!order || !amounts || !orderCash.detail || !evidenceFileId || collectBlocked || busy) return;
+    // The same door photo is the same intent: resend the first request exactly.
+    const attempt =
+      collectAttempt?.body.evidenceFileId === evidenceFileId
+        ? collectAttempt
+        : {
+            body: { expectedVersion: orderCash.detail.version, amountReceivedMinor: amounts.collectMinor, evidenceFileId },
+            key: newIdempotencyKey("collect"),
+          };
+    setCollectAttempt(attempt);
+    setBusy(true);
+    setSubmitError(null);
+    try {
+      await receipt.collect(attempt.body, attempt.key);
+      void orderCash.reload();
+    } catch (e) {
+      const code = api.apiErrorCode(e);
+      // A definite refusal recorded nothing, so the next tap is a new request.
+      // No reply, or a server error, may have committed: keep the first body.
+      if (e instanceof api.ApiError && e.status < 500) setCollectAttempt(null);
+      // The server may already hold this collection: read the money record and the receipt again.
+      if (code === "cash_stale" || code === "cash_idempotency_conflict" || code === "cash_collection_not_available") {
+        void orderCash.reload();
+        void receipt.retry();
+      }
+      setSubmitError(api.tripRefusal(e, "The cash was not recorded. Keep it with you and try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const blocked = !order
     ? "Loading the job."
-    : balanceHeld
+    : noShowReported
+      ? "Your no-show report is with Operations. Take the package to GRIDGO Office."
+      : balanceHeld
       ? "Operations has not confirmed the client's balance due. Call them before you hand the package over."
       : receiptDeliveryHold(receipt.stage, receipt.load) ?? codeBlock ?? evidenceBlockReason(
           evidence.evidence,
@@ -318,10 +399,10 @@ export default function DeliveryProofScreen() {
               signerName: signerName.trim(),
             }
           : null;
-      const updated = await api.recordDelivery(order.id, {
+      const body = {
         ...(signature ? { receiptMode: "digital" as const, acknowledgementSignature: signature } : {}),
         evidenceFileId,
-        evidenceType: evidence.evidence?.kind === "signature" ? "signature" : "photo",
+        evidenceType: evidence.evidence?.kind === "signature" ? ("signature" as const) : ("photo" as const),
         ...(handover.load.status === "ready" ? { otp } : {}),
         ...handoffReminderFields({
           toOffice,
@@ -329,7 +410,12 @@ export default function DeliveryProofScreen() {
           photoConsent,
           packagePhotoFileId,
         }),
-      });
+      };
+      // A cash delivery settles money, so it carries a key; the same body keeps the same key.
+      const bodyText = JSON.stringify(body);
+      const key = cashJob ? (deliveryKey?.body === bodyText ? deliveryKey.key : newIdempotencyKey("delivery")) : undefined;
+      if (key) setDeliveryKey({ body: bodyText, key });
+      const updated = key ? await api.recordDelivery(order.id, body, key) : await api.recordDelivery(order.id, body);
       // Adopted here as well, so the receipt is gone before the screen is.
       adoptOrder(updated);
       router.back();
@@ -424,6 +510,59 @@ export default function DeliveryProofScreen() {
     </>
   );
 
+  const evidenceCard = (
+      <EvidenceCapture
+        key={id}
+        title={toOffice ? "Evidence at the office" : "Evidence at the door"}
+        purpose="GRIDGO keeps this with the job as the record that the package was handed over."
+        instruction={
+          toOffice
+            ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."
+            : "Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
+        }
+        evidence={evidence.evidence}
+        upload={evidence.upload}
+        captureError={evidence.captureError}
+        cameraBlocked={evidence.cameraBlocked}
+        onTakePhoto={() => void evidence.takePhoto()}
+        onRetry={evidence.retry}
+        onClear={evidence.clear}
+        onSignature={evidence.attachSignature}
+        failureAction={
+          uploadRefusal.actionLabel && uploadRefusal.onAction
+            ? { label: uploadRefusal.actionLabel, onPress: uploadRefusal.onAction }
+            : null
+        }
+        disabled={busy || balanceHeld || codeHeld || noShowReported}
+      />
+  );
+
+  // What to collect, inside the receipt card the Cash receipt then opens in.
+  const cashCollection =
+    cashDue && amounts ? (
+      <View className="gap-4" testID="cash-collection">
+        <ExactCash
+          label="Collect from the client, in cash"
+          minor={amounts.collectMinor}
+          note="Exactly this amount. Count it in front of them before you tick."
+          testID="collect-cash-amount"
+        />
+        <CheckboxRow
+          checked={cashReceived}
+          onChange={setCashReceived}
+          label={`I received exactly ${api.formatPhp(amounts.collectMinor)} in cash`}
+          hint="GRIDGO then issues the receipt, marked Cash, for the client to sign."
+          disabled={busy || !evidenceFileId}
+          testID="cash-received-confirm"
+        />
+        <SecondaryButton
+          label="Client not here or won't pay"
+          onPress={() => router.push({ pathname: "/trip/no-show", params: { orderId: order?.id ?? "" } })}
+          disabled={busy}
+        />
+      </View>
+    ) : null;
+
   if (needsUpdate) {
     return (
       <Screen edges={[]}>
@@ -485,7 +624,18 @@ export default function DeliveryProofScreen() {
                 />
               ) : null}
 
-              {receiptCard ? (
+              {noShowReported ? (
+                <InlineNotice
+                  tone="warning"
+                  icon="clock"
+                  title="No-show reported"
+                  body="Operations has your report. Take the package to GRIDGO Office. When they confirm it is back, the shop payment returns to your wallet."
+                />
+              ) : null}
+
+              {cashJob && !noShowReported && receipt.stage === "at_door" ? evidenceCard : null}
+
+              {receiptCard && !noShowReported ? (
                 <ReceiptReminder
                   stage={receipt.stage}
                   load={receipt.load}
@@ -496,6 +646,7 @@ export default function DeliveryProofScreen() {
                   handedOver={receiptHandedOver}
                   onToggle={() => setReceiptHandedOver((v) => !v)}
                   disabled={busy}
+                  cashCollection={cashCollection}
                   signing={
                     <ReceiptSignature
                       padRef={padRef}
@@ -551,30 +702,7 @@ export default function DeliveryProofScreen() {
                 />
               ) : null}
 
-              <EvidenceCapture
-                key={id}
-                title={toOffice ? "Evidence at the office" : "Evidence at the door"}
-                purpose="GRIDGO keeps this with the job as the record that the package was handed over."
-                instruction={
-                  toOffice
-                    ? "Photograph the package where you leave it, with the shelf or counter in frame. It is both your proof the job reached GRIDGO Office and the supplier's proof the job was fulfilled."
-                    : "Photograph the package with the door or gate number in frame. It is both your proof of handover and the supplier's proof the job was fulfilled."
-                }
-                evidence={evidence.evidence}
-                upload={evidence.upload}
-                captureError={evidence.captureError}
-                cameraBlocked={evidence.cameraBlocked}
-                onTakePhoto={() => void evidence.takePhoto()}
-                onRetry={evidence.retry}
-                onClear={evidence.clear}
-                onSignature={evidence.attachSignature}
-                failureAction={
-                  uploadRefusal.actionLabel && uploadRefusal.onAction
-                    ? { label: uploadRefusal.actionLabel, onPress: uploadRefusal.onAction }
-                    : null
-                }
-                disabled={busy || balanceHeld || codeHeld}
-              />
+              {cashJob && (noShowReported || receipt.stage === "at_door") ? null : evidenceCard}
 
               {reminderCard ? (
                 <HandoffReminderCard
@@ -603,13 +731,20 @@ export default function DeliveryProofScreen() {
 
       <StickyActionBar
         onHeight={setActionBarHeight}
-        note={promptShown ? (codeComplete ? null : codeBlock) : order ? blocked : null}
+        note={promptShown ? (codeComplete ? null : codeBlock) : order ? (cashDue ? collectBlocked : blocked) : null}
       >
         {promptShown ? (
           <PrimaryButton
             label="Continue"
             onPress={() => setPromptOpen(false)}
             disabled={!codeComplete || busy || escalating}
+            size="large"
+          />
+        ) : order && cashDue ? (
+          <PrimaryButton
+            label={busy ? "Recording…" : amounts ? `Record ${api.formatPhp(amounts.collectMinor)} received` : "Record cash received"}
+            onPress={() => void collectCash()}
+            disabled={busy || Boolean(collectBlocked)}
             size="large"
           />
         ) : order ? (

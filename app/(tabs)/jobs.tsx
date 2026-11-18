@@ -23,6 +23,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { closedFromRefusal, DISPATCH_CLOSED_TITLE, dispatchClosedSentence } from "@/lib/dispatchHours";
 import { approvalPresentation } from "@/lib/riderApproval";
+import { cashAcceptKey, isCashOrder } from "@/lib/cash";
 import { offerIdOf } from "@/lib/dispatchOffer";
 import { selectOffers } from "@/lib/riderOrder";
 import { useActiveTrip } from "@/store/activeTrip";
@@ -159,7 +160,13 @@ export default function JobsScreen() {
     setAcceptError(null);
     try {
       const listed = offers?.find((job) => job.id === id);
-      setOrder(await api.acceptOffer(id, listed ? offerIdOf(listed) : null));
+      const offerId = listed ? offerIdOf(listed) : null;
+      // A cash accept is only reachable after the have-the-cash tick (`OfferCard`).
+      setOrder(
+        listed && isCashOrder(listed) && offerId
+          ? await api.acceptOffer(id, offerId, { shopCashConfirmed: true, idempotencyKey: cashAcceptKey(offerId) })
+          : await api.acceptOffer(id, offerId),
+      );
       // A pool read already in flight would answer without this job and take
       // the card, confirmation and all, off the screen. Retire it.
       nextRead();

@@ -416,6 +416,19 @@ function RootStack() {
         name="trip/details"
         options={{ title: "Trip details", ...multiOriginPushedScreenOptions }}
       />
+      {/* Cash jobs (gridgo-api#360): the counter payment, the door's no-show wait, and a wallet top-up. */}
+      <Stack.Screen
+        name="trip/shop-payment"
+        options={{ title: "Pay the shop", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="trip/no-show"
+        options={{ title: "Client not there", ...multiOriginPushedScreenOptions }}
+      />
+      <Stack.Screen
+        name="wallet/topup"
+        options={{ title: "Top up wallet", ...multiOriginPushedScreenOptions }}
+      />
       <Stack.Screen
         name="trip/pickup"
         options={{ title: "Shop check", ...multiOriginPushedScreenOptions }}

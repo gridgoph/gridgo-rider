@@ -88,3 +88,41 @@ describe("the one button", () => {
     expect(tripStepAction(office, "delivery_proof", "hand_over")).toMatchObject({ label: "Drop it off" });
   });
 });
+
+describe("a cash job (gridgo-api#360)", () => {
+  const cash = trip({
+    cash: { method: "cash", version: 2, status: "reserved", noShowWaitSeconds: 600 },
+    cashAmounts: { shopMinor: 40_000, collectMinor: 66_900, gridgoMinor: 19_780, riderMinor: 7_120 },
+  } as never);
+
+  it("pays the shop before the check, and says the exact amount", () => {
+    expect(tripStepAction(cash, "pickup_checks", "check", "pay_shop")).toEqual({
+      kind: "open",
+      label: "Pay the shop",
+      route: "/trip/shop-payment",
+    });
+    expect(tripStepNote(cash, "pickup_checks", "check", "pay_shop")).toMatch(/exactly ₱400\.00 in cash/);
+  });
+
+  it("opens the ordinary check once the shop is paid", () => {
+    expect(tripStepAction(cash, "pickup_checks", "check", "carry")).toMatchObject({ route: "/trip/pickup" });
+  });
+
+  it("collects the exact cash at the door, then the client signs", () => {
+    expect(tripStepAction(cash, "delivery_proof", "hand_over", "carry")).toMatchObject({
+      label: "Collect cash and sign",
+      route: "/trip/delivery",
+    });
+    expect(tripStepNote(cash, "delivery_proof", "hand_over", "carry")).toMatch(/exactly ₱669\.00/);
+    expect(tripStepNote(cash, "start_delivery", "to_client", "carry")).toMatch(/collect exactly ₱669\.00 in cash/);
+  });
+
+  it("says the shop payment came back after a returned no-show", () => {
+    expect(tripStepNote(cash, "complete", "done", "returned")).toMatch(/back in your wallet/);
+  });
+
+  it("leaves an online job's steps exactly as they were", () => {
+    expect(tripStepAction(trip(), "pickup_checks", "check")).toMatchObject({ route: "/trip/pickup" });
+    expect(tripStepAction(trip(), "pickup_checks", "check", "none")).toMatchObject({ route: "/trip/pickup" });
+  });
+});

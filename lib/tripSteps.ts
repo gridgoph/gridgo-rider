@@ -1,4 +1,6 @@
 import type { DeliveryMilestone, Order } from "@/lib/api";
+import { formatPhp } from "@/lib/api";
+import { cashAmountsOf, type CashStage } from "@/lib/cash";
 import { endsAtOffice, type TripPhase } from "@/lib/riderOrder";
 
 /**
@@ -101,7 +103,7 @@ export type TripStepAction =
   | {
       kind: "open";
       label: string;
-      route: "/trip/pickup" | "/trip/pack" | "/trip/handoff" | "/trip/start" | "/trip/delivery";
+      route: "/trip/pickup" | "/trip/pack" | "/trip/handoff" | "/trip/start" | "/trip/delivery" | "/trip/shop-payment";
     }
   | { kind: "none" };
 
@@ -109,12 +111,17 @@ export function tripStepAction(
   order: Order,
   phase: TripPhase,
   step: TripStepKey | "done" | null,
+  cash: CashStage = "none",
 ): TripStepAction {
   const office = endsAtOffice(order);
   switch (step) {
     case "to_shop":
       return { kind: "arrive_shop", label: "I'm at the shop" };
     case "check":
+      // A cash job pays the shop first: the server refuses the checks until it has the receipt.
+      if (cash === "pay_shop" && phase === "pickup_checks") {
+        return { kind: "open", label: "Pay the shop", route: "/trip/shop-payment" };
+      }
       if (phase === "pickup_pack") return { kind: "open", label: "Photograph the packed job", route: "/trip/pack" };
       if (phase === "pickup_sign") return { kind: "open", label: "Shop signs the handoff", route: "/trip/handoff" };
       if (phase === "pickup_checks") return { kind: "open", label: "Start the shop check", route: "/trip/pickup" };
@@ -127,6 +134,7 @@ export function tripStepAction(
         then: "/trip/delivery",
       };
     case "hand_over":
+      if (cash === "carry" && !office) return { kind: "open", label: "Collect cash and sign", route: "/trip/delivery" };
       return { kind: "open", label: office ? "Drop it off" : "Hand over and sign", route: "/trip/delivery" };
     default:
       return { kind: "none" };
@@ -134,8 +142,28 @@ export function tripStepAction(
 }
 
 /** One line under the step, saying what happens there. */
-export function tripStepNote(order: Order, phase: TripPhase, step: TripStepKey | "done" | null): string | null {
+export function tripStepNote(
+  order: Order,
+  phase: TripPhase,
+  step: TripStepKey | "done" | null,
+  cash: CashStage = "none",
+): string | null {
   const office = endsAtOffice(order);
+  const amounts = cashAmountsOf(order);
+  if (cash === "returned") return "Back at GRIDGO Office. Your shop payment is back in your wallet.";
+  if (cash === "pay_shop" && step === "check" && phase === "pickup_checks") {
+    return amounts
+      ? `Pay the shop exactly ${formatPhp(amounts.shopMinor)} in cash and photograph its receipt. Then check the job.`
+      : "Pay the shop its exact price in cash and photograph its receipt. Then check the job.";
+  }
+  if (cash === "carry" && step === "to_client" && !office && amounts) {
+    return `Ride to the client. At the door you collect exactly ${formatPhp(amounts.collectMinor)} in cash.`;
+  }
+  if (cash === "carry" && step === "hand_over" && !office) {
+    return amounts
+      ? `Collect exactly ${formatPhp(amounts.collectMinor)} in cash. Then the client signs the receipt on your phone.`
+      : "Collect the client's exact total in cash. Then they sign the receipt on your phone.";
+  }
   switch (step) {
     case "to_shop":
       return "Ride to the shop. Tap the button when you reach the counter.";

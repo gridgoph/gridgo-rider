@@ -110,7 +110,7 @@ describe("GridgoTabBar", () => {
   });
 
   it("draws four destination tabs and no Find work disc", () => {
-    expect(TABS.map((tab) => tab.name)).toEqual(["map", "jobs", "earnings", "account"]);
+    expect(TABS.map((tab) => tab.name)).toEqual(["map", "jobs", "wallet", "account"]);
   });
 
   it("labels every destination, so none is an icon alone", async () => {
@@ -140,9 +140,9 @@ describe("GridgoTabBar", () => {
       signedInAs("pending");
 
       await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
-      fireEvent.press(screen.getByRole("tab", { name: "Earnings" }));
+      fireEvent.press(screen.getByRole("tab", { name: "Wallet" }));
 
-      expect(navigate).toHaveBeenCalledWith("earnings");
+      expect(navigate).toHaveBeenCalledWith("wallet");
     });
   });
 
@@ -158,9 +158,9 @@ describe("GridgoTabBar", () => {
   it("navigates to a tab that is not open", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Earnings" }));
+    fireEvent.press(screen.getByRole("tab", { name: "Wallet" }));
 
-    expect(navigate).toHaveBeenCalledWith("earnings");
+    expect(navigate).toHaveBeenCalledWith("wallet");
   });
 
   it("stays put when the open tab is pressed again", async () => {

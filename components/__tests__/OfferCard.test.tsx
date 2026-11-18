@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { OfferCard } from "@/components/OfferCard";
 import type { Order } from "@/lib/api";
@@ -234,5 +234,38 @@ describe("OfferCard split delivery", () => {
     await render(<OfferCard offer={offer} onAccept={jest.fn()} />);
 
     expect(screen.queryByText(/^Delivery \d+ of \d+$/)).toBeNull();
+  });
+});
+
+describe("a cash offer (gridgo-api#360)", () => {
+  const cashOffer = {
+    ...offer,
+    paymentMethod: "cash",
+    cash: { method: "cash", version: 1, status: "reserved", noShowWaitSeconds: 600 },
+    cashAmounts: { shopMinor: 40_000, collectMinor: 66_900, gridgoMinor: 19_780, riderMinor: 7_120 },
+  } as unknown as Order;
+
+  it("shows the server's four figures and keeps Accept shut until the rider has the shop's cash", async () => {
+    const onAccept = jest.fn();
+    await render(<OfferCard offer={cashOffer} onAccept={onAccept} />);
+
+    for (const figure of ["−₱400.00", "+₱669.00", "−₱197.80", "₱71.20"]) {
+      expect(screen.getByText(figure)).toBeTruthy();
+    }
+    const accept = screen.getByRole("button", { name: "Accept this job" });
+    expect(accept.props.accessibilityState?.disabled ?? accept.props["aria-disabled"]).toBe(true);
+    await fireEvent.press(accept);
+    expect(onAccept).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByText("I have ₱400.00 in cash to pay the shop"));
+    await fireEvent.press(screen.getByRole("button", { name: "Accept this job" }));
+    expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+
+  it("will not accept a cash job whose amounts did not arrive", async () => {
+    await render(<OfferCard offer={{ ...cashOffer, cashAmounts: null } as Order} onAccept={jest.fn()} />);
+    expect(screen.getByText(/amounts did not load/)).toBeTruthy();
+    const accept = screen.getByRole("button", { name: "Accept this job" });
+    expect(accept.props.accessibilityState?.disabled ?? accept.props["aria-disabled"]).toBe(true);
   });
 });

@@ -23,7 +23,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 const ICONS: Record<TabName, LucideIcon> = {
   map: Map,
   jobs: ClipboardList,
-  earnings: Wallet,
+  wallet: Wallet,
   account: User,
 };
 
