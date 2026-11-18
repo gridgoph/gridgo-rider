@@ -238,6 +238,12 @@ export type ReceiptLoad =
   | { status: "none" }
   | { status: "checking" }
   | { status: "loading" }
+  /**
+   * A cash job with nothing issued yet: the receipt is issued, marked Cash,
+   * only when the rider records the client's exact cash
+   * (`POST /dispatch/:id/cash/collect`), so there is nothing to prepare first.
+   */
+  | { status: "cash_due" }
   | { status: "ready"; receipt: AcknowledgementReceipt }
   | { status: "problem"; problem: ReceiptProblem };
 
@@ -260,6 +266,8 @@ export function receiptDeliveryHold(stage: ReceiptStage, load: ReceiptLoad): str
   switch (load.status) {
     case "ready":
       return null;
+    case "cash_due":
+      return "Collect the client's exact cash first. The receipt they sign opens after that.";
     case "problem":
       if (load.problem.kind === "unsupported") return null;
       return load.problem.kind === "retry"

@@ -14,6 +14,7 @@ import { signOffPrompt, owesSignOff, type TripPhase } from "@/lib/riderOrder";
 import { riderPay } from "@/lib/riderPay";
 import type { TripChatParty } from "@/lib/tripChat";
 import type { NextStop } from "@/lib/tripNav";
+import type { CashStage } from "@/lib/cash";
 import { tripStepNote, type TripStepAction, type TripStepKey } from "@/lib/tripSteps";
 
 type Props = {
@@ -31,6 +32,8 @@ type Props = {
   error: string | null;
   onAction: () => void;
   onDone: () => void;
+  /** Where a cash job's money stands; `none` for every other job. */
+  cash?: CashStage;
 };
 
 /**
@@ -54,10 +57,11 @@ export function TripPanel({
   error,
   onAction,
   onDone,
+  cash = "none",
 }: Props) {
   const router = useRouter();
   const colors = useThemeColors();
-  const note = tripStepNote(trip, phase, step);
+  const note = tripStepNote(trip, phase, step, cash);
   const signOff = owesSignOff(trip) ? signOffPrompt(trip) : null;
 
   if (step === "done") {
@@ -67,10 +71,13 @@ export function TripPanel({
           <CircleCheck size={22} color={colors.success} strokeWidth={2} />
           <Text className="text-h3 text-text-primary">{note}</Text>
         </View>
-        <View className="gap-1">
-          <Text className="text-caption text-text-secondary">You earned</Text>
-          <EarningAmount minor={riderPay(trip).earnedMinor} size="h1" className="self-start" />
-        </View>
+        {/* A cash no-show earns nothing yet: the fare follows the client's repayment. */}
+        {cash === "returned" ? null : (
+          <View className="gap-1">
+            <Text className="text-caption text-text-secondary">You earned</Text>
+            <EarningAmount minor={riderPay(trip).earnedMinor} size="h1" className="self-start" />
+          </View>
+        )}
         <PrimaryButton label="Back to the map" onPress={onDone} size="large" />
       </View>
     );

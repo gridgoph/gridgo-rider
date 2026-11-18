@@ -395,6 +395,61 @@ export type Order = {
    * no routing provider, so `durationSeconds` is always null.
    */
   travelEstimate?: TravelEstimate | null;
+  /**
+   * Present only on a cash-on-delivery order (gridgo-api
+   * `docs/CASH_ON_DELIVERY_API.md`). `version` is the cash progress version
+   * every cash POST must send back as `expectedVersion`.
+   */
+  cash?: OrderCash | null;
+  /**
+   * The four cash figures, snapshotted by the server, for the offered or
+   * assigned rider only. Never computed here — see `lib/cash.ts`.
+   */
+  cashAmounts?: CashAmounts | null;
+  /** An open cash claim Operations raised after the shop was paid. */
+  cashIncident?: { status: string; amountMinor?: number; remainingMinor?: number } | null;
+};
+
+export type CashStatus =
+  | "due"
+  | "collected"
+  | "online_repayment_required"
+  | "no_show_repaid"
+  | "work_stopped"
+  | "cancelled";
+
+export type OrderCash = {
+  method: "cash";
+  version: number;
+  status: CashStatus;
+  noShowWaitSeconds: number;
+};
+
+/** PHP centavos, exactly as the server snapshotted them. */
+export type CashAmounts = {
+  /** The exact cash the rider pays the shop at the counter. */
+  shopMinor: number;
+  /** The exact cash the rider collects from the client at the door. */
+  collectMinor: number;
+  /** GRIDGO's share, taken from the rider's wallet when the cash is collected. */
+  gridgoMinor: number;
+  /** What the rider keeps. */
+  riderMinor: number;
+  voucherMinor?: number;
+  productionDeductionMinor?: number;
+  gridgoFeeShareMinor?: number;
+};
+
+/** `GET /orders/:id/cash` as the assigned rider reads it. */
+export type OrderCashDetail = {
+  version: number;
+  status: string;
+  amountDueMinor: number;
+  shopPaidAt: string | null;
+  collectedAt: string | null;
+  noShowApprovedAt: string | null;
+  repaymentConfirmedAt: string | null;
+  amounts?: CashAmounts;
 };
 
 export type DispatchOffer = {
@@ -1225,12 +1280,143 @@ export async function listDispatchOffers(): Promise<{ offers: Order[]; serverTim
  * reservation that has moved on is refused (`409 dispatch_offer_stale`) rather
  * than a newer one being taken by a tap on an old screen.
  */
-export async function acceptOffer(orderId: string, offerId?: string | null): Promise<Order> {
+export async function acceptOffer(
+  orderId: string,
+  offerId?: string | null,
+  cash?: { shopCashConfirmed: true; idempotencyKey: string },
+): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/accept`, {
     method: "POST",
-    body: JSON.stringify(offerId ? { offerId } : {}),
+    // A cash accept reserves GRIDGO's share from the wallet, so it carries a
+    // key: a retry after a lost reply returns the first answer, never a second hold.
+    ...(cash ? { headers: { "Idempotency-Key": cash.idempotencyKey } } : {}),
+    body: JSON.stringify({
+      ...(offerId ? { offerId } : {}),
+      ...(cash ? { shopCashConfirmed: true } : {}),
+    }),
   });
   return result.order;
+}
+
+/**
+ * The cash record of an assigned cash job (`GET /orders/:id/cash`): whether
+ * the shop has been paid and the client's cash collected. The ordinary order
+ * read does not say; only this does.
+ */
+export async function getOrderCash(orderId: string): Promise<OrderCashDetail> {
+  const result = await request<{ cash: OrderCashDetail }>(`/orders/${encodeURIComponent(orderId)}/cash`);
+  return result.cash;
+}
+
+type CashPostResult = { cash: { version: number; status: string } };
+
+function cashPost<T>(orderId: string, action: string, body: Record<string, unknown>, idempotencyKey: string): Promise<T> {
+  return request<T>(`/dispatch/${encodeURIComponent(orderId)}/cash/${action}`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
+  });
+}
+
+/** The exact shop price, paid in cash, with the shop's receipt (`cash_shop_receipt`). */
+export function payShopCash(
+  orderId: string,
+  input: { expectedVersion: number; amountMinor: number; receiptFileId: string },
+  idempotencyKey: string,
+): Promise<CashPostResult> {
+  return cashPost(orderId, "shop-payment", input, idempotencyKey);
+}
+
+/**
+ * The client's exact cash, received at the door. The server issues the
+ * acknowledgement receipt marked Cash in the same step and returns it, for the
+ * client to sign. Only the door hook (`useAcknowledgementReceipt`) calls this.
+ */
+export function collectCashAtDoor(
+  orderId: string,
+  input: { expectedVersion: number; amountReceivedMinor: number; evidenceFileId: string },
+  idempotencyKey: string,
+): Promise<CashPostResult & { receipt: AcknowledgementReceipt }> {
+  return cashPost(orderId, "collect", { ...input, cashReceived: true }, idempotencyKey);
+}
+
+/** The client is not there or refuses: the rider has called or messaged, and the server starts the wait. */
+export function startCashNoShow(
+  orderId: string,
+  input: { expectedVersion: number; contactMethod: "call" | "message" },
+  idempotencyKey: string,
+): Promise<CashPostResult> {
+  return cashPost(orderId, "no-show-start", input, idempotencyKey);
+}
+
+/** After the server-measured wait: what happened, with a photo (`cash_no_show_photo`). */
+export function reportCashNoShow(
+  orderId: string,
+  input: { expectedVersion: number; reason: string; photoFileId: string },
+  idempotencyKey: string,
+): Promise<CashPostResult> {
+  return cashPost(orderId, "no-show-report", input, idempotencyKey);
+}
+
+export type RiderWallet = {
+  balanceMinor: number;
+  reservedMinor: number;
+  availableMinor: number;
+  lowBalance: boolean;
+  topupAmountsMinor: number[];
+};
+
+export type WalletActivity = {
+  id: string;
+  type: string;
+  orderId: string | null;
+  at: string;
+  balanceDeltaMinor: number;
+  availableDeltaMinor: number;
+  reservedDeltaMinor: number;
+  amountMinor: number;
+  reference?: string | null;
+};
+
+export type WalletIncident = {
+  id: string;
+  orderId: string;
+  amountMinor: number;
+  remainingMinor: number;
+  status: string;
+  createdAt: string;
+};
+
+/** The rider's wallet, its latest 100 movements and any open cash claims. Approved riders only. */
+export async function getRiderWallet(): Promise<{
+  wallet: RiderWallet;
+  activity: WalletActivity[];
+  incidents: WalletIncident[];
+}> {
+  const result = await request<{ wallet: RiderWallet; activity?: WalletActivity[]; incidents?: WalletIncident[] }>(
+    "/me/rider-wallet",
+  );
+  return { wallet: result.wallet, activity: result.activity ?? [], incidents: result.incidents ?? [] };
+}
+
+/** A manual top-up: the rider paid GRIDGO's QR and sends the reference. Pending until Operations confirms. */
+export async function submitWalletTopup(
+  input: { amountMinor: number; reference: string; screenshotFileId?: string | null },
+  idempotencyKey: string,
+): Promise<{ id: string; status: "pending"; amountMinor: number; reference: string }> {
+  const result = await request<{ topup: { id: string; status: "pending"; amountMinor: number; reference: string } }>(
+    "/me/rider-wallet/topups",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({
+        amountMinor: input.amountMinor,
+        reference: input.reference,
+        ...(input.screenshotFileId ? { screenshotFileId: input.screenshotFileId } : {}),
+      }),
+    },
+  );
+  return result.topup;
 }
 
 /** Pass on this rider's reservation; the server offers it to the next rider at once. */
@@ -1425,9 +1611,12 @@ export async function recordDelivery(
     receiptMode?: "digital";
     acknowledgementSignature?: { arNumber: string; fileId: string; signerName: string };
   } & HandoffReminderFields,
+  /** Required on a cash job: a retry returns the first answer and never settles twice. */
+  idempotencyKey?: string,
 ): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {
     method: "POST",
+    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
     body: JSON.stringify(evidence),
   });
   return result.order;
@@ -1592,6 +1781,10 @@ export type OperationalSettings = {
   /** How long a client has to raise an issue after delivery. One global value. */
   issueWindowHours: number;
   deliveryFeeBands: { maxDistanceMeters: number | null; feeMinor: number }[];
+  /** Cash on delivery. Absent on an older API, which means off. */
+  cash?: { enabled: boolean; limitMinor: number; noShowWaitSeconds: number };
+  /** GRIDGO's one receiving QR; `imageUrl` is a path on this API, absent until one is active. */
+  paymentQr?: { method: string; caption: string; imageUrl?: string };
 };
 
 /** The platform's operational settings. Read-only for a rider. */

@@ -1,5 +1,8 @@
 import { CircleCheck, CircleX, Clock, Route } from "lucide-react-native";
+import { useState } from "react";
 import { Text, View } from "react-native";
+
+import { CashOfferTerms } from "@/components/CashOfferTerms";
 
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { DeliveryPart } from "@/components/DeliveryPart";
@@ -11,6 +14,7 @@ import { TripMap } from "@/components/TripMap";
 import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
+import { cashAmountsOf, isCashOrder } from "@/lib/cash";
 import { routeNoteBesideSummary, routeSummaryLabel } from "@/lib/osrm";
 import { pickupReadyLabel } from "@/lib/pickupReady";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
@@ -70,6 +74,10 @@ export function OfferCard({
   const payDetail = riderPayDetail(pay);
   const routeNote = routeNoteBesideSummary(route);
   const readyLabel = pickupReadyLabel(offer);
+  const cash = isCashOrder(offer);
+  const amounts = cashAmountsOf(offer);
+  const [haveCash, setHaveCash] = useState(false);
+  const cashReady = !cash || (amounts != null && haveCash);
 
   return (
     <View className="gg-card gap-4">
@@ -104,6 +112,14 @@ export function OfferCard({
         {/* Full width, so a long fee never squeezes the route summary. */}
         {payDetail ? <Text className="text-caption text-text-muted">{payDetail}</Text> : null}
       </View>
+
+      {amounts ? (
+        <CashOfferTerms amounts={amounts} haveCash={haveCash} onHaveCash={setHaveCash} disabled={accepting || disabled} />
+      ) : cash ? (
+        <Text className="text-body text-text-secondary">
+          {"This cash job's amounts did not load. Pull down to refresh before you accept."}
+        </Text>
+      ) : null}
 
       <TripMap
         pickup={pickup}
@@ -175,7 +191,7 @@ export function OfferCard({
           <PrimaryButton
             label={accepting ? "Accepting…" : "Accept this job"}
             onPress={onAccept}
-            disabled={accepting || disabled}
+            disabled={accepting || disabled || !cashReady}
             size="large"
           />
         </View>

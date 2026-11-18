@@ -21,6 +21,12 @@ type Options = {
   verify: () => Promise<boolean>;
   /** The server closed the receipt: re-read the job to learn where it went. */
   onClosed: () => void;
+  /**
+   * A cash job: the receipt is issued by collecting the client's cash, never
+   * prepared ahead of it — `prepareAcknowledgementReceipt` would only be
+   * refused while the cash is unpaid.
+   */
+  cash?: boolean;
 };
 
 const UNVERIFIED: ReceiptProblem = {
@@ -49,7 +55,7 @@ const UNVERIFIED: ReceiptProblem = {
  * means the server has closed the window; `onClosed` re-reads the job to
  * learn why.
  */
-export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, verify, onClosed }: Options) {
+export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, verify, onClosed, cash = false }: Options) {
   const stage = receiptStage(order);
   const orderId = order?.id ?? null;
 
@@ -107,6 +113,10 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
       .catch((e: unknown) => {
         if (api.apiErrorCode(e) !== "acknowledgement_receipt_not_found") throw e;
         if (!current()) return null;
+        if (cash) {
+          adopt({ status: "cash_due" });
+          return null;
+        }
         return api.prepareAcknowledgementReceipt(orderId);
       })
       .then((receipt: AcknowledgementReceipt | null) => {
@@ -120,7 +130,31 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
         adopt({ status: "problem", problem });
         if (problem.kind === "closed" || problem.kind === "gone") latest.current.onClosed();
       });
-  }, [openKey, orderId, nextRead]);
+  }, [openKey, orderId, nextRead, cash]);
+
+  /*
+    The client's exact cash, recorded at the door. The server issues the
+    receipt, marked Cash, in the same step and returns it; it is adopted here
+    and nowhere else, like a read. A key per attempt: the caller keeps it
+    across retries of the same evidence so a lost reply cannot record twice.
+  */
+  const [collecting, setCollecting] = useState(false);
+  const collect = useCallback(
+    async (input: { expectedVersion: number; amountReceivedMinor: number; evidenceFileId: string }, key: string) => {
+      if (!openKey || !orderId || collecting) return false;
+      const target = openKey;
+      setCollecting(true);
+      try {
+        const result = await api.collectCashAtDoor(orderId, input, key);
+        if (result.receipt.orderId !== orderId) throw new Error("receipt_order_mismatch");
+        setHeld((now) => (now?.key === target || !now ? { key: target, load: { status: "ready", receipt: result.receipt } } : now));
+        return true;
+      } finally {
+        setCollecting(false);
+      }
+    },
+    [openKey, orderId, collecting],
+  );
 
   useEffect(() => {
     void read();
@@ -183,5 +217,5 @@ export function useAcknowledgementReceipt(order: api.Order | null, { onOrder, ve
     else load = held?.key === openKey ? held.load : { status: "loading" };
   }
 
-  return { stage, load, retry, arrive, arriving, arrivalError };
+  return { stage, load, retry, arrive, arriving, arrivalError, collect, collecting };
 }

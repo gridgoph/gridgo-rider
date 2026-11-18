@@ -83,6 +83,38 @@ const DOCUMENTED: Record<string, string[]> = {
     "acknowledgement_amount_mismatch",
     "acknowledgement_customer_unavailable",
   ],
+  // gridgo-api `docs/CASH_ON_DELIVERY_API.md` and `src/cash-routes.js`: the
+  // rider's cash accept, shop payment, collection, no-show and wallet top-up.
+  cash: [
+    "cash_wallet_insufficient",
+    "cash_shop_funds_confirmation_required",
+    "cash_offer_id_required",
+    "cash_disabled",
+    "cash_stale",
+    "cash_idempotency_conflict",
+    "cash_idempotency_required",
+    "cash_exact_shop_payment_required",
+    "cash_exact_collection_required",
+    "cash_evidence_required",
+    "cash_evidence_already_bound",
+    "cash_shop_payment_not_available",
+    "cash_shop_receipt_required",
+    "cash_arrival_required",
+    "cash_collection_not_available",
+    "cash_incident_hold",
+    "cash_work_held",
+    "cash_no_show_hold",
+    "cash_no_show_not_available",
+    "cash_wait_not_elapsed",
+    "cash_contact_required",
+    "cash_reference_required",
+    "cash_topup_amount_invalid",
+    "cash_transfer_duplicate",
+    "cash_client_signature_required",
+    "cash_reservation_required",
+    "cash_route_required",
+    "cash_governed_handover_required",
+  ],
 };
 
 const ALL = [...new Set(Object.values(DOCUMENTED).flat())];
@@ -122,6 +154,7 @@ describe("a refusal that means a step is missing names that step", () => {
     ["transition_not_allowed", "trip"],
     ["delivery_not_available", "trip"],
     ["delivery_photo_upload_not_allowed", "trip"],
+    ["cash_shop_receipt_required", "trip"],
   ])("%s → %s", (code, step) => {
     expect(riderRefusal(code)?.step).toBe(step);
   });

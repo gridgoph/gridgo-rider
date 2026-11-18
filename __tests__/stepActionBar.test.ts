@@ -33,8 +33,10 @@ describe("every delivery step pins its action to the bottom", () => {
     expect(steps.sort()).toEqual([
       "delivery.tsx",
       "handoff.tsx",
+      "no-show.tsx",
       "pack.tsx",
       "pickup.tsx",
+      "shop-payment.tsx",
       "sign-off.tsx",
     ]);
   });

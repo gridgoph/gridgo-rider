@@ -24,6 +24,8 @@ type Props = {
    * paper tick goes; absent — an older API — the paper flow stays as it was.
    */
   signing?: React.ReactNode;
+  /** A cash job before collection: what to collect, in the card the receipt then opens in. */
+  cashCollection?: React.ReactNode;
 };
 
 export const RECEIPT_TICK_LABEL = "Receipt handed over";
@@ -66,6 +68,7 @@ export function ReceiptReminder({
   onToggle,
   disabled = false,
   signing,
+  cashCollection,
 }: Props) {
   const colors = useThemeColors();
   const digital = Boolean(signing) && load.status === "ready";
@@ -74,9 +77,15 @@ export function ReceiptReminder({
     <View className="gap-4 rounded-card border-2 border-accent bg-surface p-6">
       <View className="gap-1">
         <Text className="text-overline text-text-secondary">
-          {digital ? "THE PERSON RECEIVING SIGNS THIS" : "HAND THIS TO THE CLIENT"}
+          {load.status === "cash_due"
+            ? "COLLECT FIRST"
+            : digital
+              ? "THE PERSON RECEIVING SIGNS THIS"
+              : "HAND THIS TO THE CLIENT"}
         </Text>
-        <Text className="text-h3 text-text-primary">Acknowledgement receipt</Text>
+        <Text className="text-h3 text-text-primary">
+          {load.status === "cash_due" ? "Cash from the client" : "Acknowledgement receipt"}
+        </Text>
       </View>
 
       {stage === "paper_only" ? (
@@ -118,6 +127,8 @@ export function ReceiptReminder({
         </View>
       ) : null}
 
+      {load.status === "cash_due" ? cashCollection : null}
+
       {load.status === "ready" && digital ? (
         <>
           <Text className="text-body text-text-secondary">
@@ -153,7 +164,7 @@ export function ReceiptReminder({
         />
       ) : null}
 
-      {digital ? null : (
+      {digital || load.status === "cash_due" ? null : (
       <Pressable
         onPress={onToggle}
         disabled={disabled}

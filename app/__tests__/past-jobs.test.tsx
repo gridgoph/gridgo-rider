@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { Order } from "@/lib/api";
 import { useSession } from "@/store/session";
 
-import EarningsScreen from "@/app/(tabs)/earnings";
+import EarningsScreen from "@/app/(tabs)/wallet";
 import { invalidate } from "@/lib/live";
 import PastJobsScreen from "@/app/past-jobs";
 

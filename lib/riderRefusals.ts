@@ -62,6 +62,121 @@ const REFUSALS: Record<string, Entry> = {
     message: "This job is no longer available to you. It timed out or went to another rider.",
     step: null,
   },
+  // Cash on delivery (gridgo-api `docs/CASH_ON_DELIVERY_API.md`).
+  cash_wallet_insufficient: {
+    message:
+      "Your wallet does not cover GRIDGO's share of this cash job, so it was not accepted. Top up your wallet, then wait for the next offer.",
+    step: null,
+  },
+  cash_shop_funds_confirmation_required: {
+    message: "Tick that you have the shop's cash with you, then accept again.",
+    step: null,
+  },
+  cash_offer_id_required: {
+    message: "This offer has moved on. Wait for it to come back, or for the next one.",
+    step: null,
+  },
+  cash_disabled: {
+    message: "Cash jobs are switched off right now, so wallet top-ups are closed. Your balance is safe.",
+    step: null,
+  },
+  cash_stale: {
+    message: "This cash job changed while you were here. Check what it shows now, then try again.",
+    step: null,
+  },
+  cash_idempotency_conflict: {
+    message: "Something about this step changed since you first sent it. Check it again, then send it once more.",
+    step: null,
+  },
+  cash_idempotency_required: {
+    message: "This app is out of date for cash jobs. Update it before taking more work.",
+    step: null,
+  },
+  cash_exact_shop_payment_required: {
+    message: "Pay the shop exactly the amount shown — not more, not less — then try again.",
+    step: null,
+  },
+  cash_exact_collection_required: {
+    message: "Collect exactly the amount shown from the client before you record it.",
+    step: null,
+  },
+  cash_evidence_required: {
+    message: "GRIDGO did not get the photo. Take it again, wait for it to show as saved, then send.",
+    step: null,
+  },
+  cash_evidence_already_bound: {
+    message: "That photo is already used on another record. Take a new photo, then send.",
+    step: null,
+  },
+  cash_shop_payment_not_available: {
+    message: `The shop payment is already recorded or no longer needed on this job. ${TRIP}`,
+    step: "trip",
+  },
+  cash_shop_receipt_required: {
+    message: "Pay the shop and send its receipt photo before you check the job.",
+    step: "trip",
+  },
+  cash_arrival_required: {
+    message: "Tell GRIDGO you are at the client's door first, then collect the cash.",
+    step: null,
+  },
+  cash_collection_not_available: {
+    message: `The client's cash cannot be recorded on this job now. ${TRIP}`,
+    step: "trip",
+  },
+  cash_incident_hold: {
+    message: "Operations has stopped this cash job while it sorts out a problem with the shop. Keep the package and the cash, and wait for their call.",
+    step: null,
+  },
+  cash_work_held: {
+    message: "This job is on hold, so no cash can be recorded. Keep everything with you and call Operations.",
+    step: null,
+  },
+  cash_no_show_hold: {
+    message: "Your no-show report is with Operations. Take the package to GRIDGO Office and wait for their alert.",
+    step: null,
+  },
+  cash_no_show_not_available: {
+    message: "The no-show wait cannot start or be reported on this job now. Check the job, or call Operations.",
+    step: null,
+  },
+  cash_wait_not_elapsed: {
+    message: "The wait is not over yet. Stay at the door and report when the timer ends.",
+    step: null,
+  },
+  cash_contact_required: {
+    message: "Choose whether you called or messaged the client.",
+    step: null,
+  },
+  cash_reference_required: {
+    message: "Type the reference number from your payment app.",
+    step: null,
+  },
+  cash_topup_amount_invalid: {
+    message: "Choose ₱200, ₱500 or ₱1,000 — the amounts GRIDGO accepts for a top-up.",
+    step: null,
+  },
+  cash_transfer_duplicate: {
+    message: "That reference has already been used. Check it against your payment app.",
+    step: null,
+  },
+  cash_client_signature_required: {
+    message: "On a cash job the client signs the receipt on your phone before you hand it over.",
+    step: null,
+  },
+  cash_reservation_required: {
+    message: "GRIDGO could not find the share held for this job. Keep the cash and call Operations.",
+    step: null,
+  },
+  cash_route_required: {
+    message: "A cash job moves only through its cash steps. Go back to the trip and follow the next step there.",
+    step: "trip",
+  },
+  cash_governed_handover_required: {
+    message: "A cash job moves only through its cash steps. Go back to the trip and follow the next step there.",
+    step: "trip",
+  },
+
   // The digital acknowledgement receipt at the door.
   acknowledgement_signature_required: {
     message: "The person receiving the package has to sign the receipt on your phone first.",

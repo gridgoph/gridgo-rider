@@ -19,6 +19,7 @@ import { FRESHNESS_TICK_MS, fixNeedsAttention, useTripFixFreshness } from "@/hoo
 import { useDispatchHours } from "@/hooks/useDispatchHours";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLocationHealth } from "@/hooks/useLocationHealth";
+import { useOrderCash } from "@/hooks/useOrderCash";
 import { useReadVersion } from "@/hooks/useReadVersion";
 import { useRiderAction } from "@/hooks/useRiderAction";
 import { useRiderLocation } from "@/hooks/useRiderLocation";
@@ -40,6 +41,7 @@ import type { MapView } from "@/lib/mapHtml";
 import { STALE_FIX_MS } from "@/lib/locationFreshness";
 import { routeSummaryLabel } from "@/lib/osrm";
 import { approvalPresentation } from "@/lib/riderApproval";
+import { cashAcceptKey, cashStage, isCashOrder } from "@/lib/cash";
 import { summariseEarnings } from "@/lib/riderEarnings";
 import { locationAudience, pickupLabel, stopLatLng } from "@/lib/riderOrder";
 import { nextStop, tripDestination, tripShop } from "@/lib/tripNav";
@@ -309,7 +311,12 @@ export default function MapHomeScreen() {
     setOfferBusy("accept");
     setOfferError(null);
     try {
-      const accepted = await api.acceptOffer(offer.id, offerIdOf(offer));
+      const offerId = offerIdOf(offer);
+      // A cash accept is only reachable after the have-the-cash tick (`OfferSheet`).
+      const accepted =
+        isCashOrder(offer) && offerId
+          ? await api.acceptOffer(offer.id, offerId, { shopCashConfirmed: true, idempotencyKey: cashAcceptKey(offerId) })
+          : await api.acceptOffer(offer.id, offerId);
       acted.current.add(offer.id);
       nextOfferRead();
       setOffers(NO_ORDERS);
@@ -360,7 +367,9 @@ export default function MapHomeScreen() {
     }
   }
 
-  const action = trip && step ? tripStepAction(trip, phase, step) : null;
+  const tripCash = useOrderCash(inTrip ? trip : null);
+  const cash = trip ? cashStage(trip, tripCash.detail) : "none";
+  const action = trip && step ? tripStepAction(trip, phase, step, cash) : null;
 
   async function runStep() {
     if (!trip || !action || stepBusy) return;
@@ -551,6 +560,7 @@ export default function MapHomeScreen() {
                 error={stepError}
                 onAction={() => void runStep()}
                 onDone={() => void refreshTrip(userId, "refresh")}
+                cash={cash}
               />
             ) : showOffer && offer ? (
               <OfferSheet
