@@ -13,6 +13,7 @@ import {
 } from "@/lib/homePrinter";
 import { pickupLabel } from "@/lib/riderOrder";
 import { tripShop } from "@/lib/tripNav";
+import { tripStepAction, tripStepNote } from "@/lib/tripSteps";
 
 // Shapes as gridgo-api#439 serves them to a rider (made-up test values).
 const contact = { shopName: "Sample Barangay", printerType: "home" as const, barangay: "Sample Barangay" };
@@ -96,6 +97,16 @@ describe("a home printer job", () => {
     ).toBe("Type the name of the person who handed it over.");
   });
 
+  it("calls the stop a home printer on the trip steps", () => {
+    expect(tripStepAction(active, "pickup_checks", "to_shop").kind).toBe("arrive_shop");
+    expect(tripStepAction(active, "pickup_checks", "to_shop")).toMatchObject({ label: "I'm at the home printer" });
+    expect(tripStepNote(active, "pickup_checks", "to_shop")).toBe(
+      "Ride to the home printer. Tap the button when you reach their door.",
+    );
+    expect(tripStepAction(active, "pickup_sign", "check")).toMatchObject({ label: "Printer signs the handoff" });
+    expect(tripStepAction(active, "pickup_checks", "check")).toMatchObject({ label: "Start the pickup check" });
+  });
+
   it("says the server's rounded distance as about, without re-rounding it", () => {
     const approx = (distanceMeters: number) =>
       ({ ...offered, travelEstimate: { distanceMeters, durationSeconds: null, source: "order_snapshot", distanceApproximate: true } }) as Order;
@@ -114,6 +125,8 @@ describe("a shop job is unchanged", () => {
     expect(shopDisplayName(shop)).toBe("PrintRight Davao");
     expect(signerCopy(shop).fieldLabel).toBe("Name of the person signing");
     expect(homeOfferPickup(shop)).toBeNull();
+    expect(tripStepAction(shop, "pickup_checks", "to_shop")).toMatchObject({ label: "I'm at the shop" });
+    expect(tripStepNote(shop, "pickup_checks", "to_shop")).toBe("Ride to the shop. Tap the button when you reach the counter.");
     expect(
       offerDistanceLabel({ ...shop, travelEstimate: { distanceMeters: 1234, durationSeconds: null, source: "order_snapshot" } } as Order),
     ).toBe("1.2 km from shop to drop-off");

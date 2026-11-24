@@ -351,7 +351,7 @@ export default function HandoffSignatureScreen() {
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
-            {packs ? <HandoverSteps current="sign" /> : null}
+            {packs ? <HandoverSteps current="sign" home={home} /> : null}
 
             <PassedChecksSummary
               checkedAt={checkedAt}
