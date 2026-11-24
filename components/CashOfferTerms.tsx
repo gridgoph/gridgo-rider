@@ -12,6 +12,8 @@ type Props = {
   haveCash: boolean;
   onHaveCash: (value: boolean) => void;
   disabled?: boolean;
+  /** A group order: the host pays the cash for the whole group. */
+  receiver?: "client" | "host";
 };
 
 /**
@@ -21,7 +23,7 @@ type Props = {
  * now. The tick starts empty every time; the server refuses an accept without
  * it, and a rider who arrives at a counter without the cash strands the job.
  */
-export function CashOfferTerms({ amounts, haveCash, onHaveCash, disabled = false }: Props) {
+export function CashOfferTerms({ amounts, haveCash, onHaveCash, disabled = false, receiver = "client" }: Props) {
   const colors = useThemeColors();
   return (
     <View className="gap-3" testID="cash-offer-terms">
@@ -29,8 +31,8 @@ export function CashOfferTerms({ amounts, haveCash, onHaveCash, disabled = false
         <Banknote size={18} color={colors.textPrimary} strokeWidth={2} />
         <Text className="text-body-lg font-bold text-text-primary">Cash job</Text>
       </View>
-      <CashSlip amounts={amounts} />
-      <Text className="text-caption text-text-secondary">{walletHoldLine(amounts)}</Text>
+      <CashSlip amounts={amounts} receiver={receiver} />
+      <Text className="text-caption text-text-secondary">{walletHoldLine(amounts, receiver)}</Text>
       <CheckboxRow
         checked={haveCash}
         onChange={onHaveCash}

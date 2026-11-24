@@ -8,6 +8,8 @@ import { CheckboxRow } from "@/components/CheckboxRow";
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EvidenceCapture } from "@/components/EvidenceCapture";
 import { FormScroll } from "@/components/FormScroll";
+import { BackupReceiverRow } from "@/components/BackupReceiverRow";
+import { GroupOrderTag } from "@/components/GroupOrderTag";
 import { HandoffReminderCard } from "@/components/HandoffReminderCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { HandoverCodePrompt, HandoverCodeRow } from "@/components/HandoverCodePrompt";
@@ -24,6 +26,7 @@ import { UpdateRequiredPanel } from "@/components/UpdateRequired";
 import { tripDestination } from "@/lib/tripNav";
 import { useAcknowledgementReceipt } from "@/hooks/useAcknowledgementReceipt";
 import { useHandoverCode } from "@/hooks/useHandoverCode";
+import { useGroupBackup } from "@/hooks/useGroupBackup";
 import { useCashNoShowRecord } from "@/hooks/useCashNoShowRecord";
 import { useOrderCash } from "@/hooks/useOrderCash";
 import { useProofEvidence } from "@/hooks/useProofEvidence";
@@ -57,6 +60,7 @@ import {
 } from "@/lib/riderOrder";
 import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 import { cashAmountsOf, isCashOrder, newIdempotencyKey } from "@/lib/cash";
+import { groupOrderOf, receiverWord } from "@/lib/groupOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 
 const FILL = { flex: 1 } as const;
@@ -192,8 +196,12 @@ export default function DeliveryProofScreen() {
   const balanceHeld = order ? !toOffice && !isBalanceConfirmed(order) : false;
   const evidenceFileId = evidence.stored.delivery_photo ?? null;
 
+  // Group order: the host receives, and a backup only once the server opens it.
+  const group = groupOrderOf(order);
+  const who = receiverWord(order);
+  const backup = useGroupBackup(order);
   const handover = useHandoverCode(order && riderChecksHandoverCode(order) ? order.id : null);
-  const codeBlock = refusal?.message ?? handoverBlockReason(handover.load, otp);
+  const codeBlock = refusal?.message ?? handoverBlockReason(handover.load, otp, who);
   const codeHeld = refusal !== null;
   const codeComplete = /^\d{6}$/.test(otp);
 
@@ -332,7 +340,7 @@ export default function DeliveryProofScreen() {
       : !evidenceFileId
         ? "Take the door photo first. It is GRIDGO's record of where you collected the cash."
         : !cashReceived
-          ? `Count the client's cash, then tick that you received exactly ${api.formatPhp(amounts.collectMinor)}.`
+          ? `Count the ${who}'s cash, then tick that you received exactly ${api.formatPhp(amounts.collectMinor)}.`
           : null;
 
   async function collectCash() {
@@ -373,7 +381,7 @@ export default function DeliveryProofScreen() {
       ? "Your no-show report is with Operations. Take the package to GRIDGO Office."
       : balanceHeld
       ? "Operations has not confirmed the client's balance due. Call them before you hand the package over."
-      : receiptDeliveryHold(receipt.stage, receipt.load) ?? codeBlock ?? evidenceBlockReason(
+      : receiptDeliveryHold(receipt.stage, receipt.load, who) ?? codeBlock ?? evidenceBlockReason(
           evidence.evidence,
           evidence.upload,
           toOffice
@@ -477,7 +485,7 @@ export default function DeliveryProofScreen() {
           icon={refusal.kind === "locked" ? "clock" : "circle-x"}
           title={refusal.kind === "locked" ? "Code check locked" : "That code does not match"}
           body={`${refusal.detail ? `${refusal.detail} ` : ""}Keep the package with you. ${
-            refusal.kind === "locked" ? "Wait until then" : "Ask the client to read the code again"
+            refusal.kind === "locked" ? "Wait until then" : `Ask the ${group ? "host or backup" : "client"} to read the code again`
           }, or escalate to Operations.`}
         />
       ) : null}
@@ -542,21 +550,25 @@ export default function DeliveryProofScreen() {
     cashDue && amounts ? (
       <View className="gap-4" testID="cash-collection">
         <ExactCash
-          label="Collect from the client, in cash"
+          label={group ? "Collect from the host, for the whole group" : "Collect from the client, in cash"}
           minor={amounts.collectMinor}
-          note="Exactly this amount. Count it in front of them before you tick."
+          note={
+            group
+              ? `One cash payment covers all ${group.memberCount} people. Exactly this amount, from the host. Count it in front of them before you tick.`
+              : "Exactly this amount. Count it in front of them before you tick."
+          }
           testID="collect-cash-amount"
         />
         <CheckboxRow
           checked={cashReceived}
           onChange={setCashReceived}
           label={`I received exactly ${api.formatPhp(amounts.collectMinor)} in cash`}
-          hint="GRIDGO then issues the receipt, marked Cash, for the client to sign."
+          hint={`GRIDGO then issues the receipt, marked Cash, for the ${who} to sign.`}
           disabled={busy || !evidenceFileId}
           testID="cash-received-confirm"
         />
         <SecondaryButton
-          label="Client not here or won't pay"
+          label={group ? "Host not here or won't pay" : "Client not here or won't pay"}
           onPress={() => router.push({ pathname: "/trip/no-show", params: { orderId: order?.id ?? "" } })}
           disabled={busy}
         />
@@ -580,6 +592,7 @@ export default function DeliveryProofScreen() {
           onChange={changeCode}
           onClose={() => setPromptOpen(false)}
           disabled={busy || escalating}
+          group={Boolean(group)}
         >
           {codeNotices}
         </HandoverCodePrompt>
@@ -606,6 +619,13 @@ export default function DeliveryProofScreen() {
           {order ? (
             <>
               <TripStepHeader order={order} stopKind="dropoff" stopLabel={tripDestination(order).label} navigate />
+
+              {group ? (
+                <View className="gap-3">
+                  <GroupOrderTag order={order} />
+                  <BackupReceiverRow order={order} load={backup.load} onRetry={() => void backup.refresh()} />
+                </View>
+              ) : null}
 
               {tripDestination(order).kind === "client" ? (
                 <View className="gg-card">
@@ -647,6 +667,7 @@ export default function DeliveryProofScreen() {
                   onToggle={() => setReceiptHandedOver((v) => !v)}
                   disabled={busy}
                   cashCollection={cashCollection}
+                  receiver={who}
                   signing={
                     <ReceiptSignature
                       padRef={padRef}
@@ -673,7 +694,7 @@ export default function DeliveryProofScreen() {
               ) : null}
 
               {handover.load.status === "ready" ? (
-                <HandoverCodeRow otp={otp} onOpen={() => setPromptOpen(true)} />
+                <HandoverCodeRow otp={otp} onOpen={() => setPromptOpen(true)} group={Boolean(group)} />
               ) : null}
 
               {handover.load.status === "error" ? (

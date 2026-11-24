@@ -3,7 +3,12 @@ import { ChevronRight, CircleAlert, CircleCheck, CircleX, Clock, TriangleAlert }
 import { Pressable, Text, View } from "react-native";
 
 import { ContactBar } from "@/components/ContactBar";
+import { BackupReceiverRow } from "@/components/BackupReceiverRow";
 import { EarningAmount } from "@/components/EarningAmount";
+import { GroupArrivalEstimate } from "@/components/GroupArrivalEstimate";
+import { GroupOrderTag } from "@/components/GroupOrderTag";
+import { useGroupBackup } from "@/hooks/useGroupBackup";
+import { groupOrderOf } from "@/lib/groupOrder";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -34,6 +39,8 @@ type Props = {
   onDone: () => void;
   /** Where a cash job's money stands; `none` for every other job. */
   cash?: CashStage;
+  /** The map router's road time to the next stop, when it has one. */
+  routeSeconds?: number | null;
 };
 
 /**
@@ -58,11 +65,14 @@ export function TripPanel({
   onAction,
   onDone,
   cash = "none",
+  routeSeconds = null,
 }: Props) {
   const router = useRouter();
   const colors = useThemeColors();
   const note = tripStepNote(trip, phase, step, cash);
   const signOff = owesSignOff(trip) ? signOffPrompt(trip) : null;
+  const backup = useGroupBackup(step === "done" ? null : trip);
+  const backupOpen = backup.load.status === "ready" && backup.load.backup.unlocked;
 
   if (step === "done") {
     return (
@@ -102,7 +112,18 @@ export function TripPanel({
         {routeSummary ? <Text className="text-body text-text-secondary">{routeSummary}</Text> : null}
         {position ? <PositionAge position={position} /> : null}
         {note ? <Text className="text-body text-text-secondary">{note}</Text> : null}
+        {groupOrderOf(trip) ? (
+          <View className="mt-1">
+            <GroupOrderTag order={trip} variant="compact" />
+          </View>
+        ) : null}
       </View>
+
+      {/* Group order only. On the way: one tap tells the group. At the door, or once open: the backup. */}
+      {step === "to_client" ? <GroupArrivalEstimate order={trip} routeSeconds={routeSeconds} /> : null}
+      {step === "hand_over" || backupOpen ? (
+        <BackupReceiverRow order={trip} load={backup.load} onRetry={() => void backup.refresh()} />
+      ) : null}
 
       {signOff ? (
         <View className="gap-1 rounded-field border-2 border-accent p-3">

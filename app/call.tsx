@@ -30,6 +30,7 @@ import {
 } from "@/lib/orderCalls";
 import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
 import { webRTCAvailable } from "@/lib/webrtc";
+import { groupOrderOf } from "@/lib/groupOrder";
 import { useActiveTrip } from "@/store/activeTrip";
 import { callInProgress, useCall } from "@/store/call";
 
@@ -193,16 +194,18 @@ export default function CallScreen() {
   const orderId = snapshot?.orderId ?? outgoing?.orderId ?? intentOrder;
   const person = snapshot?.call ? counterpartOf(snapshot.call) : null;
   const role = person?.role ?? roleOfPair(pair);
-  const roleLabel = roleWord(role);
-  const name = person?.firstName ?? roleLabel;
   const party = partyOfPair(pair);
   const jobTrip = trip && trip.id === orderId ? trip : null;
+  // A group order's delivery call reaches only its host; say so by name.
+  const groupHost = role === "client" && groupOrderOf(jobTrip) !== null;
+  const roleLabel = groupHost ? "Host" : roleWord(role);
+  const name = person?.firstName ?? roleLabel;
   const windowOpen = callWindow(jobTrip, party).open;
   const chat = party === "shop" ? pickupChatOf(jobTrip) : deliveryChatOf(jobTrip);
   const messageRoute = orderId && chat?.status === "open"
     ? (party === "shop" ? pickupChatRoute(orderId) : deliveryChatRoute(orderId))
     : null;
-  const messageLabel = party === "shop" ? "Message the shop" : "Message the client";
+  const messageLabel = party === "shop" ? "Message the shop" : groupHost ? "Message the host" : "Message the client";
 
   const phase = gate === "none" ? snapshot?.phase ?? null : null;
   // A panel under the identity (confirm, microphone, no calling) needs the room;
