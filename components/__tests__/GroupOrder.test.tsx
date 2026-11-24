@@ -151,12 +151,18 @@ describe("the offer and the trip panel", () => {
 
   it("tags a group offer with its people and host, and leaves an ordinary offer as it was", async () => {
     const props = { secondsLeft: null, fractionLeft: null, busy: null, error: null, onAccept: jest.fn(), onDecline: jest.fn() };
-    await render(<OfferSheet offer={{ ...base, state: "ready_for_dispatch", groupOrder: GROUP }} {...props} />);
-    expect(screen.getByText("Group order, 4 people")).toBeTruthy();
-    expect(screen.getByText("Host: Host Person")).toBeTruthy();
+    const cashAmounts = { shopMinor: 1_000, collectMinor: 10_350, gridgoMinor: 2_230, riderMinor: 7_120 };
+    const cash = { method: "cash", version: 1, status: "due" };
+    await render(<OfferSheet offer={{ ...base, state: "ready_for_dispatch", groupOrder: GROUP, cash, cashAmounts } as Order} {...props} />);
+    expect(screen.getByText("Group order, 4 people, host Host Person")).toBeTruthy();
+    // The cash slip names who pays: the host, for everyone — the server's own figure.
+    expect(screen.getByText("Collect from the host")).toBeTruthy();
+    expect(screen.getByText("In cash, for the whole group")).toBeTruthy();
+    expect(screen.getByText("+₱103.50")).toBeTruthy();
 
-    await render(<OfferSheet offer={{ ...base, state: "ready_for_dispatch" }} {...props} />);
+    await render(<OfferSheet offer={{ ...base, state: "ready_for_dispatch", cash, cashAmounts } as Order} {...props} />);
     expect(screen.queryByTestId("group-order-tag")).toBeNull();
+    expect(screen.getByText("Collect from the client")).toBeTruthy();
   });
 
   it("on the way, shows the tag and the estimate; at the door, the locked backup", async () => {

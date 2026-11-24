@@ -53,10 +53,12 @@ export type CashSlipRow = {
  * GRIDGO pays for is its own line, because the client hands over that much
  * less than the other three add up to.
  */
-export function cashSlipRows(amounts: CashAmounts): CashSlipRow[] {
+export function cashSlipRows(amounts: CashAmounts, receiver: "client" | "host" = "client"): CashSlipRow[] {
   const rows: CashSlipRow[] = [
     { key: "shop", label: "Pay the shop", note: "In cash, at the counter", minor: amounts.shopMinor, sign: "out" },
-    { key: "collect", label: "Collect from the client", note: "In cash, at the door", minor: amounts.collectMinor, sign: "in" },
+    receiver === "host"
+      ? { key: "collect", label: "Collect from the host", note: "In cash, for the whole group", minor: amounts.collectMinor, sign: "in" }
+      : { key: "collect", label: "Collect from the client", note: "In cash, at the door", minor: amounts.collectMinor, sign: "in" },
   ];
   if (amounts.voucherMinor) {
     rows.push({ key: "voucher", label: "Voucher, paid by GRIDGO", note: "Added to your wallet", minor: amounts.voucherMinor, sign: "in" });
@@ -79,8 +81,8 @@ export function shopCashConfirmLabel(amounts: CashAmounts): string {
 }
 
 /** What accepting does to the wallet, said before the tap. */
-export function walletHoldLine(amounts: CashAmounts): string {
-  return `Accepting holds ${formatPhp(amounts.gridgoMinor)} of your wallet as GRIDGO's share. It is taken when you collect the client's cash, and released if the job does not go ahead.`;
+export function walletHoldLine(amounts: CashAmounts, receiver: "client" | "host" = "client"): string {
+  return `Accepting holds ${formatPhp(amounts.gridgoMinor)} of your wallet as GRIDGO's share. It is taken when you collect the ${receiver}'s cash, and released if the job does not go ahead.`;
 }
 
 /** Where an assigned cash job stands, from `GET /orders/:id/cash`. */

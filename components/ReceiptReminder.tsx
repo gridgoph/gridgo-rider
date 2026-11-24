@@ -9,6 +9,8 @@ import { useThemeColors } from "@/hooks/useTheme";
 import type { ReceiptLoad, ReceiptProblem, ReceiptStage } from "@/lib/acknowledgementReceipt";
 
 type Props = {
+  /** A group order: the host receives and pays for everyone. */
+  receiver?: "client" | "host";
   stage: ReceiptStage;
   load: ReceiptLoad;
   onRetry: () => void;
@@ -69,6 +71,7 @@ export function ReceiptReminder({
   disabled = false,
   signing,
   cashCollection,
+  receiver = "client",
 }: Props) {
   const colors = useThemeColors();
   const digital = Boolean(signing) && load.status === "ready";
@@ -81,10 +84,10 @@ export function ReceiptReminder({
             ? "COLLECT FIRST"
             : digital
               ? "THE PERSON RECEIVING SIGNS THIS"
-              : "HAND THIS TO THE CLIENT"}
+              : `HAND THIS TO THE ${receiver.toUpperCase()}`}
         </Text>
         <Text className="text-h3 text-text-primary">
-          {load.status === "cash_due" ? "Cash from the client" : "Acknowledgement receipt"}
+          {load.status === "cash_due" ? `Cash from the ${receiver}` : "Acknowledgement receipt"}
         </Text>
       </View>
 
@@ -102,11 +105,13 @@ export function ReceiptReminder({
               : "Give the client an acknowledgement receipt with the package, as well as your thank-you. When you reach their door, tell GRIDGO you have arrived and the details to copy onto the paper receipt open here."}
           </Text>
           <SecondaryButton
-            label={arriving ? "Recording arrival…" : "I'm at the client's door"}
+            label={arriving ? "Recording arrival…" : `I'm at the ${receiver}'s door`}
             onPress={onArrive}
             disabled={disabled || arriving}
           />
-          <Text className="text-caption text-text-secondary">GRIDGO lets the client know you have arrived.</Text>
+          <Text className="text-caption text-text-secondary">
+            {receiver === "host" ? "GRIDGO lets the host know you have arrived." : "GRIDGO lets the client know you have arrived."}
+          </Text>
           {arrivalError ? (
             <InlineNotice tone="error" icon="circle-x" title="Arrival not recorded" body={arrivalError} />
           ) : null}

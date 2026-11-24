@@ -106,7 +106,7 @@ export function parseGroupBackup(raw: unknown): GroupBackup {
  */
 export function backupLockedNote(group: GroupOrder): string {
   const host = group.hostName ?? "the host";
-  return `Opens if ${host} misses two of your calls, or five minutes after you tell GRIDGO you have arrived. Until then, call and message only the host.`;
+  return `Opens if ${host} misses two of your calls, or five minutes after you tell GRIDGO you have arrived.`;
 }
 
 /** The few choices for "when will you get there", in minutes. All inside the API's 1–180. */

@@ -13,6 +13,7 @@ import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { cashAmountsOf, isCashOrder } from "@/lib/cash";
+import { receiverWord } from "@/lib/groupOrder";
 import {
   cargoLines,
   cargoTotalLabel,
@@ -129,6 +130,9 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
         <Text className="text-overline text-text-secondary">NEW DELIVERY OFFER</Text>
       )}
 
+      {/* A group job says so first: one person receives for everyone. */}
+      <GroupOrderTag order={offer} variant="compact" />
+
       {cash ? (
         amounts ? (
           <CashOfferTerms
@@ -136,6 +140,7 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
             haveCash={haveCash.id === offer.id && haveCash.value}
             onHaveCash={(value) => setHaveCash({ id: offer.id, value })}
             disabled={busy !== null || expired}
+            receiver={receiverWord(offer)}
           />
         ) : (
           <Text className="text-body text-text-secondary">
@@ -163,8 +168,6 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
       ) : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
-
-      <GroupOrderTag order={offer} />
 
       {cargo.length ? (
         <View className="gap-2 rounded-field bg-surface-variant p-3" accessibilityRole="text">

@@ -196,14 +196,14 @@ export default function DeliveryProofScreen() {
   const balanceHeld = order ? !toOffice && !isBalanceConfirmed(order) : false;
   const evidenceFileId = evidence.stored.delivery_photo ?? null;
 
-  const handover = useHandoverCode(order && riderChecksHandoverCode(order) ? order.id : null);
-  const codeBlock = refusal?.message ?? handoverBlockReason(handover.load, otp);
-  const codeHeld = refusal !== null;
-  const codeComplete = /^\d{6}$/.test(otp);
   // Group order: the host receives, and a backup only once the server opens it.
   const group = groupOrderOf(order);
   const who = receiverWord(order);
   const backup = useGroupBackup(order);
+  const handover = useHandoverCode(order && riderChecksHandoverCode(order) ? order.id : null);
+  const codeBlock = refusal?.message ?? handoverBlockReason(handover.load, otp, who);
+  const codeHeld = refusal !== null;
+  const codeComplete = /^\d{6}$/.test(otp);
 
   // The full-screen code prompt opens by itself once per job, when the rider
   // arrives at the drop-off; after that only the rider or a refusal opens it.
@@ -381,7 +381,7 @@ export default function DeliveryProofScreen() {
       ? "Your no-show report is with Operations. Take the package to GRIDGO Office."
       : balanceHeld
       ? "Operations has not confirmed the client's balance due. Call them before you hand the package over."
-      : receiptDeliveryHold(receipt.stage, receipt.load) ?? codeBlock ?? evidenceBlockReason(
+      : receiptDeliveryHold(receipt.stage, receipt.load, who) ?? codeBlock ?? evidenceBlockReason(
           evidence.evidence,
           evidence.upload,
           toOffice
@@ -563,7 +563,7 @@ export default function DeliveryProofScreen() {
           checked={cashReceived}
           onChange={setCashReceived}
           label={`I received exactly ${api.formatPhp(amounts.collectMinor)} in cash`}
-          hint="GRIDGO then issues the receipt, marked Cash, for the client to sign."
+          hint={`GRIDGO then issues the receipt, marked Cash, for the ${who} to sign.`}
           disabled={busy || !evidenceFileId}
           testID="cash-received-confirm"
         />
@@ -667,6 +667,7 @@ export default function DeliveryProofScreen() {
                   onToggle={() => setReceiptHandedOver((v) => !v)}
                   disabled={busy}
                   cashCollection={cashCollection}
+                  receiver={who}
                   signing={
                     <ReceiptSignature
                       padRef={padRef}
