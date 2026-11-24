@@ -4,6 +4,8 @@ import { HANDOVER_STEPS, type HandoverStep } from "@/lib/shopHandover";
 type Props = {
   /** The step this screen performs. */
   current: HandoverStep;
+  /** A home printer signs, not a shop. */
+  home?: boolean;
 };
 
 /**
@@ -15,10 +17,13 @@ type Props = {
  * a signature is not on offer yet. It is a real sequence, so the steps are
  * numbered, on the same rail Active draws the whole job on.
  */
-export function HandoverSteps({ current }: Props) {
+export function HandoverSteps({ current, home = false }: Props) {
   const currentIndex = HANDOVER_STEPS.findIndex((item) => item.step === current);
+  const steps = home
+    ? HANDOVER_STEPS.map((item) => (item.step === "sign" ? { ...item, label: "Printer signs" } : item))
+    : HANDOVER_STEPS;
 
-  const spoken = HANDOVER_STEPS.map((item, index) =>
+  const spoken = steps.map((item, index) =>
     index < currentIndex ? `${item.label}: done` : index === currentIndex ? `${item.label}: now` : null,
   )
     .filter(Boolean)
@@ -26,7 +31,7 @@ export function HandoverSteps({ current }: Props) {
 
   return (
     <StepRail
-      steps={HANDOVER_STEPS.map((item, index) => ({
+      steps={steps.map((item, index) => ({
         key: item.step,
         label: item.label,
         status: index < currentIndex ? "done" : index === currentIndex ? "now" : "upcoming",

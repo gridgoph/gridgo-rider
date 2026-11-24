@@ -1,3 +1,4 @@
+import { isHomePrinter } from "@/lib/homePrinter";
 import type { Order } from "@/lib/api";
 import type { EvidenceUpload } from "@/lib/proofEvidence";
 import { PICKUP_CHECKS, allPassed, type ChecklistAnswers } from "@/lib/pickupChecklist";
@@ -32,13 +33,24 @@ export type SignatureDraft = {
   storedFileId: string | null;
 };
 
-/** The name to offer first: whoever the shop profile says is at the counter. */
-export function defaultSignerName(order: Pick<Order, "supplierContact">): string {
+type HandoffOrder = Pick<Order, "supplierContact"> & Partial<Pick<Order, "printerType" | "pickup">>;
+
+/**
+ * The name to offer first: whoever the shop profile says is at the counter.
+ * A home printer has no name to offer — the API withholds it — so the field
+ * starts empty and asks who handed the job over (`signerCopy`).
+ */
+export function defaultSignerName(order: HandoffOrder): string {
+  if (isHomePrinter(order)) return "";
   return order.supplierContact?.contactName?.trim() ?? "";
 }
 
-/** The shop, by the name its own profile gives, falling back to the stop label. */
-export function shopDisplayName(order: Pick<Order, "supplierContact" | "pickup">): string {
+/**
+ * The shop, by the name its own profile gives, falling back to the stop label.
+ * A home printer's "shop name" is only its barangay, so it is called what it is.
+ */
+export function shopDisplayName(order: HandoffOrder): string {
+  if (isHomePrinter(order)) return "The home printer";
   return order.supplierContact?.shopName?.trim() || order.pickup?.label?.trim() || "The shop";
 }
 
@@ -61,12 +73,14 @@ export function handoffBlockReason(input: {
   signed: boolean;
   upload: EvidenceUpload;
   storedFileId: string | null;
+  /** What to say when the name is missing; `signerCopy(order).missingName`. */
+  missingName?: string;
 }): string | null {
   if (!input.answers || !allPassed(input.answers)) {
     return "Run all six pickup checks with the supplier first.";
   }
   if (!signerNameValid(input.signerName)) {
-    return "Type the name of the person signing for the shop.";
+    return input.missingName ?? "Type the name of the person signing for the shop.";
   }
   if (input.storedFileId) return null;
   if (!input.signed) {

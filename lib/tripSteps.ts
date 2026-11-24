@@ -3,6 +3,7 @@ import { formatPhp } from "@/lib/api";
 import { cashAmountsOf, type CashStage } from "@/lib/cash";
 import { endsAtOffice, type TripPhase } from "@/lib/riderOrder";
 import { receiverWord } from "@/lib/groupOrder";
+import { isHomePrinter } from "@/lib/homePrinter";
 
 /**
  * The trip as four steps on the map: to the shop, the check there, to the
@@ -115,17 +116,23 @@ export function tripStepAction(
   cash: CashStage = "none",
 ): TripStepAction {
   const office = endsAtOffice(order);
+  // A home printer is someone's home, not a shop: the same steps, said as such.
+  const home = isHomePrinter(order);
   switch (step) {
     case "to_shop":
-      return { kind: "arrive_shop", label: "I'm at the shop" };
+      return { kind: "arrive_shop", label: home ? "I'm at the home printer" : "I'm at the shop" };
     case "check":
       // A cash job pays the shop first: the server refuses the checks until it has the receipt.
       if (cash === "pay_shop" && phase === "pickup_checks") {
         return { kind: "open", label: "Pay the shop", route: "/trip/shop-payment" };
       }
       if (phase === "pickup_pack") return { kind: "open", label: "Photograph the packed job", route: "/trip/pack" };
-      if (phase === "pickup_sign") return { kind: "open", label: "Shop signs the handoff", route: "/trip/handoff" };
-      if (phase === "pickup_checks") return { kind: "open", label: "Start the shop check", route: "/trip/pickup" };
+      if (phase === "pickup_sign") {
+        return { kind: "open", label: home ? "Printer signs the handoff" : "Shop signs the handoff", route: "/trip/handoff" };
+      }
+      if (phase === "pickup_checks") {
+        return { kind: "open", label: home ? "Start the pickup check" : "Start the shop check", route: "/trip/pickup" };
+      }
       return { kind: "none" };
     case "to_client":
       if (phase === "start_delivery") return { kind: "open", label: "Start delivery", route: "/trip/start" };
@@ -169,16 +176,21 @@ export function tripStepNote(
       ? `Collect exactly ${formatPhp(amounts.collectMinor)} in cash${who === "host" ? " from the host, for the whole group" : ""}. Then the ${who} signs the receipt on your phone.`
       : `Collect the ${who}'s exact total in cash. Then they sign the receipt on your phone.`;
   }
+  const home = isHomePrinter(order);
   switch (step) {
     case "to_shop":
-      return "Ride to the shop. Tap the button when you reach the counter.";
+      return home
+        ? "Ride to the home printer. Tap the button when you reach their door."
+        : "Ride to the shop. Tap the button when you reach the counter.";
     case "check":
       if (phase === "pickup_blocked") {
         return "A check failed and Operations has it. Leave the package at the shop and wait for their alert.";
       }
-      if (phase === "pickup_pack") return "Your check is recorded. Watch the shop pack it, then photograph it.";
-      if (phase === "pickup_sign") return "The packed photo is saved. The shop signs on your phone next.";
-      return "Count and check every piece with the shop before pick-up unlocks.";
+      if (phase === "pickup_pack") {
+        return `Your check is recorded. Watch the ${home ? "printer" : "shop"} pack it, then photograph it.`;
+      }
+      if (phase === "pickup_sign") return `The packed photo is saved. The ${home ? "printer" : "shop"} signs on your phone next.`;
+      return `Count and check every piece with the ${home ? "printer" : "shop"} before pick-up unlocks.`;
     case "to_client":
       if (phase === "start_delivery") return "The package is yours. Start the delivery when you ride.";
       return office ? "Ride to GRIDGO Office." : `Ride to the ${who}. Tap the button at their door.`;

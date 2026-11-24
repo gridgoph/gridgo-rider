@@ -8,6 +8,7 @@ import { ConfirmSheetSkeleton } from "@/components/SkeletonScreens";
 import { useTripOrder } from "@/hooks/useTripOrder";
 import * as api from "@/lib/api";
 import { shopDisplayName } from "@/lib/handoffSignature";
+import { isHomePrinter } from "@/lib/homePrinter";
 import type { RiderRefusal } from "@/lib/riderRefusals";
 import { useActiveTrip } from "@/store/activeTrip";
 
@@ -68,7 +69,7 @@ export default function ArrivedPackedSheet() {
   return (
     <ConfirmSheetBody
       question="Record that it was already packed?"
-      body={`GRIDGO notes on ${shopDisplayName(order)}'s record that the job was packed before you could check it, and tells Operations. This cannot be undone.`}
+      body={`GRIDGO notes on ${isHomePrinter(order) ? "the home printer" : shopDisplayName(order)}'s record that the job was packed before you could check it, and tells Operations. This cannot be undone.`}
       confirmLabel="Yes, it was packed"
       cancelLabel="Not packed"
       busy={busy}

@@ -1,3 +1,4 @@
+import { isHomePrinter } from "@/lib/homePrinter";
 import type { Order } from "@/lib/api";
 
 /**
@@ -97,6 +98,12 @@ export function offerDistanceMetres(order: Order): number | null {
 export function offerDistanceLabel(order: Order): string | null {
   const metres = offerDistanceMetres(order);
   if (metres == null) return null;
+  // A home printer's figure is already rounded up to 500 m by the server, so
+  // it is said as "about" and never re-rounded into false precision.
+  if (isHomePrinter(order) || order.travelEstimate?.distanceApproximate) {
+    const about = metres < 1000 ? `${metres} m` : `${Number((metres / 1000).toFixed(1))} km`;
+    return `About ${about} from pickup to drop-off`;
+  }
   const amount = metres < 1000 ? `${Math.max(100, Math.round(metres / 100) * 100)} m` : `${(metres / 1000).toFixed(1)} km`;
   return `${amount} from shop to drop-off`;
 }

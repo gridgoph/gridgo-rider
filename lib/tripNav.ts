@@ -9,6 +9,7 @@
  * owner constant — never a guessed address. Missing GPS means no invented
  * origin: the destination still pins, and the route waits for a fix.
  */
+import { isHomePrinter } from "@/lib/homePrinter";
 import type { Order } from "@/lib/api";
 import { haversineMetres, isValidLatLng, type LatLng } from "@/lib/geo";
 import { GRIDGO_OFFICE, GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
@@ -82,8 +83,19 @@ export function tripDestination(
 }
 
 export function tripShop(
-  order: Pick<Order, "pickup" | "zone">,
+  order: Pick<Order, "pickup" | "zone"> & Partial<Pick<Order, "printerType" | "barangay" | "supplierContact">>,
 ): NextStop {
+  if (isHomePrinter(order)) {
+    return {
+      kind: "shop",
+      cardKind: "pickup",
+      point: stopLatLng(order.pickup),
+      label: pickupLabel(order),
+      overline: "NEXT STOP · HOME PRINTER",
+      heading: "Check the finished job with the printer before you carry it",
+      navTitle: "TO THE HOME PRINTER",
+    };
+  }
   return {
     kind: "shop",
     cardKind: "pickup",
