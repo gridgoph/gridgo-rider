@@ -7,8 +7,10 @@ import { BackupReceiverRow } from "@/components/BackupReceiverRow";
 import { EarningAmount } from "@/components/EarningAmount";
 import { GroupArrivalEstimate } from "@/components/GroupArrivalEstimate";
 import { GroupOrderTag } from "@/components/GroupOrderTag";
+import { HomePickupNote } from "@/components/HomePickupNote";
 import { useGroupBackup } from "@/hooks/useGroupBackup";
 import { groupOrderOf } from "@/lib/groupOrder";
+import { isHomePrinter } from "@/lib/homePrinter";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -102,7 +104,13 @@ export function TripPanel({
         {stop ? (
           <>
             <Text className="text-caption text-text-secondary">
-              {stop.kind === "shop" ? "Pick up at" : stop.kind === "office" ? "Drop off at" : "Deliver to"}
+              {stop.kind === "shop"
+                ? isHomePrinter(trip)
+                  ? "Pick up at a home printer"
+                  : "Pick up at"
+                : stop.kind === "office"
+                  ? "Drop off at"
+                  : "Deliver to"}
             </Text>
             <Text className="text-h3 text-text-primary" numberOfLines={2}>
               {stop.label}
@@ -118,6 +126,9 @@ export function TripPanel({
           </View>
         ) : null}
       </View>
+
+      {/* A home printer's door: the pin is on the map, and this says it is someone's home. */}
+      {stop?.kind === "shop" ? <HomePickupNote order={trip} /> : null}
 
       {/* Group order only. On the way: one tap tells the group. At the door, or once open: the backup. */}
       {step === "to_client" ? <GroupArrivalEstimate order={trip} routeSeconds={routeSeconds} /> : null}

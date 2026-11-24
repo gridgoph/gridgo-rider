@@ -6,6 +6,7 @@ import { CashOfferTerms } from "@/components/CashOfferTerms";
 
 import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { DeliveryPart } from "@/components/DeliveryPart";
+import { HomePrinterTag } from "@/components/HomePrinterTag";
 import { EarningAmount } from "@/components/EarningAmount";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { OrderReference } from "@/components/OrderReference";
@@ -15,6 +16,8 @@ import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { cashAmountsOf, isCashOrder } from "@/lib/cash";
+import { offerDistanceLabel } from "@/lib/dispatchOffer";
+import { homeOfferPickup } from "@/lib/homePrinter";
 import { routeNoteBesideSummary, routeSummaryLabel } from "@/lib/osrm";
 import { pickupReadyLabel } from "@/lib/pickupReady";
 import { feeDistanceLabel, pickupLabel, stopLatLng } from "@/lib/riderOrder";
@@ -74,6 +77,14 @@ export function OfferCard({
   const payDetail = riderPayDetail(pay);
   const routeNote = routeNoteBesideSummary(route);
   const readyLabel = pickupReadyLabel(offer);
+  // A home printer's pin is not on the offer, so there is no route to draw:
+  // say the server's rounded distance, or that the pin comes after Accept.
+  const homePickup = homeOfferPickup(offer);
+  const routeLine = homePickup
+    ? offerDistanceLabel(offer) ?? "Distance shows after you accept"
+    : routeLoading && !route
+      ? "Measuring…"
+      : routeSummaryLabel(route);
   const cash = isCashOrder(offer);
   const amounts = cashAmountsOf(offer);
   const [haveCash, setHaveCash] = useState(false);
@@ -90,6 +101,8 @@ export function OfferCard({
         </Text>
       </View>
 
+      <HomePrinterTag order={offer} />
+
       {/* The decision, on one line: what it pays and what it costs in time. */}
       <View className="gap-1">
         <View className="flex-row items-end justify-between gap-4">
@@ -105,7 +118,7 @@ export function OfferCard({
           <View className="shrink flex-row items-center gap-2 pb-1">
             <Route size={16} color={colors.textMuted} strokeWidth={2} />
             <Text className="shrink text-body-lg text-text-secondary">
-              {routeLoading && !route ? "Measuring…" : routeSummaryLabel(route)}
+              {routeLine}
             </Text>
           </View>
         </View>
@@ -136,7 +149,11 @@ export function OfferCard({
 
       {routeNote ? <Text className="text-caption text-text-muted">{routeNote}</Text> : null}
 
-      <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
+      <StopList
+        pickup={homePickup?.label ?? pickupLabel(offer)}
+        pickupNote={homePickup?.note}
+        dropoff={destination.label}
+      />
 
       {/* The shop's ready time, said as a pickup time. Never the client's date. */}
       {readyLabel ? (

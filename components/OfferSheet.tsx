@@ -6,6 +6,7 @@ import { CashOfferTerms } from "@/components/CashOfferTerms";
 
 import { EarningAmount } from "@/components/EarningAmount";
 import { GroupOrderTag } from "@/components/GroupOrderTag";
+import { HomePrinterTag } from "@/components/HomePrinterTag";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StopList } from "@/components/StopList";
@@ -14,6 +15,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { cashAmountsOf, isCashOrder } from "@/lib/cash";
 import { receiverWord } from "@/lib/groupOrder";
+import { homeOfferPickup } from "@/lib/homePrinter";
 import {
   cargoLines,
   cargoTotalLabel,
@@ -72,6 +74,7 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
   const destination = tripDestination(offer);
   const { route } = useRoute({ from: stopLatLng(offer.pickup), to: destination.point });
   const distance = offerDistanceLabel(offer);
+  const homePickup = homeOfferPickup(offer);
   const roadTime = roadTimeEstimateLabel(route);
   const cargo = cargoLines(offer);
   const cargoTotal = cargoTotalLabel(offer);
@@ -133,6 +136,9 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
       {/* A group job says so first: one person receives for everyone. */}
       <GroupOrderTag order={offer} variant="compact" />
 
+      {/* A home printer says so before anything else about the pickup. */}
+      <HomePrinterTag order={offer} />
+
       {cash ? (
         amounts ? (
           <CashOfferTerms
@@ -167,7 +173,11 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
         </View>
       ) : null}
 
-      <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
+      <StopList
+        pickup={homePickup?.label ?? pickupLabel(offer)}
+        pickupNote={homePickup?.note}
+        dropoff={destination.label}
+      />
 
       {cargo.length ? (
         <View className="gap-2 rounded-field bg-surface-variant p-3" accessibilityRole="text">

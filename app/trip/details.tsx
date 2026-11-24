@@ -55,6 +55,8 @@ import { nextStop, tripDestination, tripShop } from "@/lib/tripNav";
 import { useActiveTrip } from "@/store/activeTrip";
 import { useCall } from "@/store/call";
 import { useSession } from "@/store/session";
+import { HomePickupNote } from "@/components/HomePickupNote";
+import { homeExactPickup } from "@/lib/homePrinter";
 
 /** How often the position age on screen is recomputed. */
 const FRESHNESS_TICK_MS = 5_000;
@@ -407,6 +409,8 @@ export default function TripDetailsScreen() {
                 }
                 zone={zoneLabel(trip.zone)}
               >
+                {/* A home printer: someone's home, with the printer's own landmark. */}
+                {heading.kind === "shop" && homeExactPickup(trip) ? <HomePickupNote order={trip} /> : null}
                 {/* On the way to the door: who meets the rider and what the client said. */}
                 {heading.kind === "client" ? (
                   <View className="border-t border-outline-subtle pt-3">
