@@ -1,6 +1,7 @@
 import { Maximize2 } from "lucide-react-native";
 import { useEffect, useMemo, useRef } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { MapFrame, type MapFrameHandle } from "@/components/MapFrame";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";

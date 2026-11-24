@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { Minimize2 } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Screen } from "@/components/Screen";

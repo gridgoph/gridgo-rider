@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import { CheckCheck } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { OrderStageBar } from "@/components/OrderStageBar";

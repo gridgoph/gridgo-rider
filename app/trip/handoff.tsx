@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Eraser, Undo2 } from "lucide-react-native";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { BlockingOverlay } from "@/components/BlockingOverlay";
 import { FormScroll } from "@/components/FormScroll";

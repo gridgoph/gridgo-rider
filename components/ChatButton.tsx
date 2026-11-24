@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { MessageSquare } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import { useSupportChatStore } from "@/store/supportChat";
