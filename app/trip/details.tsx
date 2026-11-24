@@ -11,6 +11,7 @@ import { DeliveryPinDetails } from "@/components/DeliveryPinDetails";
 import { EmptyState } from "@/components/EmptyState";
 import { ForcedByGridgo } from "@/components/ForcedByGridgo";
 import { InlineNotice } from "@/components/InlineNotice";
+import { GroupOrderTag } from "@/components/GroupOrderTag";
 import { JobHeader } from "@/components/JobHeader";
 import { Screen } from "@/components/Screen";
 import { ActiveTripSkeleton } from "@/components/SkeletonScreens";
@@ -367,6 +368,8 @@ export default function TripDetailsScreen() {
                 </View>
               ) : null}
             </JobHeader>
+
+            <GroupOrderTag order={trip} />
 
             {/* Time-sensitive, so above the route: they may still be waiting. */}
             {missedCall ? (

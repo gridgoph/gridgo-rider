@@ -4,12 +4,13 @@ import { Text, useWindowDimensions, View } from "react-native";
 import { CallPartyButton } from "@/components/CallPartyButton";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { receiverWord } from "@/lib/groupOrder";
 import { callWindow } from "@/lib/orderCalls";
 import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
 import { tripChatOrder, type TripChatParty } from "@/lib/tripChat";
 
 type Props = {
-  trip: { id: string; state: string; deliveryChat?: unknown; pickupChat?: unknown };
+  trip: { id: string; state: string; deliveryChat?: unknown; pickupChat?: unknown; groupOrder?: unknown };
   onCall: (party: TripChatParty) => void;
 };
 
@@ -30,6 +31,7 @@ export function TripContacts({ trip, onCall }: Props) {
   const stacked = fontScale >= 1.2 || width < 360;
   const deliveryChat = deliveryChatOf(trip);
   const pickupChat = pickupChatOf(trip);
+  const host = receiverWord(trip) === "host";
 
   return (
     <>
@@ -41,7 +43,11 @@ export function TripContacts({ trip, onCall }: Props) {
               <DeliveryChatRow party="shop" chat={pickupChat} onPress={() => router.push(pickupChatRoute(trip.id))} />
             ) : null
           ) : deliveryChat ? (
-            <DeliveryChatRow chat={deliveryChat} onPress={() => router.push(deliveryChatRoute(trip.id))} />
+            <DeliveryChatRow
+              chat={deliveryChat}
+              receiver={receiverWord(trip)}
+              onPress={() => router.push(deliveryChatRoute(trip.id))}
+            />
           ) : null;
         if (!row) return null;
         return (
@@ -49,12 +55,12 @@ export function TripContacts({ trip, onCall }: Props) {
             {stacked ? (
               <>
                 {row}
-                {window.open ? <CallPartyButton party={party} layout="wide" onPress={() => onCall(party)} /> : null}
+                {window.open ? <CallPartyButton party={party} host={host} layout="wide" onPress={() => onCall(party)} /> : null}
               </>
             ) : (
               <View className="flex-row items-stretch gap-2">
                 <View className="min-w-0 flex-1">{row}</View>
-                {window.open ? <CallPartyButton party={party} onPress={() => onCall(party)} /> : null}
+                {window.open ? <CallPartyButton party={party} host={host} onPress={() => onCall(party)} /> : null}
               </View>
             )}
             {!window.open && window.note ? <Text className="px-1 text-caption text-text-muted">{window.note}</Text> : null}

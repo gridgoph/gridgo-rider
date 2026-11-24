@@ -10,6 +10,8 @@ type Props = {
   /** Leave a row out where the screen already says it in its own words. */
   only?: readonly CashSlipRow["key"][];
   testID?: string;
+  /** A group order: the host pays the cash for the whole group. */
+  receiver?: "client" | "host";
 };
 
 /**
@@ -22,8 +24,8 @@ type Props = {
  * the rider's own money, the same mark it carries everywhere else. GRIDGO's
  * share is the server's figure; nothing here adds anything up.
  */
-export function CashSlip({ amounts, only, testID = "cash-slip" }: Props) {
-  const rows = cashSlipRows(amounts).filter((row) => !only || only.includes(row.key));
+export function CashSlip({ amounts, only, testID = "cash-slip", receiver = "client" }: Props) {
+  const rows = cashSlipRows(amounts, receiver).filter((row) => !only || only.includes(row.key));
   return (
     <View className="rounded-field border border-outline bg-surface-variant px-3 py-1" testID={testID}>
       {rows.map((row) =>

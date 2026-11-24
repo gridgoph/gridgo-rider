@@ -13,6 +13,8 @@ type Props = {
    * would squeeze the message row to a word per line.
    */
   layout?: "column" | "wide";
+  /** A group order: the client end of the call is the group's host. */
+  host?: boolean;
 };
 
 /**
@@ -20,9 +22,9 @@ type Props = {
  * two ways to reach one person read as one pair, and the two people never
  * read as one control twice. Monochrome: the trip's one yellow is its next step.
  */
-export function CallPartyButton({ party, onPress, layout = "column" }: Props) {
+export function CallPartyButton({ party, onPress, layout = "column", host = false }: Props) {
   const colors = useThemeColors();
-  const who = party === "shop" ? "the shop" : "the client";
+  const who = party === "shop" ? "the shop" : host ? "the host" : "the client";
   const disc = (
     <View className="h-10 w-10 items-center justify-center rounded-pill bg-accent">
       <Phone size={18} color={colors.accentOn} strokeWidth={2} />

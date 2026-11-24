@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 import { CashOfferTerms } from "@/components/CashOfferTerms";
 
 import { EarningAmount } from "@/components/EarningAmount";
+import { GroupOrderTag } from "@/components/GroupOrderTag";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StopList } from "@/components/StopList";
@@ -12,6 +13,7 @@ import { useRoute } from "@/hooks/useRoute";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { cashAmountsOf, isCashOrder } from "@/lib/cash";
+import { receiverWord } from "@/lib/groupOrder";
 import {
   cargoLines,
   cargoTotalLabel,
@@ -128,6 +130,9 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
         <Text className="text-overline text-text-secondary">NEW DELIVERY OFFER</Text>
       )}
 
+      {/* A group job says so first: one person receives for everyone. */}
+      <GroupOrderTag order={offer} variant="compact" />
+
       {cash ? (
         amounts ? (
           <CashOfferTerms
@@ -135,6 +140,7 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
             haveCash={haveCash.id === offer.id && haveCash.value}
             onHaveCash={(value) => setHaveCash({ id: offer.id, value })}
             disabled={busy !== null || expired}
+            receiver={receiverWord(offer)}
           />
         ) : (
           <Text className="text-body text-text-secondary">

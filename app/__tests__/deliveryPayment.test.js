@@ -29,6 +29,8 @@ jest.mock("@/hooks/useProofEvidence", () => ({ useProofEvidence: jest.fn(() => (
 })) }));
 jest.mock("@/components/BlockingOverlay", () => ({ BlockingOverlay: "BlockingOverlay" }));
 jest.mock("@/components/DeliveryPinDetails", () => ({ DeliveryPinDetails: "DeliveryPinDetails" }));
+jest.mock("@/components/BackupReceiverRow", () => ({ BackupReceiverRow: "BackupReceiverRow" }));
+jest.mock("@/components/GroupOrderTag", () => ({ GroupOrderTag: "GroupOrderTag" }));
 jest.mock("@/components/EvidenceCapture", () => ({ EvidenceCapture: "EvidenceCapture" }));
 jest.mock("@/components/HandoverCodePrompt", () => ({ HandoverCodePrompt: "HandoverCodePrompt", HandoverCodeRow: "HandoverCodeRow" }));
 jest.mock("@/components/HandoffReminderCard", () => ({ HandoffReminderCard: "HandoffReminderCard" }));

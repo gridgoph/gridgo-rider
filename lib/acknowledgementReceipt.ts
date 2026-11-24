@@ -258,16 +258,20 @@ export type ReceiptLoad =
  * (`receiptSignatureBlockReason`). A server without them (`paper_only`, or a
  * bare `404` on the route) delivers as before, and the tick never holds anything.
  */
-export function receiptDeliveryHold(stage: ReceiptStage, load: ReceiptLoad): string | null {
+export function receiptDeliveryHold(
+  stage: ReceiptStage,
+  load: ReceiptLoad,
+  receiver: "client" | "host" = "client",
+): string | null {
   if (stage === "none" || stage === "paper_only") return null;
   if (stage === "before_arrival") {
-    return "Tap “I'm at the client's door” to open the acknowledgement receipt for them to sign before you hand the package over.";
+    return `Tap “I'm at the ${receiver}'s door” to open the acknowledgement receipt for them to sign before you hand the package over.`;
   }
   switch (load.status) {
     case "ready":
       return null;
     case "cash_due":
-      return "Collect the client's exact cash first. The receipt they sign opens after that.";
+      return `Collect the ${receiver}'s exact cash first. The receipt they sign opens after that.`;
     case "problem":
       if (load.problem.kind === "unsupported") return null;
       return load.problem.kind === "retry"

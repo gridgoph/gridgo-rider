@@ -84,21 +84,32 @@ export function closesAtLabel(closesAt: string, now: Date | number = Date.now())
   return `${date}, ${time}`;
 }
 
-/** The row on the trip that opens the conversation. */
-export function deliveryChatEntry(chat: DeliveryChatSummary, now: Date | number = Date.now()) {
+/**
+ * The row on the trip that opens the conversation. On a group order the
+ * person at the other end is the host (`receiver: "host"`), the only member
+ * the delivery chat reaches.
+ */
+export function deliveryChatEntry(
+  chat: DeliveryChatSummary,
+  now: Date | number = Date.now(),
+  receiver: "client" | "host" = "client",
+) {
   if (chat.status === "open") {
     return {
-      title: "Message the client",
-      detail: "Ask for a gate, a landmark or who will receive it. Neither of you sees a phone number.",
-      accessibilityLabel: "Message the client about this delivery",
+      title: `Message the ${receiver}`,
+      detail:
+        receiver === "host"
+          ? "The host receives for the whole group. Ask for a gate, a landmark or where to meet. Neither of you sees a phone number."
+          : "Ask for a gate, a landmark or who will receive it. Neither of you sees a phone number.",
+      accessibilityLabel: `Message the ${receiver} about this delivery`,
     };
   }
   return {
-    title: "Messages with the client",
+    title: `Messages with the ${receiver}`,
     detail: chat.closesAt
       ? `Delivered. Readable until ${closesAtLabel(chat.closesAt, now)}, then removed.`
       : `Delivered. Removed ${chat.retentionHours} hours after delivery.`,
-    accessibilityLabel: "Read your messages with the client",
+    accessibilityLabel: `Read your messages with the ${receiver}`,
   };
 }
 

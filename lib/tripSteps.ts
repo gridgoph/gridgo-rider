@@ -2,6 +2,7 @@ import type { DeliveryMilestone, Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { cashAmountsOf, type CashStage } from "@/lib/cash";
 import { endsAtOffice, type TripPhase } from "@/lib/riderOrder";
+import { receiverWord } from "@/lib/groupOrder";
 
 /**
  * The trip as four steps on the map: to the shop, the check there, to the
@@ -150,6 +151,8 @@ export function tripStepNote(
 ): string | null {
   const office = endsAtOffice(order);
   const amounts = cashAmountsOf(order);
+  // A group order is handed to its host, who pays any cash for the whole group.
+  const who = receiverWord(order);
   if (cash === "returned") return "Back at GRIDGO Office. Your shop payment is back in your wallet.";
   if (cash === "pay_shop" && step === "check" && phase === "pickup_checks") {
     return amounts
@@ -157,12 +160,14 @@ export function tripStepNote(
       : "Pay the shop its exact price in cash and photograph its receipt. Then check the job.";
   }
   if (cash === "carry" && step === "to_client" && !office && amounts) {
-    return `Ride to the client. At the door you collect exactly ${formatPhp(amounts.collectMinor)} in cash.`;
+    return who === "host"
+      ? `Ride to the host. They pay exactly ${formatPhp(amounts.collectMinor)} in cash for the whole group.`
+      : `Ride to the client. At the door you collect exactly ${formatPhp(amounts.collectMinor)} in cash.`;
   }
   if (cash === "carry" && step === "hand_over" && !office) {
     return amounts
-      ? `Collect exactly ${formatPhp(amounts.collectMinor)} in cash. Then the client signs the receipt on your phone.`
-      : "Collect the client's exact total in cash. Then they sign the receipt on your phone.";
+      ? `Collect exactly ${formatPhp(amounts.collectMinor)} in cash${who === "host" ? " from the host, for the whole group" : ""}. Then the ${who} signs the receipt on your phone.`
+      : `Collect the ${who}'s exact total in cash. Then they sign the receipt on your phone.`;
   }
   switch (step) {
     case "to_shop":
@@ -176,11 +181,13 @@ export function tripStepNote(
       return "Count and check every piece with the shop before pick-up unlocks.";
     case "to_client":
       if (phase === "start_delivery") return "The package is yours. Start the delivery when you ride.";
-      return office ? "Ride to GRIDGO Office." : "Ride to the client. Tap the button at their door.";
+      return office ? "Ride to GRIDGO Office." : `Ride to the ${who}. Tap the button at their door.`;
     case "hand_over":
       return office
         ? "Leave it on the GRIDGO shelf and photograph it there."
-        : "Take the door photo and have the receiving person sign the receipt on your phone.";
+        : who === "host"
+          ? "Hand everything to the host. Take the door photo and have them sign the receipt on your phone."
+          : "Take the door photo and have the receiving person sign the receipt on your phone.";
     case "done":
       return office ? "Dropped off at GRIDGO Office." : "Delivered.";
     default:

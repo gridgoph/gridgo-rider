@@ -24,7 +24,11 @@ export function riderChecksHandoverCode(order: Pick<Order, "fulfillmentMode">): 
   return !endsAtOffice(order);
 }
 
-export function handoverBlockReason(load: HandoverCodeLoad, otp: string): string | null {
+export function handoverBlockReason(
+  load: HandoverCodeLoad,
+  otp: string,
+  receiver: "client" | "host" = "client",
+): string | null {
   switch (load.status) {
     case "none":
       return null;
@@ -33,7 +37,7 @@ export function handoverBlockReason(load: HandoverCodeLoad, otp: string): string
     case "error":
       return "Could not check for a handover code. Try again before you hand the package over.";
     case "ready":
-      return /^\d{6}$/.test(otp) ? null : "Enter the six-digit code the client reads aloud.";
+      return /^\d{6}$/.test(otp) ? null : `Enter the six-digit code the ${receiver} reads aloud.`;
   }
 }
 
