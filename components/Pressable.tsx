@@ -28,6 +28,11 @@ export function Pressable({ style, onPressIn, onPressOut, ...rest }: PressablePr
     return <NativePressable {...rest} onPressIn={onPressIn} onPressOut={onPressOut} style={style} />;
   }
 
+  // Not an inline literal: Expo's web typings (pulled in by the generated
+  // `expo-env.d.ts`) add a required `hovered`, and React Native's own type
+  // has no such field, so a literal fails one of the two typechecks.
+  const state = { pressed, hovered: false };
+
   return (
     <NativePressable
       {...rest}
@@ -39,7 +44,7 @@ export function Pressable({ style, onPressIn, onPressOut, ...rest }: PressablePr
         setPressed(false);
         onPressOut?.(event);
       }}
-      style={style({ pressed, hovered: false })}
+      style={style(state)}
     />
   );
 }
