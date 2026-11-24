@@ -52,6 +52,7 @@ import {
 } from "@/lib/pickupCount";
 import { cashStage } from "@/lib/cash";
 import { formatCheckedAt } from "@/lib/handoffSignature";
+import { isHomePrinter } from "@/lib/homePrinter";
 import { pickupLabel } from "@/lib/riderOrder";
 import type { RiderRefusal } from "@/lib/riderRefusals";
 import {
@@ -323,7 +324,7 @@ export default function PickupChecklistScreen() {
               />
             ) : null}
 
-            {packs ? <HandoverSteps current="check" /> : null}
+            {packs ? <HandoverSteps current="check" home={isHomePrinter(order)} /> : null}
 
             {packs ? (
               <Text className="text-body-lg text-text-secondary">

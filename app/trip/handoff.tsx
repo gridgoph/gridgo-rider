@@ -47,6 +47,7 @@ import {
 } from "@/lib/pickupCount";
 import { type EvidenceUpload, UPLOAD_IDLE, uploadStatusLine } from "@/lib/proofEvidence";
 import { handoffSignatureEvidence } from "@/lib/proofPhoto";
+import { isHomePrinter, signerCopy } from "@/lib/homePrinter";
 import { pickupLabel } from "@/lib/riderOrder";
 import type { RiderRefusal } from "@/lib/riderRefusals";
 import { currentInspectionId, packedPhotoStored, ridersPack } from "@/lib/shopHandover";
@@ -141,6 +142,9 @@ export default function HandoffSignatureScreen() {
   }
 
   const mode = order ? countMode(order) : ({ kind: "legacy" } as const);
+  // A home printer has no name on file for the rider, so the field asks who handed it over.
+  const signer = signerCopy(order ?? {});
+  const home = order ? isHomePrinter(order) : false;
   const packs = order ? ridersPack(order) : false;
   const inspected = order ? Boolean(currentInspectionId(order)) : false;
   const packed = order ? packedPhotoStored(order) : false;
@@ -178,7 +182,7 @@ export default function HandoffSignatureScreen() {
       ? "This job is not waiting for a signature. Return to the trip for its current step."
       : !restored
         ? "Restoring the signature…"
-        : handoffBlockReason({ answers, signerName, signed, upload, storedFileId });
+        : handoffBlockReason({ answers, signerName, signed, upload, storedFileId, missingName: signer.missingName });
 
   function changeName(next: string) {
     setSignerName(next);
@@ -347,7 +351,7 @@ export default function HandoffSignatureScreen() {
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
-            {packs ? <HandoverSteps current="sign" /> : null}
+            {packs ? <HandoverSteps current="sign" home={home} /> : null}
 
             <PassedChecksSummary
               checkedAt={checkedAt}
@@ -356,24 +360,24 @@ export default function HandoffSignatureScreen() {
             />
 
             <View className="gap-1">
-              <Text className="text-h2 text-text-primary">Supplier signs here</Text>
+              <Text className="text-h2 text-text-primary">{home ? "The printer signs here" : "Supplier signs here"}</Text>
               <Text className="text-body-lg text-text-secondary">
                 {shopDisplayName(order)} hands this job to {rider?.name?.trim() || "the GRIDGO rider"}.
               </Text>
               <WhyWeAsk>
                 {packs
-                  ? "The name and signature are GRIDGO's record that the shop handed this job over after the unpacked check and the packing you watched."
-                  : "The name and signature are GRIDGO's record that the shop handed this job over after the six checks."}
+                  ? `The name and signature are GRIDGO's record that ${home ? "the printer" : "the shop"} handed this job over after the unpacked check and the packing you watched.`
+                  : `The name and signature are GRIDGO's record that ${home ? "the printer" : "the shop"} handed this job over after the six checks.`}
               </WhyWeAsk>
             </View>
 
             <View className="gap-2">
-              <Text className="text-caption text-text-muted">Name of the person signing</Text>
+              <Text className="text-caption text-text-muted">{signer.fieldLabel}</Text>
               <TextField
                 value={signerName}
                 onChange={changeName}
-                placeholder="Who is signing for the shop"
-                accessibilityLabel="Name of the person signing for the shop"
+                placeholder={signer.placeholder}
+                accessibilityLabel={signer.accessibilityLabel}
                 kind="name"
                 editable={!busy}
               />
@@ -389,7 +393,11 @@ export default function HandoffSignatureScreen() {
                 onSignedChange={setSigned}
                 onStrokesChange={strokesChanged}
                 onDrawingChange={setDrawing}
-                hint="Turn the phone to the supplier and ask them to sign on the line."
+                hint={
+                  home
+                    ? "Turn the phone to the person handing it over and ask them to sign on the line."
+                    : "Turn the phone to the supplier and ask them to sign on the line."
+                }
                 accessibilityHint="Draw the supplier's signature with your finger"
               />
 

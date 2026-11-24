@@ -287,6 +287,38 @@ describe("the supplier signs on the rider's phone", () => {
     expect(screen.getByText("Type the name of the person signing for the shop.")).toBeTruthy();
   });
 
+  it("at a home printer, offers no name and asks plainly who handed it over (0B10F8DE)", async () => {
+    // As gridgo-api#439 serves it: no personal name, the shop name is the barangay.
+    const atHome = {
+      ...atShop,
+      printerType: "home",
+      barangay: "Sample Barangay",
+      pickup: { lat: 7.073412, lng: 125.612834, label: "Sample Street", landmark: "Blue gate", propertyType: "house" },
+      supplierContact: { shopName: "Sample Barangay", printerType: "home", barangay: "Sample Barangay" },
+    };
+    api.getOrder.mockResolvedValue(atHome);
+    useActiveTrip.setState({ order: atHome as typeof atShop, loaded: true, loading: false, error: null });
+    api.submitPickupChecklist.mockResolvedValue({ order: { ...atHome, state: "picked_up" }, signOffPrompt: null });
+
+    await render(<HandoffSignatureScreen />);
+    await screen.findByText("The printer signs here");
+    expect(screen.getByText(/The home printer hands this job to Mark Prado/)).toBeTruthy();
+    expect(screen.getByText("This is a private home, please be discreet.")).toBeTruthy();
+    expect(screen.getByText("Who handed it over?")).toBeTruthy();
+    const field = screen.getByLabelText("Name of the person who handed the job over");
+    expect(field.props.value).toBe("");
+    expect(screen.queryByText(/Sample Barangay hands/)).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText("test: sign"));
+    expect(doneButton().props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByText("Type the name of the person who handed it over.")).toBeTruthy();
+
+    await fireEvent.changeText(field, "Sample Printer");
+    await fireEvent.press(doneButton());
+    await waitFor(() => expect(api.submitPickupChecklist).toHaveBeenCalledTimes(1));
+    expect(api.submitPickupChecklist.mock.calls[0][3]).toEqual({ signature: { fileId: "fil_sig", signerName: "Sample Printer" } });
+  });
+
   it("stores the PNG, then sends the six checks with the file id and the signer", async () => {
     const moved = { ...atShop, state: "picked_up" };
     api.submitPickupChecklist.mockResolvedValue({ order: moved, signOffPrompt: "Salamat po!" });

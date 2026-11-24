@@ -5,6 +5,8 @@ import { useThemeColors } from "@/hooks/useTheme";
 
 type Props = {
   pickup: string;
+  /** One quiet line under the pickup, e.g. a home printer's "exact pin after you accept". */
+  pickupNote?: string | null;
   dropoff: string;
   /** Stops already behind the rider, on a job in hand. Offers have none. */
   done?: { pickup?: boolean; dropoff?: boolean };
@@ -19,7 +21,7 @@ type Props = {
  * fifth of the height. Square mark for pickup, round for drop-off, so it still
  * reads in greyscale; a stop already passed says DONE beside a tick.
  */
-export function StopList({ pickup, dropoff, done }: Props) {
+export function StopList({ pickup, pickupNote, dropoff, done }: Props) {
   return (
     <View className="gap-0" accessibilityRole="text">
       <View className="flex-row gap-3">
@@ -30,6 +32,7 @@ export function StopList({ pickup, dropoff, done }: Props) {
         <View className="min-w-0 flex-1 pb-3">
           <StopOverline label="PICKUP" done={done?.pickup} />
           <Text className="text-body-lg text-text-primary">{pickup}</Text>
+          {pickupNote ? <Text className="text-caption text-text-secondary">{pickupNote}</Text> : null}
         </View>
       </View>
       <View className="flex-row gap-3">

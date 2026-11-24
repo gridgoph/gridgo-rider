@@ -65,7 +65,20 @@ export type OrderStop = {
   lat: number;
   lng: number;
   label: string;
+  /**
+   * Home-printer pickups only (gridgo-api `docs/HOME_PRINTERS_API.md`). An
+   * offer, a finished job, or anyone but the assigned rider gets the area
+   * alone — `{ barangay }`, with no `lat`/`lng`/`label` at runtime, which is
+   * why every read goes through `stopLatLng`. Only the assigned rider on an
+   * active job gets the exact pin, with the private details below.
+   */
+  barangay?: string;
+  landmark?: string;
+  propertyType?: HomePropertyType;
 };
+
+/** What kind of home a home printer prints from. Never shown to clients. */
+export type HomePropertyType = "house" | "boarding_house";
 
 /** The six checks, in the order the rider works through them. */
 export type PickupCheckCode =
@@ -168,7 +181,11 @@ export type ShopHandover = {
 /** Who is at the shop counter, from the shop's profile. Prefills the signer. */
 export type SupplierContact = {
   shopName: string | null;
-  contactName: string | null;
+  /** Absent for a home printer: the API never gives the rider a personal name. */
+  contactName?: string | null;
+  /** `"home"` for a home printer; then `shopName` is only the barangay. */
+  printerType?: "home" | null;
+  barangay?: string | null;
 };
 
 /**
@@ -415,6 +432,14 @@ export type Order = {
    * `lib/groupOrder.ts`; absent on every ordinary job.
    */
   groupOrder?: { id: string; memberCount: number; hostName: string } | null;
+  /**
+   * `"home"` when the job is printed at a home printer (gridgo-api
+   * `docs/HOME_PRINTERS_API.md`): a private home, never a shop. Absent on a
+   * shop job and on an older API. Read through `lib/homePrinter.ts`.
+   */
+  printerType?: "home" | null;
+  /** The home printer's barangay — the only place the rider has before accepting. */
+  barangay?: string | null;
 };
 
 export type CashStatus =
@@ -486,6 +511,8 @@ export type TravelEstimate = {
   distanceMeters: number | null;
   durationSeconds: number | null;
   source: string;
+  /** A home printer's distance, rounded up to 500 m by the server. */
+  distanceApproximate?: boolean;
 };
 
 export type DeliveryMilestone = {

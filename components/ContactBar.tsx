@@ -6,6 +6,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
 import { receiverWord } from "@/lib/groupOrder";
+import { isHomePrinter } from "@/lib/homePrinter";
 import { callWindow, pairOfParty } from "@/lib/orderCalls";
 import { openNavigation, type NavigationHandoff } from "@/lib/mapsNavigation";
 import { pickupChatOf, pickupChatRoute } from "@/lib/pickupChat";
@@ -13,7 +14,7 @@ import type { TripChatParty } from "@/lib/tripChat";
 import { useCall } from "@/store/call";
 
 type Props = {
-  trip: Pick<Order, "id" | "state" | "deliveryChat" | "pickupChat" | "groupOrder">;
+  trip: Pick<Order, "id" | "state" | "deliveryChat" | "pickupChat" | "groupOrder"> & Partial<Pick<Order, "printerType" | "supplierContact">>;
   /** Who is at the stop: the shop until pick-up, the client after. */
   party: TripChatParty;
   /** The hand-off to the rider's maps app; omit to leave Navigate off the bar. */
@@ -29,7 +30,7 @@ type Props = {
 export function ContactBar({ trip, party, directions }: Props) {
   const router = useRouter();
   // A group order is handed to its host, the only member calls and chat reach.
-  const who = party === "shop" ? "the shop" : `the ${receiverWord(trip)}`;
+  const who = party === "shop" ? (isHomePrinter(trip) ? "the home printer" : "the shop") : `the ${receiverWord(trip)}`;
   const chatOpen = party === "shop" ? Boolean(pickupChatOf(trip)) : Boolean(deliveryChatOf(trip));
   const callOpen = callWindow(trip, party).open;
 

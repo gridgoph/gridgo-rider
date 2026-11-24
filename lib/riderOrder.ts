@@ -1,3 +1,4 @@
+import { homePickupLabel, isHomePrinter } from "@/lib/homePrinter";
 import type { Order, OrderStop } from "@/lib/api";
 import type { LatLng } from "@/lib/geo";
 import { isValidLatLng } from "@/lib/geo";
@@ -439,8 +440,14 @@ export function stopLatLng(stop: OrderStop | null | undefined): LatLng | null {
   return isValidLatLng(point) ? point : null;
 }
 
-/** Pickup label from API, with a plain fallback. */
-export function pickupLabel(order: Pick<Order, "pickup" | "zone">): string {
+/**
+ * Pickup label from API, with a plain fallback. A home printer reads as its
+ * barangay until the job is the rider's (`lib/homePrinter.ts`).
+ */
+export function pickupLabel(
+  order: Pick<Order, "pickup" | "zone"> & Partial<Pick<Order, "printerType" | "barangay" | "supplierContact">>,
+): string {
+  if (isHomePrinter(order)) return homePickupLabel(order);
   return order.pickup?.label?.trim() || "Supplier print shop";
 }
 

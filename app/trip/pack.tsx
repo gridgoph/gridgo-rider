@@ -22,6 +22,7 @@ import { PACKING_PHOTO_TARGETS } from "@/lib/attachments";
 import { formatCheckedAt } from "@/lib/handoffSignature";
 import { recordedCountLines } from "@/lib/pickupCount";
 import { evidenceBlockReason } from "@/lib/proofEvidence";
+import { isHomePrinter } from "@/lib/homePrinter";
 import { pickupLabel } from "@/lib/riderOrder";
 import { riderRefusal } from "@/lib/riderRefusals";
 import {
@@ -137,7 +138,7 @@ export default function PackedPhotoScreen() {
           <>
             <TripStepHeader order={order} stopKind="pickup" stopLabel={pickupLabel(order)} />
 
-            <HandoverSteps current="pack" />
+            <HandoverSteps current="pack" home={isHomePrinter(order)} />
 
             <PassedChecksSummary
               flow="rider_packs"
