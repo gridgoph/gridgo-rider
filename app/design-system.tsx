@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { EarningAmount } from "@/components/EarningAmount";
 import { GridgoLogo, type GridgoLogoRole } from "@/components/GridgoLogo";

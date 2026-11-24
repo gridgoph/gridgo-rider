@@ -1,5 +1,6 @@
 import { LockKeyhole, Phone, UserRoundCheck } from "lucide-react-native";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import type { GroupBackupLoad } from "@/hooks/useGroupBackup";

@@ -1,5 +1,6 @@
 import { Circle, CircleDot, Clock } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { AlertsButton } from "@/components/AlertsButton";
 import { ChatButton } from "@/components/ChatButton";
