@@ -68,3 +68,28 @@ describe("the group order on a job (F54BDF7A)", () => {
     expect(groupRefusalMessage("something_else", "fallback")).toBe("fallback");
   });
 });
+
+describe("host wording on a group job's door steps", () => {
+  // Imported here so the group helpers above stay free of these modules.
+  const { handoverBlockReason } = jest.requireActual<typeof import("@/lib/handoverCode")>("@/lib/handoverCode");
+  const { receiptDeliveryHold } = jest.requireActual<typeof import("@/lib/acknowledgementReceipt")>("@/lib/acknowledgementReceipt");
+  const { tripStepNote } = jest.requireActual<typeof import("@/lib/tripSteps")>("@/lib/tripSteps");
+  const { cashSlipRows } = jest.requireActual<typeof import("@/lib/cash")>("@/lib/cash");
+
+  it("asks the host, not a client, and leaves an ordinary job's words alone", () => {
+    expect(handoverBlockReason({ status: "ready" } as never, "", "host")).toBe("Enter the six-digit code the host reads aloud.");
+    expect(handoverBlockReason({ status: "ready" } as never, "")).toBe("Enter the six-digit code the client reads aloud.");
+    expect(receiptDeliveryHold("before_arrival", { status: "idle" } as never, "host")).toMatch(/I'm at the host's door/);
+    expect(receiptDeliveryHold("before_arrival", { status: "idle" } as never)).toMatch(/I'm at the client's door/);
+  });
+
+  it("says the host pays the whole group's cash, using the server's figure", () => {
+    const amounts = { shopMinor: 1_000, collectMinor: 10_350, gridgoMinor: 2_230, riderMinor: 7_120 };
+    const order = { id: "o", state: "out_for_delivery", fulfillmentMode: "delivery", cash: { method: "cash", version: 1, status: "due" }, cashAmounts: amounts, groupOrder: group } as never;
+    expect(tripStepNote(order, "delivery_proof" as never, "to_client", "carry")).toBe(
+      "Ride to the host. They pay exactly ₱103.50 in cash for the whole group.",
+    );
+    expect(tripStepNote(order, "delivery_proof" as never, "hand_over", "carry")).toMatch(/from the host, for the whole group/);
+    expect(cashSlipRows(amounts, "host").find((r) => r.key === "collect")).toMatchObject({ label: "Collect from the host", minor: 10_350 });
+  });
+});
