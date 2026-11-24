@@ -8,7 +8,8 @@ import {
   Settings2,
 } from "lucide-react-native";
 import { useCallback } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useRouter, useFocusEffect } from "expo-router";
 
 import { DestinationRow } from "@/components/DestinationRow";

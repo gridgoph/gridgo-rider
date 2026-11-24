@@ -8,7 +8,8 @@ import {
   Undo2,
   type LucideIcon,
 } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { InlineNotice } from "@/components/InlineNotice";
 import { SkeletonText } from "@/components/Skeleton";

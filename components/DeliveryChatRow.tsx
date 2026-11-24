@@ -1,5 +1,6 @@
 import { ChevronRight, Store, UserRound } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import { deliveryChatEntry, type DeliveryChatSummary } from "@/lib/deliveryChat";

@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { ChevronDown, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { CallAvatar } from "@/components/CallAvatar";
 import { CallControl } from "@/components/CallControl";

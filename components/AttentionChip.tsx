@@ -1,6 +1,7 @@
 import { useRouter, type Href } from "expo-router";
 import { ChevronRight, TriangleAlert, Info } from "lucide-react-native";
-import { Pressable, Text } from "react-native";
+import { Text } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import type { AttentionSummary } from "@/lib/attention";

@@ -1,6 +1,7 @@
 import { Eraser, Undo2 } from "lucide-react-native";
 import type { Ref } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { SignaturePad, type SignaturePadHandle } from "@/components/SignaturePad";
 import { StatusChip } from "@/components/StatusChip";
