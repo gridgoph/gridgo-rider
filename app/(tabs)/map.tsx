@@ -561,6 +561,7 @@ export default function MapHomeScreen() {
                 onAction={() => void runStep()}
                 onDone={() => void refreshTrip(userId, "refresh")}
                 cash={cash}
+                routeSeconds={shownRoute?.durationSeconds ?? null}
               />
             ) : showOffer && offer ? (
               <OfferSheet

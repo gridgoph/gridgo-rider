@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 import { CashOfferTerms } from "@/components/CashOfferTerms";
 
 import { EarningAmount } from "@/components/EarningAmount";
+import { GroupOrderTag } from "@/components/GroupOrderTag";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StopList } from "@/components/StopList";
@@ -162,6 +163,8 @@ export function OfferSheet({ offer, secondsLeft, fractionLeft, busy, error, onAc
       ) : null}
 
       <StopList pickup={pickupLabel(offer)} dropoff={destination.label} />
+
+      <GroupOrderTag order={offer} />
 
       {cargo.length ? (
         <View className="gap-2 rounded-field bg-surface-variant p-3" accessibilityRole="text">

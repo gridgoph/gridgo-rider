@@ -6,7 +6,7 @@ import { deliveryChatEntry, type DeliveryChatSummary } from "@/lib/deliveryChat"
 import { pickupChatEntry, unreadBadgeLabel, type PickupChatSummary } from "@/lib/pickupChat";
 
 type Props =
-  | { party?: "client"; chat: DeliveryChatSummary; onPress: () => void }
+  | { party?: "client"; chat: DeliveryChatSummary; onPress: () => void; receiver?: "client" | "host" }
   | { party: "shop"; chat: PickupChatSummary; onPress: () => void };
 
 /**
@@ -25,7 +25,10 @@ export function DeliveryChatRow(props: Props) {
   const colors = useThemeColors();
   const { onPress } = props;
   const shop = props.party === "shop";
-  const entry = shop ? pickupChatEntry(props.chat) : deliveryChatEntry(props.chat);
+  const entry =
+    props.party === "shop"
+      ? pickupChatEntry(props.chat)
+      : deliveryChatEntry(props.chat, undefined, props.receiver ?? "client");
   const badge = shop ? unreadBadgeLabel(props.chat.unread) : null;
   const open = props.chat.status === "open";
   const Icon = shop ? Store : UserRound;

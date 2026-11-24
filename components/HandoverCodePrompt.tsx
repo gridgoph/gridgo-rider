@@ -16,6 +16,8 @@ type Props = {
   stickyActionHeight: number;
   /** The refusal, lockout and escalation notices, as the delivery screen draws them. */
   children?: ReactNode;
+  /** A group order: the host's code, also used by a backup receiver. */
+  group?: boolean;
 };
 
 /**
@@ -36,26 +38,27 @@ export function HandoverCodePrompt({
   disabled = false,
   stickyActionHeight,
   children,
+  group = false,
 }: Props) {
   return (
     <FormScroll contentClassName="gg-page gap-6 pb-8 pt-4" stickyActionHeight={stickyActionHeight}>
       <View className="flex-row justify-end">
         <SecondaryButton label="Close" onPress={onClose} />
       </View>
-      <HandoverCodeCard otp={otp} onChange={onChange} disabled={disabled} autoFocus />
+      <HandoverCodeCard otp={otp} onChange={onChange} disabled={disabled} autoFocus group={group} />
       {children}
     </FormScroll>
   );
 }
 
 /** The way back into the prompt from the delivery screen, with what was typed. */
-export function HandoverCodeRow({ otp, onOpen }: { otp: string; onOpen: () => void }) {
+export function HandoverCodeRow({ otp, onOpen, group = false }: { otp: string; onOpen: () => void; group?: boolean }) {
   return (
     <View className="gg-card-flush">
       <DestinationRow
         icon={Hash}
         label="Handover code"
-        detail="Ask the client to read their code aloud."
+        detail={group ? "Ask the host, or the backup, to read the host's code aloud." : "Ask the client to read their code aloud."}
         value={/^\d{6}$/.test(otp) ? otp : "Not entered"}
         onPress={onOpen}
         last

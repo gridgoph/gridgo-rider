@@ -41,6 +41,7 @@ jest.mock("@/lib/api", () => ({
   getHandover: jest.fn(() => Promise.resolve(null)),
   getOrderCash: jest.fn(),
   collectCashAtDoor: jest.fn(),
+  getGroupBackup: jest.fn(),
 }));
 
 /** Evidence already stored, so the only thing left on the screen is the receipt. */
@@ -145,6 +146,7 @@ const api = jest.requireMock("@/lib/api") as {
   prepareAcknowledgementReceipt: jest.Mock;
   getOrderCash: jest.Mock;
   collectCashAtDoor: jest.Mock;
+  getGroupBackup: jest.Mock;
 };
 
 /*
@@ -366,5 +368,63 @@ describe("a no-show report Operations rejected (cash review P1-2)", () => {
     await waitFor(() => expect(api.getOrderCash).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: RECORD })).toBeNull();
     expect(useCashNoShow.getState().byOrder.ord_1?.reportedAtMs).toBe(Date.parse(REPORTED));
+  });
+});
+
+/*
+  A group order (issue report F54BDF7A): one host receives and pays for
+  everyone. The amount is still the server's `collectMinor` — the full host
+  total — and the backup receiver opens only when the server says so.
+*/
+describe("a group order at the door", () => {
+  const GROUP = { id: "grp_1", memberCount: 5, hostName: "Host Person" };
+
+  beforeEach(() => {
+    server = { ...server, order: { ...cashAtDoor(2), groupOrder: GROUP } as Order };
+    api.getGroupBackup.mockResolvedValue({ unlocked: false });
+  });
+
+  it("asks for the whole group's total from the host, and records exactly the server's figure", async () => {
+    await openAtDoor();
+    expect(screen.getByText("Collect from the host, for the whole group")).toBeTruthy();
+    expect(screen.getByText(/One cash payment covers all 5 people/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Host not here or won't pay" })).toBeTruthy();
+    expect(screen.getByText("Group order, 5 people")).toBeTruthy();
+    expect(screen.getByText("Host: Host Person")).toBeTruthy();
+
+    api.collectCashAtDoor.mockImplementationOnce(async () => {
+      server = { ...server, cash: cashRecord(3, { collectedAt: "2026-11-18T01:05:00.000Z" }), receipt: cashReceipt };
+      return { cash: { version: 3, status: "collected" }, receipt: cashReceipt };
+    });
+    await fireEvent.press(screen.getByRole("button", { name: RECORD }));
+    await waitFor(() => expect(api.collectCashAtDoor).toHaveBeenCalledTimes(1));
+    expect(api.collectCashAtDoor.mock.calls[0][1]).toEqual({
+      expectedVersion: 2,
+      amountReceivedMinor: 10_350,
+      evidenceFileId: "fil_door",
+    });
+  });
+
+  it("keeps the backup receiver locked until the server unlocks it, then shows who and how to call", async () => {
+    await openAtDoor();
+    expect(await screen.findByText("Backup receiver, locked")).toBeTruthy();
+    expect(screen.queryByTestId("backup-receiver")).toBeNull();
+    expect(api.getGroupBackup).toHaveBeenCalledWith("ord_1");
+
+    api.getGroupBackup.mockResolvedValue({ unlocked: true, receiver: { name: "Backup Person", phone: "+639170000000" } });
+    await fireEvent.press(screen.getByRole("button", { name: "Check the backup receiver again" }));
+
+    expect(await screen.findByText("Backup Person")).toBeTruthy();
+    expect(screen.getByText("+639170000000")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Call Backup Person, the backup receiver" })).toBeTruthy();
+  });
+
+  it("an ordinary cash job shows none of it and never asks about a backup", async () => {
+    server = { ...server, order: cashAtDoor(2) };
+    await openAtDoor();
+    expect(screen.getByText("Collect from the client, in cash")).toBeTruthy();
+    expect(screen.queryByTestId("group-order-tag")).toBeNull();
+    expect(screen.queryByText("Backup receiver, locked")).toBeNull();
+    expect(api.getGroupBackup).not.toHaveBeenCalled();
   });
 });

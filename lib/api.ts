@@ -14,6 +14,7 @@ import { riderRefusal, type RiderRefusal } from "@/lib/riderRefusals";
 import { MIN_PASSWORD_LENGTH } from "@/lib/signup";
 import type { AcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
 import type { HandoffReminderFields } from "@/lib/handoffReminder";
+import { parseGroupBackup, type GroupBackup } from "@/lib/groupOrder";
 
 /**
  * GRIDGO demo API client.
@@ -408,6 +409,12 @@ export type Order = {
   cashAmounts?: CashAmounts | null;
   /** An open cash claim Operations raised after the shop was paid. */
   cashIncident?: { status: string; amountMinor?: number; remainingMinor?: number } | null;
+  /**
+   * Present only on a group order (gridgo-api `docs/GROUP_EXPRESS_API.md`):
+   * one job that the host receives for everyone. Read through
+   * `lib/groupOrder.ts`; absent on every ordinary job.
+   */
+  groupOrder?: { id: string; memberCount: number; hostName: string } | null;
 };
 
 export type CashStatus =
@@ -1562,6 +1569,31 @@ export async function recordArrival(orderId: string): Promise<Order> {
     body: JSON.stringify({ milestone: "arrived" }),
   });
   return result.order;
+}
+
+/**
+ * Whether a group order's backup receiver is unlocked yet
+ * (`GET /dispatch/:id/group-backup`). Locked until the server records two
+ * missed delivery calls from this rider to the host, or five minutes after
+ * this assignment's arrival; then it carries the receiver's name and phone.
+ * The app never counts anything itself — see `lib/groupOrder.ts`.
+ */
+export async function getGroupBackup(orderId: string): Promise<GroupBackup> {
+  const result = await request<unknown>(`/dispatch/${encodeURIComponent(orderId)}/group-backup`);
+  return parseGroupBackup(result);
+}
+
+/**
+ * Share the rider's own arrival estimate with a group, after pick-up
+ * (`POST /dispatch/:id/group-arrival-estimate`, `minutes` 1–180). Returns the
+ * arrival time the server will show the group.
+ */
+export async function shareGroupArrivalEstimate(orderId: string, minutes: number): Promise<{ estimatedArrivalAt: string | null }> {
+  const result = await request<{ estimatedArrivalAt?: unknown }>(
+    `/dispatch/${encodeURIComponent(orderId)}/group-arrival-estimate`,
+    { method: "POST", body: JSON.stringify({ minutes }) },
+  );
+  return { estimatedArrivalAt: typeof result?.estimatedArrivalAt === "string" ? result.estimatedArrivalAt : null };
 }
 
 /**
